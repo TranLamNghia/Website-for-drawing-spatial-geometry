@@ -1,0 +1,19 @@
+{
+    "metadata": {
+        "problem_id": "",
+        "topic": "geometry_3D",
+        "language": "vi"
+    },
+    "entities": {
+        "points": [],
+        "segments": [],
+        "planes": [],
+        "solids": []
+    },
+    "facts": [],
+    "queries": [],
+    "extraction_meta": {
+        "confidence": 0.0,
+        "notes": ""
+    }
+}

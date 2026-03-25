@@ -1,0 +1,9 @@
+{
+    "object_types": [
+        "point",
+        "segment",
+        "line",
+        "plane",
+        "solid"
+    ]
+}

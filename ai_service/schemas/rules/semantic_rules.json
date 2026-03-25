@@ -1,0 +1,8 @@
+{
+    "rules": [
+        "All objects must exist in entities",
+        "Segment AB requires A and B in points",
+        "Plane ABC requires A, B, C in points",
+        "Objects in facts must be declared in entities"
+    ]
+}

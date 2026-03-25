@@ -1,0 +1,9 @@
+{
+    "query_types": [
+        "volume",
+        "distance",
+        "area",
+        "angle",
+        "cosine_between_planes"
+    ]
+}

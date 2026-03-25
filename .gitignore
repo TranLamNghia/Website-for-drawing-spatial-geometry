@@ -1,0 +1,96 @@
+# ==============================
+# 01. MÔI TRƯỜNG CHUNG (KHÓA API & OS)
+# ==============================
+.env
+.env.*
+!.env.example
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+ehthumbs_vista.db
+[Tt]humbs.db
+
+# ==============================
+# 02. CODE EDITORS (VSCode, PyCharm)
+# ==============================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.spyderproject
+.spyproject
+
+# ==============================
+# 03. BACKEND (PYTHON / FASTAPI / AI)
+# ==============================
+# Môi trường ảo
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# File thực thi và rác sinh ra lúc dịch
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Cấu hình cài đặt
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Logs và Database
+*.log
+*.sqlite3
+*.db
+
+# ==============================
+# 04. FRONTEND (NODEJS / REACT / VUE)
+# ==============================
+# Thư viện rác nặng nhất
+node_modules/
+jspm_packages/
+bower_components/
+
+# Logs NodeJS
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store
+
+# Thư mục build
+dist/
+build/
+.next/
+out/
+.nuxt/
+.vuepress/
+.serverless/
+.output/
+
+# Test reports
+coverage/
+.nyc_output/

@@ -1,0 +1,6 @@
+Convert the following geometry problem into JSON.
+
+Problem:
+{{problem_text}}
+
+Output JSON:

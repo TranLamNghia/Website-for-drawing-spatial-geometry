@@ -1,0 +1,15 @@
+{
+    "allowed_operators": [
+        "+",
+        "-",
+        "*",
+        "/",
+        "sqrt"
+    ],
+    "constants": [
+        "a",
+        "b",
+        "c"
+    ],
+    "format": "string_math_expression"
+}

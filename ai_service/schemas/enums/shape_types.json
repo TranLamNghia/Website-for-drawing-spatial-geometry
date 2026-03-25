@@ -1,0 +1,18 @@
+{
+    "shape_types": [
+        "triangle",
+        "equilateral_triangle",
+        "isosceles_triangle",
+        "right_triangle",
+        "square",
+        "rectangle",
+        "rhombus",
+        "parallelogram",
+        "trapezoid",
+        "circle",
+        "sphere",
+        "pyramid",
+        "prism",
+        "tetrahedron"
+    ]
+}

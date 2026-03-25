@@ -1,0 +1,16 @@
+{
+    "fact_types": [
+        "shape",
+        "length",
+        "ratio",
+        "distance",
+        "perpendicular",
+        "parallel",
+        "intersection",
+        "midpoint",
+        "centroid",
+        "projection",
+        "angle",
+        "belongs_to"
+    ]
+}

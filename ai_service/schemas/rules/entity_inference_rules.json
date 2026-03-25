@@ -1,0 +1,20 @@
+{
+    "rules": [
+        {
+            "pattern": "^[A-Z]$",
+            "type": "point"
+        },
+        {
+            "pattern": "^[A-Z]{2}$",
+            "type": "segment"
+        },
+        {
+            "pattern": "^[A-Z]{3,}$",
+            "type": "plane"
+        },
+        {
+            "pattern": "^[A-Z][A-Z']*(\\.[A-Z][A-Z']*)*$",
+            "type": "solid"
+        }
+    ]
+}

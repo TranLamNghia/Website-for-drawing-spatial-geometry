@@ -1,0 +1,7 @@
+{
+    "angle_types": [
+        "line_line",
+        "line_plane",
+        "plane_plane"
+    ]
+}

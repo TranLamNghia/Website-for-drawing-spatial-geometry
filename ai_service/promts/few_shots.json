@@ -1,0 +1,134 @@
+[
+    {
+        "input": "Cho hình chóp S.ABCD có đáy ABCD là hình vuông cạnh a, tam giác SAB đều, góc SAD = 90°. Gọi J là trung điểm SD. Tính theo a thể tích khối tứ diện ACDJ và khoảng cách từ D đến mặt phẳng (ACJ).",
+        "output": {
+            "metadata": {
+                "problem_id": "problem_01",
+                "topic": "geometry_3D",
+                "language": "vi"
+            },
+            "entities": {
+                "points": [
+                    "S",
+                    "A",
+                    "B",
+                    "C",
+                    "D",
+                    "J"
+                ],
+                "segments": [
+                    "SD",
+                    "SA",
+                    "SB",
+                    "AB",
+                    "AD",
+                    "AC",
+                    "AJ",
+                    "CJ",
+                    "CD"
+                ],
+                "planes": [
+                    "ABCD",
+                    "ACJ",
+                    "SAB"
+                ],
+                "solids": [
+                    "S.ABCD",
+                    "ACDJ"
+                ]
+            },
+            "facts": [
+                {
+                    "id": "F1",
+                    "type": "shape",
+                    "data": {
+                        "target": "S.ABCD",
+                        "shape": "pyramid"
+                    },
+                    "raw_text": "Cho hình chóp S.ABCD"
+                },
+                {
+                    "id": "F2",
+                    "type": "shape",
+                    "data": {
+                        "target": "ABCD",
+                        "shape": "square"
+                    },
+                    "raw_text": "đáy ABCD là hình vuông"
+                },
+                {
+                    "id": "F3",
+                    "type": "length",
+                    "data": {
+                        "target": "AB",
+                        "value": "a"
+                    },
+                    "raw_text": "cạnh a"
+                },
+                {
+                    "id": "F4",
+                    "type": "shape",
+                    "data": {
+                        "target": "SAB",
+                        "shape": "equilateral_triangle"
+                    },
+                    "raw_text": "tam giác SAB đều"
+                },
+                {
+                    "id": "F5",
+                    "type": "angle",
+                    "data": {
+                        "angle_type": "line_line",
+                        "objects": [
+                            "SA",
+                            "AD"
+                        ],
+                        "value": "90"
+                    },
+                    "raw_text": "SAD = 90°"
+                },
+                {
+                    "id": "F6",
+                    "type": "midpoint",
+                    "data": {
+                        "point": "J",
+                        "segment": "SD"
+                    },
+                    "raw_text": "J là trung điểm SD"
+                },
+                {
+                    "id": "F7",
+                    "type": "shape",
+                    "data": {
+                        "target": "ACDJ",
+                        "shape": "tetrahedron"
+                    },
+                    "raw_text": "khối tứ diện ACDJ"
+                }
+            ],
+            "queries": [
+                {
+                    "id": "Q1",
+                    "type": "volume",
+                    "data": {
+                        "target": "ACDJ"
+                    },
+                    "raw_text": "Tính theo a thể tích khối tứ diện ACDJ"
+                },
+                {
+                    "id": "Q2",
+                    "type": "distance",
+                    "data": {
+                        "from": "D",
+                        "to": "ACJ"
+                    },
+                    "raw_text": "khoảng cách từ D đến mặt phẳng (ACJ)"
+                }
+            ],
+            "extraction_meta": {
+                "confidence": 1,
+                "notes": "Đã trích xuất và tinh chỉnh các thực thể/facts chuẩn Toán học."
+            }
+        }
+    }
+]
