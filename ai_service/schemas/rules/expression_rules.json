@@ -11,5 +11,6 @@
         "b",
         "c"
     ],
-    "format": "string_math_expression"
+    "format": "string_math_expression",
+    "instructions": "ALL length, distance, and math values MUST use explicitly valid math code formatting (e.g., 'a * sqrt(3) / 4' instead of 'a√3/4'). Must use explicit * for multiplication."
 }

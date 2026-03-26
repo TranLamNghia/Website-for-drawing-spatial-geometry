@@ -7,6 +7,8 @@
     "entities": {
         "points": [],
         "segments": [],
+        "rays": [],
+        "vectors": [],
         "planes": [],
         "solids": []
     },

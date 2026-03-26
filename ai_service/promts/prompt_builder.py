@@ -136,6 +136,8 @@ Strict Rules:
 - Do NOT explain or output any text outside the JSON block.
 - Follow the exact structure of the template.
 - The 'language' field must always be 'vi' and any 'notes' must be written in Vietnamese.
+- CRITICAL: Extract plane names WITHOUT parentheses (e.g., output "SBD" instead of "(SBD)").
+- CRITICAL: Format ALL math expressions and lengths as code expressions (e.g., output "a * sqrt(3) / 4" instead of "a√3/4"). Use *, /, +, -, and sqrt() explicitly.
 """.strip()
 
     user_prompt = f"""
