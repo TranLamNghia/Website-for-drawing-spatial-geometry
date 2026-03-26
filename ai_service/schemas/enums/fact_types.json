@@ -11,6 +11,11 @@
         "centroid",
         "projection",
         "angle",
-        "belongs_to"
+        "belongs_to",
+        "coplanar",
+        "collinear",
+        "tangent",
+        "inscribed",
+        "circumscribed"
     ]
 }

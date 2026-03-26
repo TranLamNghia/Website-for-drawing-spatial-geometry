@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import json
 from api.llm_client import GeometryAIEngine
@@ -11,9 +11,13 @@ class ProblemRequest(BaseModel):
 
 @router.post("/extract")
 async def extract_geometry(request: ProblemRequest):
-    raw_json = ai_engine.extract_json(request.problem_text)
     try:
+        raw_json = ai_engine.extract_json(request.problem_text)
         parsed_data = json.loads(raw_json)
         return {"status": "success", "data": parsed_data}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except json.JSONDecodeError:
-        return {"status": "error", "message": "Result is not valid JSON", "data": raw_json}
+        raise HTTPException(status_code=400, detail="Result is not valid JSON format")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")

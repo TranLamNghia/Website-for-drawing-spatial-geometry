@@ -36,6 +36,8 @@
             "required": [
                 "points",
                 "segments",
+                "rays",
+                "vectors",
                 "planes",
                 "solids"
             ],
@@ -55,6 +57,18 @@
                         "pattern": "^[A-Z]{2}$"
                     }
                 },
+                "rays": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "vectors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "planes": {
                     "type": "array",
                     "items": {
@@ -65,8 +79,7 @@
                 "solids": {
                     "type": "array",
                     "items": {
-                        "type": "string",
-                        "pattern": "^[A-Z][A-Z']*(\\.[A-Z][A-Z']*)*$"
+                        "type": "string"
                     }
                 }
             }
@@ -125,7 +138,12 @@
                         "midpoint",
                         "projection",
                         "angle",
-                        "belongs_to"
+                        "belongs_to",
+                        "coplanar",
+                        "collinear",
+                        "tangent",
+                        "inscribed",
+                        "circumscribed"
                     ]
                 },
                 "data": {
@@ -168,6 +186,21 @@
                 },
                 {
                     "$ref": "#/definitions/fact_belongs_to"
+                },
+                {
+                    "$ref": "#/definitions/fact_coplanar"
+                },
+                {
+                    "$ref": "#/definitions/fact_collinear"
+                },
+                {
+                    "$ref": "#/definitions/fact_tangent"
+                },
+                {
+                    "$ref": "#/definitions/fact_inscribed"
+                },
+                {
+                    "$ref": "#/definitions/fact_circumscribed"
                 }
             ]
         },
@@ -207,7 +240,22 @@
                                     "sphere",
                                     "pyramid",
                                     "prism",
-                                    "tetrahedron"
+                                    "tetrahedron",
+                                    "cube",
+                                    "rectangular_cuboid",
+                                    "cylinder",
+                                    "cone",
+                                    "torus",
+                                    "regular_pyramid",
+                                    "regular_prism",
+                                    "regular_tetrahedron",
+                                    "regular_cube",
+                                    "regular_rectangular_cuboid",
+                                    "regular_parallelepiped",
+                                    "regular_cylinder",
+                                    "regular_cone",
+                                    "regular_sphere",
+                                    "regular_torus"
                                 ]
                             }
                         }
@@ -393,15 +441,17 @@
                             "result": {
                                 "type": "object",
                                 "required": [
-                                    "type",
-                                    "value"
+                                    "type"
                                 ],
                                 "properties": {
                                     "type": {
                                         "type": "string",
                                         "enum": [
                                             "point",
-                                            "line"
+                                            "line",
+                                            "empty",
+                                            "circle",
+                                            "polygon"
                                         ]
                                     },
                                     "value": {
@@ -498,7 +548,10 @@
                                 "enum": [
                                     "line_line",
                                     "line_plane",
-                                    "plane_plane"
+                                    "plane_plane",
+                                    "vector_vector",
+                                    "vector_line",
+                                    "vector_plane"
                                 ]
                             },
                             "objects": {
@@ -545,6 +598,162 @@
                 }
             }
         },
+        "fact_coplanar": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "coplanar"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "objects"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "objects": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 3
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "fact_collinear": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "collinear"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "points"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "points": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 2
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "fact_tangent": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "tangent"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "objects"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "objects": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 2,
+                                "maxItems": 2
+                            },
+                            "point": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "fact_inscribed": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "inscribed"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "inner",
+                            "outer"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "inner": {
+                                "type": "string"
+                            },
+                            "outer": {
+                                "type": "string"
+                            },
+                            "points": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "fact_circumscribed": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "circumscribed"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "outer"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "outer": {
+                                "type": "string"
+                            },
+                            "inner": {
+                                "type": "string"
+                            },
+                            "points": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 1
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "query": {
             "type": "object",
             "required": [
@@ -565,7 +774,18 @@
                         "distance",
                         "area",
                         "angle",
-                        "cosine_between_planes"
+                        "cosine_between_planes",
+                        "sine_between_line_and_plane",
+                        "ratio_volume",
+                        "radius",
+                        "perimeter",
+                        "locus",
+                        "proof_parallel",
+                        "proof_perpendicular",
+                        "equation_line",
+                        "equation_plane",
+                        "equation_sphere",
+                        "coordinates"
                     ]
                 },
                 "data": {
@@ -590,6 +810,39 @@
                 },
                 {
                     "$ref": "#/definitions/query_cosine_planes"
+                },
+                {
+                    "$ref": "#/definitions/query_sine_between_line_and_plane"
+                },
+                {
+                    "$ref": "#/definitions/query_ratio_volume"
+                },
+                {
+                    "$ref": "#/definitions/query_radius"
+                },
+                {
+                    "$ref": "#/definitions/query_perimeter"
+                },
+                {
+                    "$ref": "#/definitions/query_locus"
+                },
+                {
+                    "$ref": "#/definitions/query_proof_parallel"
+                },
+                {
+                    "$ref": "#/definitions/query_proof_perpendicular"
+                },
+                {
+                    "$ref": "#/definitions/query_equation_line"
+                },
+                {
+                    "$ref": "#/definitions/query_equation_plane"
+                },
+                {
+                    "$ref": "#/definitions/query_equation_sphere"
+                },
+                {
+                    "$ref": "#/definitions/query_coordinates"
                 }
             ]
         },
@@ -691,7 +944,10 @@
                                 "enum": [
                                     "line_line",
                                     "line_plane",
-                                    "plane_plane"
+                                    "plane_plane",
+                                    "vector_vector",
+                                    "vector_line",
+                                    "vector_plane"
                                 ]
                             },
                             "objects": {
@@ -730,6 +986,290 @@
                                 },
                                 "minItems": 2,
                                 "maxItems": 2
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_sine_between_line_and_plane": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "sine_between_line_and_plane"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "objects"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "objects": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 2,
+                                "maxItems": 2
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_ratio_volume": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "ratio_volume"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "solids"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "solids": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 2,
+                                "maxItems": 2
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_radius": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "radius"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "target"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "target": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_perimeter": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "perimeter"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "target"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "target": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_locus": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "locus"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "target"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "target": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_proof_parallel": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "proof_parallel"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "objects"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "objects": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 2,
+                                "maxItems": 2
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_proof_perpendicular": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "proof_perpendicular"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "objects"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "objects": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 2,
+                                "maxItems": 2
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_equation_line": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "equation_line"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "target"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "target": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_equation_plane": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "equation_plane"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "target"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "target": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_equation_sphere": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "equation_sphere"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "target"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "target": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_coordinates": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "coordinates"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "target"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "target": {
+                                "type": "string"
                             }
                         }
                     }
