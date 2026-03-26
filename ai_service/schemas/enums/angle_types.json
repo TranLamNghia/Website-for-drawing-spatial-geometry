@@ -2,6 +2,9 @@
     "angle_types": [
         "line_line",
         "line_plane",
-        "plane_plane"
+        "plane_plane",
+        "vector_vector",
+        "vector_line",
+        "vector_plane"
     ]
 }

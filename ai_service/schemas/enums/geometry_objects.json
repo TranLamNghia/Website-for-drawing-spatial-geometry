@@ -4,6 +4,8 @@
         "segment",
         "line",
         "plane",
-        "solid"
+        "solid",
+        "ray",
+        "vector"
     ]
 }

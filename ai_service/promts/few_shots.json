@@ -27,6 +27,8 @@
                     "CJ",
                     "CD"
                 ],
+                "rays": [],
+                "vectors": [],
                 "planes": [
                     "ABCD",
                     "ACJ",
@@ -95,15 +97,6 @@
                         "segment": "SD"
                     },
                     "raw_text": "J là trung điểm SD"
-                },
-                {
-                    "id": "F7",
-                    "type": "shape",
-                    "data": {
-                        "target": "ACDJ",
-                        "shape": "tetrahedron"
-                    },
-                    "raw_text": "khối tứ diện ACDJ"
                 }
             ],
             "queries": [
@@ -126,8 +119,123 @@
                 }
             ],
             "extraction_meta": {
-                "confidence": 1,
-                "notes": "Đã trích xuất và tinh chỉnh các thực thể/facts chuẩn Toán học."
+                "confidence": 1.0,
+                "notes": ""
+            }
+        }
+    },
+    {
+        "input": "Trong không gian Oxyz, cho mặt cầu (S) ngoại tiếp hình lập phương ABCD.A'B'C'D'. Mặt phẳng (P) cắt (S) theo một đường tròn (C). Viết phương trình mặt phẳng (P) biết vector pháp tuyến của (P) là vec(n), và tính tỷ số thể tích của khối nón nội tiếp (S) so với khối lập phương.",
+        "output": {
+            "metadata": {
+                "problem_id": "example_02",
+                "topic": "geometry_3D",
+                "language": "vi"
+            },
+            "entities": {
+                "points": [
+                    "A",
+                    "B",
+                    "C",
+                    "D",
+                    "A'",
+                    "B'",
+                    "C'",
+                    "D'"
+                ],
+                "segments": [],
+                "rays": [],
+                "vectors": [
+                    "vec(n)"
+                ],
+                "planes": [
+                    "(P)"
+                ],
+                "solids": [
+                    "(S)",
+                    "ABCD.A'B'C'D'",
+                    "(C)"
+                ]
+            },
+            "facts": [
+                {
+                    "id": "F1",
+                    "type": "shape",
+                    "data": {
+                        "target": "ABCD.A'B'C'D'",
+                        "shape": "cube"
+                    },
+                    "raw_text": "hình lập phương ABCD.A'B'C'D'"
+                },
+                {
+                    "id": "F2",
+                    "type": "circumscribed",
+                    "data": {
+                        "outer": "(S)",
+                        "inner": "ABCD.A'B'C'D'"
+                    },
+                    "raw_text": "mặt cầu (S) ngoại tiếp hình lập phương"
+                },
+                {
+                    "id": "F3",
+                    "type": "intersection",
+                    "data": {
+                        "objects": [
+                            "(P)",
+                            "(S)"
+                        ],
+                        "result": {
+                            "type": "circle",
+                            "value": "(C)"
+                        }
+                    },
+                    "raw_text": "Mặt phẳng (P) cắt (S) theo một đường tròn (C)"
+                },
+                {
+                    "id": "F4",
+                    "type": "perpendicular",
+                    "data": {
+                        "objects": [
+                            "vec(n)",
+                            "(P)"
+                        ]
+                    },
+                    "raw_text": "vector pháp tuyến của (P) là vec(n)"
+                },
+                {
+                    "id": "F5",
+                    "type": "inscribed",
+                    "data": {
+                        "inner": "khối nón",
+                        "outer": "(S)"
+                    },
+                    "raw_text": "khối nón nội tiếp (S)"
+                }
+            ],
+            "queries": [
+                {
+                    "id": "Q1",
+                    "type": "equation_plane",
+                    "data": {
+                        "target": "(P)"
+                    },
+                    "raw_text": "Viết phương trình mặt phẳng (P)"
+                },
+                {
+                    "id": "Q2",
+                    "type": "ratio_volume",
+                    "data": {
+                        "solids": [
+                            "khối nón",
+                            "ABCD.A'B'C'D'"
+                        ]
+                    },
+                    "raw_text": "tính tỷ số thể tích của khối nón nội tiếp (S) so với khối lập phương"
+                }
+            ],
+            "extraction_meta": {
+                "confidence": 1.0,
+                "notes": "Ví dụ Oxyz và Khối tròn xoay"
             }
         }
     }

@@ -1,6 +1,9 @@
 {
     "intersection_result_types": [
+        "empty",
         "point",
-        "line"
+        "line",
+        "circle",
+        "polygon"
     ]
 }

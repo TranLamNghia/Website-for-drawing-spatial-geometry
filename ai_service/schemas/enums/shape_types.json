@@ -13,6 +13,23 @@
         "sphere",
         "pyramid",
         "prism",
-        "tetrahedron"
+        "tetrahedron",
+        "cube",
+        "rectangular_cuboid",
+        "parallelepiped",
+        "cylinder",
+        "cone",
+        "sphere",
+        "torus",
+        "regular_pyramid",
+        "regular_prism",
+        "regular_tetrahedron",
+        "regular_cube",
+        "regular_rectangular_cuboid",
+        "regular_parallelepiped",
+        "regular_cylinder",
+        "regular_cone",
+        "regular_sphere",
+        "regular_torus"
     ]
 }

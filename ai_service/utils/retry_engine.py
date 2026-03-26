@@ -74,5 +74,5 @@ class RetryEngine:
             else:
                 print(f"  -> ⚠️ Sửa thất bại. Vẫn bị lỗi: {simplify_error(error)}")
 
-        print("[RETRY_ENGINE] ❌ Đã hết số lần sửa cho phép. Bắt buộc trả về JSON Lỗi cho Frontend.")
-        return raw_json # Return last JSON error if still wrong
+        print("[RETRY_ENGINE] ❌ Đã hết số lần sửa cho phép. Bắt buộc báo lỗi lên API.")
+        raise ValueError(f"AI failed to generate valid geometry schema: {simplify_error(error)}")
