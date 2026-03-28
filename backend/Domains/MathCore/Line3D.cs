@@ -1,6 +1,6 @@
 using System;
 
-namespace GeometryVisualizer.Domain.MathCore;
+namespace Domains.MathCore;
 
 public class Line3D
 {
@@ -92,7 +92,7 @@ public class Line3D
         );
 
         // Trong 3D, phải check xem 2 điểm có thực sự chạm nhau không (sai số e-6)
-        if (p1_intersect.DistancePointToPoint(p2_intersect) > 1e-6)
+        if (p1_intersect.DistanceToPoint(p2_intersect) > 1e-6)
             return null; // Chéo nhau lướt qua chứ không cắt
 
         // Nếu là đoạn thẳng (Segment), t1 và t2 phải nằm trong [0, 1]

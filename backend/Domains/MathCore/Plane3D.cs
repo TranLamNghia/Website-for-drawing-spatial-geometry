@@ -1,6 +1,6 @@
 using System;
 
-namespace GeometryVisualizer.Domain.MathCore;
+namespace Domains.MathCore;
 
 public class Plane3D
 {

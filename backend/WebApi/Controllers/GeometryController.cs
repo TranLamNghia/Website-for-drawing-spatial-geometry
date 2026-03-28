@@ -1,5 +1,6 @@
 using Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Application.Compilers;
 
 namespace WebApi.Controllers;
 
@@ -8,10 +9,12 @@ namespace WebApi.Controllers;
 public class GeometryController : ControllerBase
 {
     private readonly IGeometryExtractionService _aiService;
+    private readonly IGeometryCompiler _compiler;
 
-    public GeometryController(IGeometryExtractionService aiService)
+    public GeometryController(IGeometryExtractionService aiService, IGeometryCompiler compiler)
     {
         _aiService = aiService;
+        _compiler = compiler;
     }
 
     [HttpPost("process")]
@@ -21,9 +24,15 @@ public class GeometryController : ControllerBase
         {
             var dto = await _aiService.ExtractGeometryAsync(problemText);
             
-            // Ở bước sau, bạn sẽ ném cái 'dto' này vào GeometryCompiler.
-            // Tạm thời trả về OK để test xem parse JSON thành công chưa.
-            return Ok(dto); 
+            if (dto == null)
+                return BadRequest(new { message = "Không thể trích xuất dữ liệu từ AI Service." });
+
+            var context = _compiler.Compile(dto);
+            return Ok(new 
+            {
+                message = "Biên dịch tọa độ thành công!",
+                points = context.Points
+            });
         }
         catch (Exception ex)
         {

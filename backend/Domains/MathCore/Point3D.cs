@@ -1,6 +1,6 @@
 using System;
 
-namespace GeometryVisualizer.Domain.MathCore;
+namespace Domains.MathCore;
 
 public class Point3D
 {
@@ -46,5 +46,11 @@ public class Point3D
         double sumX = 0, sumY = 0, sumZ = 0;
         foreach (var p in points) { sumX += p.X; sumY += p.Y; sumZ += p.Z; }
         return new Point3D(sumX / points.Length, sumY / points.Length, sumZ / points.Length);
+    }
+
+    // Thêm vào cuối class Point3D
+    public override string ToString()
+    {
+        return $"({X:F2}, {Y:F2}, {Z:F2})"; // In ra format (0.00, 0.00, 0.00)
     }
 }
