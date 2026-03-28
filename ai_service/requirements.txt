@@ -3,3 +3,6 @@ uvicorn==0.34.0
 pydantic==2.10.6
 ollama==0.4.7
 numpy==2.2.3
+openai>=1.0.0
+python-dotenv
+requests

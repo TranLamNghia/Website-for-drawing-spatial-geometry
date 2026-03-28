@@ -4,6 +4,7 @@
         "equilateral_triangle",
         "isosceles_triangle",
         "right_triangle",
+        "isosceles_right_triangle",
         "square",
         "rectangle",
         "rhombus",
