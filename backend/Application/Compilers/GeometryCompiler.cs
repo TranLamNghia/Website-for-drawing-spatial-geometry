@@ -33,126 +33,155 @@ public class GeometryCompiler : IGeometryCompiler
     /// </summary>
     private void BuildBase(GeometryProblemDto problem, CompilationContext context)
     {
-        var validBaseShapes = new[] 
-        { 
-            ShapeType.Square, ShapeType.Rectangle, ShapeType.Rhombus, ShapeType.Parallelogram, 
-            ShapeType.Trapezoid, ShapeType.Triangle, ShapeType.Equilateral_triangle, 
-            ShapeType.Right_triangle, ShapeType.Isosceles_triangle, ShapeType.Isosceles_right_triangle 
-        };
+        var valid2D = new[] { ShapeType.Square, ShapeType.Rectangle, ShapeType.Rhombus, ShapeType.Parallelogram, ShapeType.Trapezoid, ShapeType.Triangle, ShapeType.Equilateral_triangle, ShapeType.Right_triangle, ShapeType.Isosceles_triangle, ShapeType.Isosceles_right_triangle };
+        var valid3D = new[] { ShapeType.Tetrahedron, ShapeType.Regular_tetrahedron, ShapeType.Cube, ShapeType.Rectangular_cuboid, ShapeType.Pyramid, ShapeType.Regular_pyramid };
 
-        var shapeData = problem.Facts
+        var shapeFacts = problem.Facts
             .Where(f => f.Type == FactType.Shape)
             .Select(f => f.GetDataAs<ShapeData>())
-            .FirstOrDefault(d => d != null && validBaseShapes.Contains(d.Shape));
+            .Where(d => d != null)
+            .ToList();
+                
+        var baseFact = shapeFacts.FirstOrDefault(d => valid2D.Contains(d.Shape));
+        var solidFact = shapeFacts.FirstOrDefault(d => valid3D.Contains(d.Shape));
 
-        if (shapeData == null) return;
+        if (baseFact == null && solidFact == null) return;
 
-        string rawTarget = shapeData.Target ?? "";
-        string target = new string(rawTarget.Where(char.IsUpper).ToArray());
-        
-        if (target.Length > 3 && target.StartsWith("S")) target = target.Substring(1);
+        string rawTarget = "";
+        ShapeType effectiveShape = ShapeType.Triangle;
 
-        double aValue = context.UnitLength;
-
-        // 1. QUÉT TÌM CHIỀU DÀI CÁC CẠNH (TỰ ĐỘNG THÍCH ỨNG VỚI MỌI TÊN ĐỈNH)
-        
-        // Tìm Width (Cạnh ngang - VD: AB hoặc CD)
-        double width = GetDynamicEdgeLength(problem, target, 0, 1, -1, aValue);
-        if (width == -1 && target.Length >= 4) width = GetDynamicEdgeLength(problem, target, 2, 3, -1, aValue); // Tìm cạnh đối diện
-        if (width == -1) width = aValue; // Mặc định
-
-        // Tìm Height (Cạnh dọc - VD: BC hoặc AD)
-        double height = GetDynamicEdgeLength(problem, target, 1, 2, -1, aValue);
-        if (height == -1 && target.Length >= 4) height = GetDynamicEdgeLength(problem, target, 0, 3, -1, aValue); // Tìm cạnh đối diện
-        
-        // Nếu không có Fact nào nói về Height, ta gán mặc định tùy theo loại hình
-        if (height == -1) 
+        if (baseFact != null && !string.IsNullOrWhiteSpace(baseFact.Target))
         {
-            if (shapeData.Shape == ShapeType.Rectangle || shapeData.Shape == ShapeType.Parallelogram) height = width * 2; // HCN mặc định dài gấp đôi rộng
-            else height = width; // Hình vuông, thoi...
+            rawTarget = baseFact.Target;
+            effectiveShape = baseFact.Shape;
+        }
+        else if (solidFact != null && !string.IsNullOrWhiteSpace(solidFact.Target))
+        {
+            rawTarget = solidFact.Target;
         }
 
-        // 2. DỰNG HÌNH THEO KHUÔN MẪU TƯƠNG ĐỐI (DÙNG WIDTH VÀ HEIGHT ĐỘNG)
-        switch (shapeData.Shape)
+        string target = new string(rawTarget.Where(char.IsUpper).ToArray());
+
+        if (target.Length < 3)
+        {
+            target = (solidFact != null && (solidFact.Shape == ShapeType.Cube || solidFact.Shape == ShapeType.Rectangular_cuboid)) 
+                     ? "ABCDEFGH" : "ABCD";
+        }
+
+        // 2. TÁCH ĐỈNH - ĐÁY VÀ GHI ĐÈ TÍNH CHẤT (OVERRIDE PROPERTIES)
+        string baseTarget = target;
+        
+        if (solidFact != null)
+        {
+            if (solidFact.Shape == ShapeType.Pyramid || solidFact.Shape == ShapeType.Regular_pyramid)
+            {
+                if (target.Length > 3 && target.StartsWith("S")) baseTarget = target.Substring(1); // Cắt S
+            }
+            else if (solidFact.Shape == ShapeType.Tetrahedron || solidFact.Shape == ShapeType.Regular_tetrahedron)
+            {
+                if (target.Length >= 4 && baseFact == null) baseTarget = target.Substring(1); 
+            }
+
+            if (solidFact.Shape == ShapeType.Regular_tetrahedron) effectiveShape = ShapeType.Equilateral_triangle;
+            else if (solidFact.Shape == ShapeType.Cube) effectiveShape = ShapeType.Square;
+        }
+
+        // 3. TÍNH TOÁN KÍCH THƯỚC ĐỘNG
+        double aValue = context.UnitLength;
+
+        double width = GetDynamicEdgeLength(problem, baseTarget, 0, 1, -1, aValue);
+        if (width == -1 && baseTarget.Length >= 4) width = GetDynamicEdgeLength(problem, baseTarget, 2, 3, -1, aValue);
+        if (width == -1) width = aValue; 
+
+        double height = GetDynamicEdgeLength(problem, baseTarget, 1, 2, -1, aValue);
+        if (height == -1 && baseTarget.Length >= 4) height = GetDynamicEdgeLength(problem, baseTarget, 0, 3, -1, aValue);
+        if (height == -1) 
+        {
+            if (effectiveShape == ShapeType.Rectangle || effectiveShape == ShapeType.Parallelogram) height = width * 2; 
+            else height = width; 
+        }
+
+        Console.WriteLine($"[COMPILER] Tổng hợp Fact: Tên đáy={baseTarget}, Hình dáng={effectiveShape}");
+
+        switch (effectiveShape)
         {
             // ================= NHÓM TỨ GIÁC =================
             case ShapeType.Square:
             case ShapeType.Rectangle: 
-                if (target.Length >= 4) {
-                    context.Points[target[0].ToString()] = new Point3D(0, 0, 0);      
-                    context.Points[target[1].ToString()] = new Point3D(width, 0, 0);      
-                    context.Points[target[2].ToString()] = new Point3D(width, height, 0);  
-                    context.Points[target[3].ToString()] = new Point3D(0, height, 0);  
+                if (baseTarget.Length >= 4) {
+                    context.Points[baseTarget[0].ToString()] = new Point3D(0, 0, 0);      
+                    context.Points[baseTarget[1].ToString()] = new Point3D(width, 0, 0);      
+                    context.Points[baseTarget[2].ToString()] = new Point3D(width, height, 0);  
+                    context.Points[baseTarget[3].ToString()] = new Point3D(0, height, 0);  
                 }
                 break;
 
             case ShapeType.Rhombus: // Hình thoi (4 cạnh = width, góc 60 độ)
-                if (target.Length >= 4) {
-                    context.Points[target[0].ToString()] = new Point3D(0, 0, 0);      
-                    context.Points[target[1].ToString()] = new Point3D(width, 0, 0);      
-                    context.Points[target[2].ToString()] = new Point3D(width * 1.5, width * Math.Sqrt(3) / 2, 0); 
-                    context.Points[target[3].ToString()] = new Point3D(width * 0.5, width * Math.Sqrt(3) / 2, 0); 
+                if (baseTarget.Length >= 4) {
+                    context.Points[baseTarget[0].ToString()] = new Point3D(0, 0, 0);      
+                    context.Points[baseTarget[1].ToString()] = new Point3D(width, 0, 0);      
+                    context.Points[baseTarget[2].ToString()] = new Point3D(width * 1.5, width * Math.Sqrt(3) / 2, 0); 
+                    context.Points[baseTarget[3].ToString()] = new Point3D(width * 0.5, width * Math.Sqrt(3) / 2, 0); 
                 }
                 break;
 
             case ShapeType.Parallelogram: // Hình bình hành (Đáy width, cạnh bên height, góc 60 độ)
-                if (target.Length >= 4) {
-                    context.Points[target[0].ToString()] = new Point3D(0, 0, 0);       
-                    context.Points[target[1].ToString()] = new Point3D(width, 0, 0);       
-                    context.Points[target[2].ToString()] = new Point3D(width + height * 0.5, height * Math.Sqrt(3) / 2, 0); 
-                    context.Points[target[3].ToString()] = new Point3D(height * 0.5, height * Math.Sqrt(3) / 2, 0); 
+                if (baseTarget.Length >= 4) {
+                    context.Points[baseTarget[0].ToString()] = new Point3D(0, 0, 0);       
+                    context.Points[baseTarget[1].ToString()] = new Point3D(width, 0, 0);       
+                    context.Points[baseTarget[2].ToString()] = new Point3D(width + height * 0.5, height * Math.Sqrt(3) / 2, 0); 
+                    context.Points[baseTarget[3].ToString()] = new Point3D(height * 0.5, height * Math.Sqrt(3) / 2, 0); 
                 }
                 break;
 
             case ShapeType.Trapezoid: // Hình thang (Mặc định thang vuông tại góc 0 và 3, đáy nhỏ = 1/2 đáy lớn)
-                if (target.Length >= 4) {
-                    context.Points[target[0].ToString()] = new Point3D(0, 0, 0);                // Góc vuông
-                    context.Points[target[1].ToString()] = new Point3D(width, 0, 0);            // Đáy lớn
-                    context.Points[target[2].ToString()] = new Point3D(width * 0.5, height, 0); // Đáy nhỏ
-                    context.Points[target[3].ToString()] = new Point3D(0, height, 0);           // Góc vuông
+                if (baseTarget.Length >= 4) {
+                    context.Points[baseTarget[0].ToString()] = new Point3D(0, 0, 0);                // Góc vuông
+                    context.Points[baseTarget[1].ToString()] = new Point3D(width, 0, 0);            // Đáy lớn
+                    context.Points[baseTarget[2].ToString()] = new Point3D(width * 0.5, height, 0); // Đáy nhỏ
+                    context.Points[baseTarget[3].ToString()] = new Point3D(0, height, 0);           // Góc vuông
                 }
                 break;
 
             // ================= NHÓM TAM GIÁC =================
             case ShapeType.Equilateral_triangle: // Tam giác đều (Các cạnh bằng width)
-                if (target.Length >= 3) {
-                    context.Points[target[0].ToString()] = new Point3D(0, 0, 0); 
-                    context.Points[target[1].ToString()] = new Point3D(width, 0, 0); 
-                    context.Points[target[2].ToString()] = new Point3D(width / 2.0, width * Math.Sqrt(3) / 2.0, 0); 
+                if (baseTarget.Length >= 3) {
+                    context.Points[baseTarget[0].ToString()] = new Point3D(0, 0, 0); 
+                    context.Points[baseTarget[1].ToString()] = new Point3D(width, 0, 0); 
+                    context.Points[baseTarget[2].ToString()] = new Point3D(width / 2.0, width * Math.Sqrt(3) / 2.0, 0); 
                 }
                 break;
 
             case ShapeType.Right_triangle: // Tam giác vuông (Vuông tại đỉnh đầu tiên)
-                if (target.Length >= 3) {
-                    context.Points[target[0].ToString()] = new Point3D(0, 0, 0); 
-                    context.Points[target[1].ToString()] = new Point3D(width, 0, 0); 
-                    context.Points[target[2].ToString()] = new Point3D(0, height, 0); 
+                if (baseTarget.Length >= 3) {
+                    context.Points[baseTarget[0].ToString()] = new Point3D(0, 0, 0); 
+                    context.Points[baseTarget[1].ToString()] = new Point3D(width, 0, 0); 
+                    context.Points[baseTarget[2].ToString()] = new Point3D(0, height, 0); 
                 }
                 break;
 
             case ShapeType.Isosceles_triangle: // Tam giác cân (Cân tại đỉnh đầu tiên - target[0])
-                if (target.Length >= 3) {
-                    // Để đỉnh cân target[0] nằm giữa, ta đặt 2 đỉnh đáy ở target[1] và target[2]
-                    context.Points[target[1].ToString()] = new Point3D(0, 0, 0); 
-                    context.Points[target[2].ToString()] = new Point3D(width, 0, 0); 
-                    context.Points[target[0].ToString()] = new Point3D(width / 2.0, height, 0); 
+                if (baseTarget.Length >= 3) {                    
+                    context.Points[baseTarget[1].ToString()] = new Point3D(0, 0, 0); 
+                    context.Points[baseTarget[2].ToString()] = new Point3D(width, 0, 0); 
+                    context.Points[baseTarget[0].ToString()] = new Point3D(width / 2.0, height, 0); 
                 }
                 break;
 
             case ShapeType.Isosceles_right_triangle: // Tam giác vuông cân (Vuông cân tại đỉnh đầu tiên)
-                if (target.Length >= 3) {
-                    context.Points[target[0].ToString()] = new Point3D(0, 0, 0); 
-                    context.Points[target[1].ToString()] = new Point3D(width, 0, 0); 
-                    context.Points[target[2].ToString()] = new Point3D(0, width, 0); // Ép height = width
+                if (baseTarget.Length >= 3) {
+                    context.Points[baseTarget[0].ToString()] = new Point3D(0, 0, 0); 
+                    context.Points[baseTarget[1].ToString()] = new Point3D(width, 0, 0); 
+                    context.Points[baseTarget[2].ToString()] = new Point3D(0, width, 0); // Ép height = width
                 }
                 break;
 
             case ShapeType.Triangle: 
             default: // Tam giác thường
-                if (target.Length >= 3) {
-                    context.Points[target[0].ToString()] = new Point3D(0, 0, 0); 
-                    context.Points[target[1].ToString()] = new Point3D(width, 0, 0); 
-                    context.Points[target[2].ToString()] = new Point3D(width * 0.3, height, 0); // Lệch 0.3 để ra tam giác thường
+                if (baseTarget.Length >= 3) {
+                    context.Points[baseTarget[0].ToString()] = new Point3D(0, 0, 0); 
+                    context.Points[baseTarget[1].ToString()] = new Point3D(width, 0, 0); 
+                    context.Points[baseTarget[2].ToString()] = new Point3D(width * 0.3, height, 0); // Lệch 0.3 để ra tam giác thường
                 }
                 break;
         }
@@ -161,10 +190,10 @@ public class GeometryCompiler : IGeometryCompiler
         foreach(var kvp in context.Points) Console.WriteLine($"   -> {kvp.Key}: {kvp.Value}");
 
         // 3. TỊNH TIẾN TRỌNG TÂM VỀ GỐC TỌA ĐỘ
-        if (target.Length > 0)
+        if (baseTarget.Length > 0)
         {
             var basePoints = new System.Collections.Generic.List<Point3D>();
-            foreach (char c in target)
+            foreach (char c in baseTarget)
             {
                 if (context.Points.TryGetValue(c.ToString(), out var p))
                 {
@@ -177,7 +206,7 @@ public class GeometryCompiler : IGeometryCompiler
             {
                 var centroid = Point3D.GetCentroid(basePoints.ToArray());
 
-                foreach (char c in target)
+                foreach (char c in baseTarget)
                 {
                     if (context.Points.ContainsKey(c.ToString()))
                     {
