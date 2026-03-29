@@ -16,14 +16,23 @@ public class GeometryCompiler : IGeometryCompiler
         // Khởi tạo cuốn sổ tay trắng
         var context = new CompilationContext();
 
-        // Pipeline Giai đoạn 1: Dựng móng nhà (Mặt đáy nằm trên mp z = 0)
+        // Giai đoạn 1: Dựng móng nhà (Mặt đáy nằm trên mp z = 0)
         BuildBase(problem, context);
 
-        // Pipeline Giai đoạn 2: Tìm hình chiếu và dựng chiều cao Z cho đỉnh chóp
-        // BuildApex(problem, context); // Sẽ mở khóa ở bước sau
+        // Giai đoạn 2: Tìm hình chiếu và dựng chiều cao Z cho đỉnh chóp
+        BuildApex(problem, context);
 
-        // Pipeline Giai đoạn 3: Tính toán trung điểm, trọng tâm, giao điểm...
+        // Giai đoạn 3: Tính toán trung điểm, trọng tâm, giao điểm...
         // BuildDependentEntities(problem, context); // Sẽ mở khóa ở bước sau
+
+        // Xóa bỏ phần thập phân nhỏ hơn 1e-10
+        foreach (var kvp in context.Points)
+        {
+            var p = kvp.Value;
+            p.X = Math.Abs(p.X) < 1e-10 ? 0 : Math.Round(p.X, 4);
+            p.Y = Math.Abs(p.Y) < 1e-10 ? 0 : Math.Round(p.Y, 4);
+            p.Z = Math.Abs(p.Z) < 1e-10 ? 0 : Math.Round(p.Z, 4);
+        }
 
         return context;
     }
@@ -42,8 +51,8 @@ public class GeometryCompiler : IGeometryCompiler
             .Where(d => d != null)
             .ToList();
                 
-        var baseFact = shapeFacts.FirstOrDefault(d => valid2D.Contains(d.Shape));
-        var solidFact = shapeFacts.FirstOrDefault(d => valid3D.Contains(d.Shape));
+        var baseFact = shapeFacts.FirstOrDefault(d => d != null && valid2D.Contains(d.Shape));
+        var solidFact = shapeFacts.FirstOrDefault(d => d != null && valid3D.Contains(d.Shape));
 
         if (baseFact == null && solidFact == null) return;
 
@@ -102,6 +111,39 @@ public class GeometryCompiler : IGeometryCompiler
         }
 
         Console.WriteLine($"[COMPILER] Tổng hợp Fact: Tên đáy={baseTarget}, Hình dáng={effectiveShape}");
+
+        if (baseTarget.Length >= 3)
+        {
+            var edgeLengths = new System.Collections.Generic.List<double>();
+            int n = baseTarget.Length;
+
+            // Quét vòng quanh đa giác (VD ABCD: AB, BC, CD, DA)
+            for (int i = 0; i < n; i++)
+            {
+                int nextIndex = (i + 1) % n;
+                double l = GetDynamicEdgeLength(problem, baseTarget, i, nextIndex, -1, aValue);
+                if (l != -1) edgeLengths.Add(l);
+            }
+
+            // Nếu thu thập ĐỦ số cạnh và TẤT CẢ các cạnh đều bằng nhau
+            if (edgeLengths.Count == n && edgeLengths.All(l => Math.Abs(l - edgeLengths[0]) < 1e-6))
+            {
+                if (n == 3) 
+                {
+                    effectiveShape = ShapeType.Equilateral_triangle;
+                    width = edgeLengths[0];
+                }
+                else if (n == 4)
+                {
+                    if (effectiveShape != ShapeType.Square) 
+                    {
+                        effectiveShape = ShapeType.Rhombus;
+                    }
+                    width = edgeLengths[0];
+                }
+                // Thêm Lục giác đều (n=6) vào Enums, chỉ cần thêm 1 dòng "else if (n == 6)" ở đây!
+            }
+        }
 
         switch (effectiveShape)
         {
@@ -287,5 +329,192 @@ public class GeometryCompiler : IGeometryCompiler
             else if (c == ')') counter--;
         }
         return closePos;
+    }
+
+    private void BuildApex(GeometryProblemDto problem, CompilationContext context)
+    {
+        var valid3D = new[] { ShapeType.Tetrahedron, ShapeType.Regular_tetrahedron, ShapeType.Pyramid, ShapeType.Regular_pyramid };
+        var solidFact = problem.Facts
+            .FirstOrDefault(f => f.Type == FactType.Shape && f.GetDataAs<ShapeData>() is ShapeData sd && valid3D.Contains(sd.Shape));
+        
+        if (solidFact == null || solidFact.GetDataAs<ShapeData>() is not ShapeData solidData) return;
+        
+        string rawTarget = solidData.Target ?? "";
+        string target = new string(rawTarget.Where(char.IsUpper).ToArray());
+
+        if (target.Length < 4) target = "ABCD";
+
+        string apexChar = target[0].ToString(); 
+        string baseTarget = target.Substring(1);
+        
+        if (solidData.Shape == ShapeType.Pyramid || solidData.Shape == ShapeType.Regular_pyramid)
+        {
+            if (target.Length > 3 && target.StartsWith("S")) {
+                apexChar = "S";
+                baseTarget = target.Substring(1);
+            }
+        }
+
+        if (context.Points.ContainsKey(apexChar)) return;
+
+        Point3D? projectionPoint = null;
+
+        // BƯỚC A: Tìm hình chiếu H
+        if (solidData.Shape == ShapeType.Regular_pyramid || solidData.Shape == ShapeType.Regular_tetrahedron)
+        {
+            var basePoints = new List<Point3D>();
+            foreach (char c in baseTarget) if (context.Points.TryGetValue(c.ToString(), out var p)) basePoints.Add(p);
+            if (basePoints.Count > 0) projectionPoint = Point3D.GetCentroid(basePoints.ToArray());
+        }
+        else
+        {
+            // Tìm theo Fact vuông góc
+            var perpFact = problem.Facts.FirstOrDefault(f => f.Type == FactType.Perpendicular);
+            if (perpFact != null)
+            {
+                if (context.Points.TryGetValue(baseTarget[0].ToString(), out var p)) projectionPoint = p;
+            }
+            else
+            {
+                // Suy luận logic: Kiểm tra cạnh bên bằng nhau
+                bool isAllLateralEqual = CheckIfLateralEdgesAreEqual(problem, apexChar, baseTarget, context.UnitLength);
+
+                if (isAllLateralEqual)
+                {
+                    // Nếu các cạnh bên bằng nhau -> Hình chiếu rơi vào Trọng tâm đáy
+                    var basePoints = new List<Point3D>();
+                    foreach (char c in baseTarget) if (context.Points.TryGetValue(c.ToString(), out var p)) basePoints.Add(p);
+                    if (basePoints.Count > 0) projectionPoint = Point3D.GetCentroid(basePoints.ToArray());
+                    
+                    Console.WriteLine($"[COMPILER] Suy luận: Các cạnh bên bằng nhau -> {apexChar} chiếu xuống Trọng tâm đáy.");
+                }
+                else
+                {
+                    // Fallback cuối cùng: Nhắm mắt lấy đỉnh đầu tiên
+                    if (context.Points.TryGetValue(baseTarget[0].ToString(), out var p)) projectionPoint = p;
+                }
+            }
+        }
+
+        // BƯỚC B: Bắn tia và chốt cao độ (Z) cho đỉnh chóp
+        if (projectionPoint != null)
+        {
+            double height = -1; // Cờ hiệu kiểm tra chiều cao
+
+            // 1. Tìm TÊN của điểm hình chiếu (Nếu trùng đỉnh đáy, VD: "A")
+            string projName = "";
+            foreach (var kvp in context.Points)
+            {
+                if (Math.Abs(kvp.Value.X - projectionPoint.X) < 1e-6 && 
+                    Math.Abs(kvp.Value.Y - projectionPoint.Y) < 1e-6 && 
+                    Math.Abs(kvp.Value.Z - projectionPoint.Z) < 1e-6)
+                {
+                    projName = kvp.Key;
+                    break;
+                }
+            }
+
+            // 2. TÌM CHIỀU CAO TRỰC TIẾP (Fact "AH", "Chiều cao")
+            string expectedEdge1 = $"{apexChar}{projName}";
+            string expectedEdge2 = $"{projName}{apexChar}";
+
+            var heightFact = problem.Facts.FirstOrDefault(f => 
+            {
+                if (f.Type != FactType.Length) return false;
+                var ld = f.GetDataAs<LengthData>();
+                if (ld == null || string.IsNullOrEmpty(ld.Target)) return false;
+                string t = ld.Target.ToLower();
+                return t == expectedEdge1.ToLower() || t == expectedEdge2.ToLower() || t == "height" || t == "chiều cao" || t == "h";
+            });
+
+            if (heightFact != null && heightFact.GetDataAs<LengthData>() is LengthData hd && hd.Value != null)
+            {
+                height = EvaluateExpression(hd.Value, context.UnitLength);
+            }
+
+            // ====================================================================
+            // 3. SUY LUẬN PYTAGO (Tính chiều cao thông qua Cạnh bên)
+            // ====================================================================
+            if (height == -1 && baseTarget.Length > 0)
+            {
+                char firstBaseNode = baseTarget[0]; // Thử lấy đỉnh đáy đầu tiên (VD: "B")
+                string lateralEdge1 = $"{apexChar}{firstBaseNode}"; // "AB"
+                string lateralEdge2 = $"{firstBaseNode}{apexChar}"; // "BA"
+
+                var lateralFact = problem.Facts.FirstOrDefault(f => 
+                {
+                    if (f.Type != FactType.Length) return false;
+                    var ld = f.GetDataAs<LengthData>();
+                    return ld != null && (ld.Target == lateralEdge1 || ld.Target == lateralEdge2);
+                });
+
+                if (lateralFact != null && lateralFact.GetDataAs<LengthData>() is LengthData ldFact && ldFact.Value != null)
+                {
+                    // Lấy độ dài cạnh huyền l (VD: AB = 3)
+                    double lateralLength = EvaluateExpression(ldFact.Value, context.UnitLength); 
+                    
+                    if (context.Points.TryGetValue(firstBaseNode.ToString(), out var baseNodePoint))
+                    {
+                        // Tính bình phương bán kính R (Khoảng cách từ hình chiếu H đến đỉnh B)
+                        double rSquared = Math.Pow(baseNodePoint.X - projectionPoint.X, 2) + 
+                                          Math.Pow(baseNodePoint.Y - projectionPoint.Y, 2) + 
+                                          Math.Pow(baseNodePoint.Z - projectionPoint.Z, 2);
+                        
+                        double lSquared = Math.Pow(lateralLength, 2);
+
+                        // Đảm bảo không bị lỗi căn bậc 2 số âm (Xảy ra nếu đề cho số liệu vô lý)
+                        if (lSquared > rSquared)
+                        {
+                            height = Math.Sqrt(lSquared - rSquared); 
+                            Console.WriteLine($"[COMPILER] Suy luận Pytago: Cạnh bên l={lateralLength}, Bán kính đáy R={Math.Sqrt(rSquared):F2} -> Chiều cao h={height:F2}");
+                        }
+                    }
+                }
+            }
+
+            // 4. Fallback mặc định (Nếu đề không cho bất kỳ độ dài nào)
+            if (height == -1) height = context.UnitLength * Math.Sqrt(2);
+
+            // 5. Bắn tia lên trời (Tịnh tiến trục Z)
+            context.Points[apexChar] = new Point3D(
+                projectionPoint.X, 
+                projectionPoint.Y, 
+                projectionPoint.Z + height 
+            );
+
+            Console.WriteLine($"[COMPILER] --- GĐ2: Đã dựng đỉnh {apexChar} tại {context.Points[apexChar]} ---");
+        }
+    }
+
+    private bool CheckIfLateralEdgesAreEqual(GeometryProblemDto problem, string apex, string baseTarget, double aValue)
+    {
+        var lengths = new List<double>();
+        
+        // Quét độ dài nối từ Đỉnh đến từng điểm dưới Đáy
+        foreach (char c in baseTarget)
+        {
+            string edge1 = $"{apex}{c}"; // VD: AB
+            string edge2 = $"{c}{apex}"; // VD: BA
+
+            var fact = problem.Facts.FirstOrDefault(f => 
+            {
+                if (f.Type != FactType.Length) return false;
+                var ld = f.GetDataAs<LengthData>();
+                return ld != null && (ld.Target == edge1 || ld.Target == edge2);
+            });
+ 
+            if (fact != null && fact.GetDataAs<LengthData>() is LengthData data && data.Value != null) {
+                lengths.Add(EvaluateExpression(data.Value, aValue));
+            }
+        }
+
+        // Nếu có ít nhất 2 cạnh bên được định nghĩa và chúng bằng nhau (sai số nhỏ hơn 1e-6)
+        if (lengths.Count >= 2)
+        {
+            double firstLen = lengths[0];
+            return lengths.All(l => Math.Abs(l - firstLen) < 1e-6);
+        }
+        
+        return false;
     }
 }
