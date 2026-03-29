@@ -7,6 +7,9 @@ namespace Application.DTOs.Facts;
 /// </summary>
 public class ObjectsData
 {
+    [JsonPropertyName("point")]
+    public string Point { get; set; } = string.Empty;
+
     [JsonPropertyName("objects")]
     public List<string> Objects { get; set; } = [];
 }
