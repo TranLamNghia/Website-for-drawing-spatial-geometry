@@ -157,4 +157,30 @@ public class Plane3D
         if (mags < 1e-9) return 0;
         return Math.Asin(dot / mags) * (180.0 / Math.PI); // Dùng Asin thay vì Acos
     }
+
+    // Tạo mặt phẳng trung trực của đoạn thẳng
+    public static Plane3D CreatePerpendicularBisector(Point3D p1, Point3D p2)
+    {
+        var midpoint = p1.GetMidpoint(p2);
+        var normal = new Vector3D(p1, p2);
+        return new Plane3D(midpoint, normal);
+    }
+
+    // Hiện phương trình mặt phẳng
+    public override string ToString()
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        
+        // Format hệ số cho đẹp (Bỏ qua nếu = 0, ẩn số 1, xử lý dấu âm dương)
+        if (Math.Abs(A) > 1e-6) parts.Add(A == 1 ? "x" : A == -1 ? "-x" : $"{Math.Round(A, 2)}x");
+        if (Math.Abs(B) > 1e-6) parts.Add(B == 1 ? "y" : B == -1 ? "-y" : $"{Math.Round(B, 2)}y");
+        if (Math.Abs(C) > 1e-6) parts.Add(C == 1 ? "z" : C == -1 ? "-z" : $"{Math.Round(C, 2)}z");
+        
+        string equation = string.Join(" + ", parts).Replace("+ -", "- ");
+        
+        if (Math.Abs(D) > 1e-6)
+            equation += (D > 0 ? " + " : " - ") + Math.Abs(Math.Round(D, 2));
+            
+        return string.IsNullOrEmpty(equation) ? "0 = 0" : equation + " = 0";
+    }
 }
