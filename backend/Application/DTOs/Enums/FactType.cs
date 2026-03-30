@@ -13,12 +13,19 @@ public enum FactType
     Parallel,
     Intersection,
     Midpoint,
+    Centroid,
+    Circumcenter,
+    Incenter,
+    Orthocenter,
     Projection,
     Angle,
-    BelongsTo,
+    belongs_to,
     Coplanar,
     Collinear,
     Tangent,
     Inscribed,
-    Circumscribed
+    Circumscribed,
+    Area,
+    Volume,
+    Perimeter
 }

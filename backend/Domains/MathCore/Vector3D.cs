@@ -64,4 +64,21 @@ public class Vector3D
     {
         return this.CrossProduct(v2).DotProduct(v3);
     }
+
+    // Tìm Vector phân giác trong của góc tạo bởi 2 vector (xuất phát từ cùng 1 đỉnh)
+    public Vector3D GetBisectorVector(Vector3D other)
+    {
+        var v1_norm = this.Normalize();
+        var v2_norm = other.Normalize();
+        // Tổng 2 vector đơn vị sẽ tạo ra đường chéo hình thoi -> chính là phân giác!
+        return v1_norm + v2_norm; 
+    }
+
+    // Hàm phụ: Chuẩn hóa vector (Trả về vector cùng hướng, độ dài = 1)
+    public Vector3D Normalize()
+    {
+        double mag = Magnitude();
+        if (mag < 1e-9) return new Vector3D(0, 0, 0);
+        return new Vector3D(X / mag, Y / mag, Z / mag);
+    }
 }

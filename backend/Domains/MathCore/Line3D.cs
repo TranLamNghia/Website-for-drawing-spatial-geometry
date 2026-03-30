@@ -33,6 +33,19 @@ public class Line3D
         var cross = v.CrossProduct(Direction);
         return cross.Magnitude() / Direction.Magnitude();
     }
+ 
+    // Tìm hình chiếu của 1 điểm lên đường thẳng (Fact: projection)
+    public Point3D GetProjection(Point3D point)
+    {
+        var ap = new Vector3D(Point, point);
+        double t = ap.DotProduct(Direction) / Direction.DotProduct(Direction);
+ 
+        return new Point3D(
+            Point.X + Direction.X * t,
+            Point.Y + Direction.Y * t,
+            Point.Z + Direction.Z * t
+        );
+    }
 
     // Tính khoảng cách từ đường thẳng đến đường thẳng
     public double DistanceToLine(Line3D other)
@@ -112,5 +125,22 @@ public class Line3D
         double mags = this.Direction.Magnitude() * other.Direction.Magnitude();
         if (mags < 1e-9) return 0;
         return Math.Acos(dot / mags) * (180.0 / Math.PI);
+    }
+
+    // Hiện phương trình đường thẳng
+    public override string ToString()
+    {
+        string FormatParam(double p, double d)
+        {
+            if (Math.Abs(d) < 1e-6) return $"{Math.Round(p, 2)}";
+            string pStr = Math.Abs(p) > 1e-6 ? $"{Math.Round(p, 2)} " : "";
+            string sign = d > 0 && Math.Abs(p) > 1e-6 ? "+ " : (d < 0 ? "- " : "");
+            string dStr = Math.Abs(Math.Abs(d) - 1) < 1e-6 ? "t" : $"{Math.Abs(Math.Round(d, 2))}t";
+            return $"{pStr}{sign}{dStr}".Trim();
+        }
+
+        return $"[x = {FormatParam(Point.X, Direction.X)}; " +
+               $"y = {FormatParam(Point.Y, Direction.Y)}; " +
+               $"z = {FormatParam(Point.Z, Direction.Z)}]";
     }
 }

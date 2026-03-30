@@ -24,4 +24,27 @@ public class Sphere3D
     
     // Diện tích mặt cầu
     public double GetSurfaceArea() => 4.0 * Math.PI * Math.Pow(Radius, 2);
+
+    // Tìm mặt cầu ngoại tiếp tứ diện
+    public static Sphere3D GetCircumsphere(Point3D p1, Point3D p2, Point3D p3, Point3D p4)
+    {
+        var plane1 = Plane3D.CreatePerpendicularBisector(p1, p2);
+        var plane2 = Plane3D.CreatePerpendicularBisector(p1, p3);
+        var plane3 = Plane3D.CreatePerpendicularBisector(p1, p4);
+        var intersectionLine = plane1.IntersectWith(plane2);
+        if (intersectionLine == null) throw new Exception("4 điểm này đồng phẳng, không tạo được mặt cầu!");
+
+        var center = plane3.IntersectWith(intersectionLine);
+        if (center == null) throw new Exception("Không thể tìm được tâm mặt cầu.");
+
+        double radius = center.DistanceToPoint(p1);
+
+        return new Sphere3D(center, radius);
+    }
+
+    // Hiện phương trình mặt cầu
+    public override string ToString()
+    {
+        return $"(x - {Center.X:F2})^2 + (y - {Center.Y:F2})^2 + (z - {Center.Z:F2})^2 = {Radius:F2}^2";
+    }
 }

@@ -1,6 +1,7 @@
-using System.Collections.Generic;
 using Domains.MathCore;
 using Application.DTOs;
+using Application.Compilers.FactValidators;
+using System.Linq;
 
 namespace Application.Compilers;
 
@@ -10,6 +11,11 @@ public class CompilationContext
     /// Cuốn sổ tay lưu trữ Tên ký tự -> Tọa độ 3D.
     /// </summary>
     public Dictionary<string, Point3D> Points { get; set; } = new Dictionary<string, Point3D>();
+
+    /// <summary>
+    /// Kết quả kiểm định ngược (Validation Report). Null nếu chưa chạy.
+    /// </summary>
+    public FullValidationReport? ValidationReport { get; set; }
 
     /// <summary>
     /// Lưu trữ hằng số 'a' của đề bài (tạm gán a = 5.0 unit trong không gian 3D)
@@ -35,5 +41,32 @@ public class CompilationContext
                 result.Add(p);
         }
         return result;
+    }
+ 
+    // Lấy Line3D từ tên 2 đỉnh (VD: "AB")
+    public Line3D? GetLine(string name)
+    {
+        name = new string(name.Where(char.IsUpper).ToArray());
+        if (name.Length < 2) return null;
+ 
+        var p1 = GetPoint(name[0].ToString());
+        var p2 = GetPoint(name[1].ToString());
+ 
+        if (p1 != null && p2 != null) return new Line3D(p1, p2);
+        return null;
+    }
+ 
+    // Lấy Plane3D từ tên 3 đỉnh (VD: "ABC")
+    public Plane3D? GetPlane(string name)
+    {
+        name = new string(name.Where(char.IsUpper).ToArray());
+        if (name.Length < 3) return null;
+ 
+        var p1 = GetPoint(name[0].ToString());
+        var p2 = GetPoint(name[1].ToString());
+        var p3 = GetPoint(name[2].ToString());
+ 
+        if (p1 != null && p2 != null && p3 != null) return new Plane3D(p1, p2, p3);
+        return null;
     }
 }
