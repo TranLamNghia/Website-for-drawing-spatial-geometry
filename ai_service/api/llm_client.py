@@ -2,9 +2,9 @@ import openai
 import os
 import time
 from dotenv import load_dotenv
-from promts.prompt_builder import build_prompt
-from utils.retry_engine import RetryEngine
-from utils.validator import clean_markdown_json
+from api.prompts.prompt_builder import build_prompt
+from api.utils.retry_engine import RetryEngine
+from api.utils.validator import clean_markdown_json
 
 
 load_dotenv()

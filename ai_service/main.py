@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from api.endpoints import math_router
 import route as new_nlp_router
 
 app = FastAPI(
@@ -10,7 +9,6 @@ app = FastAPI(
 
 # Thêm định tuyến (Routers)
 app.include_router(new_nlp_router.router, prefix="/api", tags=["NLP"])
-app.include_router(math_router.router, prefix="/api", tags=["Math Engine"])
 
 @app.get("/")
 def read_root():
