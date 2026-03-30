@@ -10,7 +10,7 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_QWEN3_APIKEY")
 
 BASE_DIR = Path(__file__).parent.parent
-PROMPT_FILE = BASE_DIR / "promts" / "sympy_prompt.txt"
+PROMPT_FILE = BASE_DIR / "prompts" / "sympy_prompt.txt"
 
 class SympyAIEngine:
     def __init__(self):
