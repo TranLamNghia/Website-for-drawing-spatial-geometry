@@ -7,16 +7,19 @@ using Application.DTOs.Enums;
 using Application.DTOs.Facts;
 using Domains.MathCore;
 using Application.Compilers.FactHandlers;
+using Application.Compilers.FactValidators;
 
 namespace Application.Compilers;
 
 public class GeometryCompiler : IGeometryCompiler
 {
     private readonly IEnumerable<IFactHandler> _handlers;
+    private readonly FactValidationEngine _validationEngine;
 
-    public GeometryCompiler(IEnumerable<IFactHandler> handlers)
+    public GeometryCompiler(IEnumerable<IFactHandler> handlers, FactValidationEngine validationEngine)
     {
         _handlers = handlers;
+        _validationEngine = validationEngine;
     }
 
     public CompilationContext Compile(GeometryProblemDto problem)
@@ -36,14 +39,19 @@ public class GeometryCompiler : IGeometryCompiler
         // Giai đoạn 3: Tính toán trung điểm, trọng tâm, giao điểm... (cho các cạnh bên, v.v...)
         BuildDependentEntities(problem, context);
 
+        // Bỏ đoạn tự sửa tên điểm descriptiveKeys theo ý kiến người dùng để giữ nguyên điểm AI trả về
+
         // Xóa bỏ phần thập phân nhỏ hơn 1e-10
-        foreach (var kvp in context.Points)
+        foreach (var key in context.Points.Keys.ToList())
         {
-            var p = kvp.Value;
+            var p = context.Points[key];
             p.X = Math.Abs(p.X) < 1e-10 ? 0 : Math.Round(p.X, 4);
             p.Y = Math.Abs(p.Y) < 1e-10 ? 0 : Math.Round(p.Y, 4);
             p.Z = Math.Abs(p.Z) < 1e-10 ? 0 : Math.Round(p.Z, 4);
         }
+        // Giai đoạn 4: KIỂM ĐỊNH NGƯỢC (Validation)
+        // Dùng tọa độ vừa dựng để kiểm tra ngược lại từng Fact (Diện tích, Độ dài, Góc...)
+        context.ValidationReport = _validationEngine.Validate(problem, context);
 
         return context;
     }
@@ -409,15 +417,21 @@ public class GeometryCompiler : IGeometryCompiler
                 Console.WriteLine($"[COMPILER] Hình chiếu của {apexChar} là {pd.Point} (Từ Fact Projection)");
             }
             
+            // Chưa tối ưu
             // Xử lý Fallback: Nếu AI trả về chuỗi thay vì đỉnh ("trọng tâm BCD", hoặc đỉnh bị lỗi point: "S")
             if (projectionPoint == null)
             {
-                string textToParse = $"{pd.Point} {projFact.RawText}".ToLower();
+                string textToParse = projFact.RawText.ToLower();
                 string targetStr = string.IsNullOrWhiteSpace(pd.Point) || pd.Point.Length <= 1 ? projFact.RawText : pd.Point;
                 
-                if (textToParse.Contains("trọng tâm"))
+                int trongTamIdx = textToParse.IndexOf("trọng tâm");
+                if (trongTamIdx >= 0)
                 {
-                    var match = System.Text.RegularExpressions.Regex.Match(targetStr, @"[A-Z]{3}");
+                    string subStr = targetStr.Substring(trongTamIdx);
+                    // Bắt chính xác tên tam giác sau chữ trọng tâm (ví dụ BCD)
+                    var match = System.Text.RegularExpressions.Regex.Match(subStr, @"\b[A-Z]{3}\b");
+                    if (!match.Success) match = System.Text.RegularExpressions.Regex.Match(subStr, @"[A-Z]{3}"); // Fallback rủi ro
+
                     if (match.Success)
                     {
                         var face = match.Value;
@@ -426,13 +440,20 @@ public class GeometryCompiler : IGeometryCompiler
                         if (pts.Length >= 3) 
                         {
                             projectionPoint = Point3D.GetCentroid(pts);
-                            Console.WriteLine($"[COMPILER] Hình chiếu của {apexChar} là Trọng tâm {face} (Đọc từ '{targetStr}')");
+                            string fallbackName = string.IsNullOrWhiteSpace(pd.Point) || pd.Point.Length > 1 ? "H" : pd.Point;
+                            context.Points[fallbackName] = projectionPoint;
+                            Console.WriteLine($"[COMPILER] Hình chiếu của {apexChar} là Trọng tâm {face} (Đã sinh/dùng điểm {fallbackName})");
                         }
                     }
                 }
-                else if (textToParse.Contains("trung điểm"))
+                
+                int trungDiemIdx = textToParse.IndexOf("trung điểm");
+                if (projectionPoint == null && trungDiemIdx >= 0)
                 {
-                    var match = System.Text.RegularExpressions.Regex.Match(targetStr, @"[A-Z]{2}");
+                    string subStr = targetStr.Substring(trungDiemIdx);
+                    var match = System.Text.RegularExpressions.Regex.Match(subStr, @"\b[A-Z]{2}\b");
+                    if (!match.Success) match = System.Text.RegularExpressions.Regex.Match(subStr, @"[A-Z]{2}");
+
                     if (match.Success)
                     {
                         var edge = match.Value;
@@ -441,7 +462,9 @@ public class GeometryCompiler : IGeometryCompiler
                         if (p1 != null && p2 != null) 
                         {
                             projectionPoint = p1.GetMidpoint(p2);
-                            Console.WriteLine($"[COMPILER] Hình chiếu của {apexChar} là Trung điểm {edge} (Đọc từ '{targetStr}')");
+                            string fallbackName = string.IsNullOrWhiteSpace(pd.Point) || pd.Point.Length > 1 ? "H" : pd.Point;
+                            context.Points[fallbackName] = projectionPoint;
+                            Console.WriteLine($"[COMPILER] Hình chiếu của {apexChar} là Trung điểm {edge} (Đã sinh/dùng điểm {fallbackName})");
                         }
                     }
                 }

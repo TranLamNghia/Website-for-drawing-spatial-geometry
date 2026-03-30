@@ -1,5 +1,6 @@
 using Domains.MathCore;
 using Application.DTOs;
+using Application.Compilers.FactValidators;
 using System.Linq;
 
 namespace Application.Compilers;
@@ -10,6 +11,11 @@ public class CompilationContext
     /// Cuốn sổ tay lưu trữ Tên ký tự -> Tọa độ 3D.
     /// </summary>
     public Dictionary<string, Point3D> Points { get; set; } = new Dictionary<string, Point3D>();
+
+    /// <summary>
+    /// Kết quả kiểm định ngược (Validation Report). Null nếu chưa chạy.
+    /// </summary>
+    public FullValidationReport? ValidationReport { get; set; }
 
     /// <summary>
     /// Lưu trữ hằng số 'a' của đề bài (tạm gán a = 5.0 unit trong không gian 3D)

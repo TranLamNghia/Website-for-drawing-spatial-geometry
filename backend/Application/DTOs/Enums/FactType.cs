@@ -24,5 +24,8 @@ public enum FactType
     Collinear,
     Tangent,
     Inscribed,
-    Circumscribed
+    Circumscribed,
+    Area,
+    Volume,
+    Perimeter
 }

@@ -2,6 +2,7 @@ using Application.Interfaces;
 using Infrastructure.ExternalAPIs;
 using Application.Compilers;
 using Application.Compilers.FactHandlers;
+using Application.Compilers.FactValidators;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +31,16 @@ builder.Services.AddScoped<IFactHandler, ParallelHandler>();
 builder.Services.AddScoped<IFactHandler, PerpendicularHandler>();
 builder.Services.AddScoped<IFactHandler, AngleHandler>();
 builder.Services.AddScoped<IFactHandler, LengthHandler>();
+
+// Đăng ký FactValidators (Kiểm định ngược tọa độ)
+builder.Services.AddScoped<IFactValidator, LengthValidator>();
+builder.Services.AddScoped<IFactValidator, AreaValidator>();
+builder.Services.AddScoped<IFactValidator, DistanceValidator>();
+builder.Services.AddScoped<IFactValidator, AngleValidator>();
+builder.Services.AddScoped<IFactValidator, CentroidValidator>();
+builder.Services.AddScoped<IFactValidator, MidpointValidator>();
+builder.Services.AddScoped<IFactValidator, ProjectionValidator>();
+builder.Services.AddScoped<FactValidationEngine>();
 
 var app = builder.Build();
 
