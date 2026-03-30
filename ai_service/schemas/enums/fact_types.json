@@ -16,6 +16,12 @@
         "collinear",
         "tangent",
         "inscribed",
-        "circumscribed"
+        "circumscribed",
+        "circumcenter",
+        "incenter",
+        "orthocenter",
+        "area",
+        "volume",
+        "perimeter"
     ]
 }
