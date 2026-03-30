@@ -11,10 +11,9 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_QWEN3_APIKEY")
 
 class RetryEngine:
-    def __init__(self, client, gemini_client, max_retries=2):
+    def __init__(self, client, max_retries=2):
         self.max_retries = max_retries
         self.client = client
-        self.gemini_client = gemini_client
 
     def repair(self, raw_json: str, error_msg: str) -> str:
         repair_prompt = f"""
@@ -34,15 +33,15 @@ class RetryEngine:
         
         try:
             response = self.client.chat.completions.create(
-                model="qwen/qwen3.5-flash-02-23", 
+                model="google/gemini-2.5-flash", 
                 messages=messages,
                 temperature=0.1
             )
             return response.choices[0].message.content
         except Exception as e:
-            print(f"     [RETRY_ENGINE] ⚠️ OpenRouter treo, gọi GEMINI sửa lỗi phòng hờ...")
-            response = self.gemini_client.chat.completions.create(
-                model="gemini-2.0-flash", 
+            print(f"     [RETRY_ENGINE] ⚠️ Gemini lỗi, gọi Llama 3.3 sửa lỗi phòng hờ...")
+            response = self.client.chat.completions.create(
+                model="meta-llama/llama-3.3-70b-instruct", 
                 messages=messages,
                 temperature=0.1
             )
