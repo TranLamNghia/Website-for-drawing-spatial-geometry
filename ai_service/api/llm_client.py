@@ -2,9 +2,9 @@ import openai
 import os
 import time
 from dotenv import load_dotenv
-from api.prompts.prompt_builder import build_prompt
-from api.utils.retry_engine import RetryEngine
-from api.utils.validator import clean_markdown_json
+from prompts.prompt_builder import build_prompt
+from utils.retry_engine import RetryEngine
+from utils.validator import clean_markdown_json
 
 
 load_dotenv()
@@ -14,9 +14,9 @@ GEMINI_APIKEY = os.getenv("GEMINI_APIKEY")
 class GeometryAIEngine:
     def __init__(self):
         # Initialize LLM client to OpenRouter Cloud
-        print(f"[LLM_INIT] Đang khởi tạo OpenAI Client (BaseURL: https://openrouter.ai/api/v1)")
+        print(f"[LLM_INIT] Initializing OpenAI Client (BaseURL: https://openrouter.ai/api/v1)")
         
-        # Thêm headers cho OpenRouter (Khuyến nghị từ OpenRouter)
+        # Add headers for OpenRouter (Recommended by OpenRouter)
         self.headers = {
             "HTTP-Referer": "http://localhost:8001", 
             "X-Title": "SpatialGeometry Math Engine"
@@ -32,14 +32,14 @@ class GeometryAIEngine:
         self.retry_engine = RetryEngine(client=self.client)
 
     def extract_json(self, problem_text: str) -> str:
-        print(f"\n[LLM_CLIENT] Bắt đầu xử lý bài toán: '{problem_text[:40]}...'")
+        print(f"\n[LLM_CLIENT] Starting processing problem: '{problem_text[:40]}...'")
         messages = build_prompt(problem_text)
         
         start_time = time.time()
-        print(f"[LLM_CLIENT] [{time.strftime('%H:%M:%S')}] Đang gửi Request tới Gemini (Google)...")
+        print(f"[LLM_CLIENT] [{time.strftime('%H:%M:%S')}] Sending Request to Gemini (Google)...")
         
         try:
-            print(f"[LLM_CLIENT] >>> Đang chờ phản hồi từ Server (Timeout: 60s)...")
+            print(f"[LLM_CLIENT] >>> Waiting for response from Server (Timeout: 60s)...")
             response = self.client.chat.completions.create(
                 model="google/gemini-2.5-flash", 
                 messages=messages,
@@ -47,28 +47,28 @@ class GeometryAIEngine:
                 timeout=60.0
             )
             duration = time.time() - start_time
-            print(f"[LLM_CLIENT] <<< [200 OK] Nhận phản hồi từ Gemini 2.5 (OpenRouter) sau {duration:.2f}s.")
+            print(f"[LLM_CLIENT] <<< [200 OK] Received response from Gemini 2.5 (OpenRouter) after {duration:.2f}s.")
             raw_json = response.choices[0].message.content
         except openai.APITimeoutError:
             duration = time.time() - start_time
-            print(f"[LLM_CLIENT] ❌ LỖI: Request quá 60s (Timeout) sau {duration:.2f}s. Đang chuyển sang Llama 3.3...")
+            print(f"[LLM_CLIENT] ❌ ERROR: Request timeout (60s) after {duration:.2f}s. Switching to Llama 3.3...")
             return self._fallback_to_llama(messages)
         except openai.APIStatusError as e:
             duration = time.time() - start_time
-            print(f"[LLM_CLIENT] ❌ LỖI: HTTP {e.status_code} từ OpenRouter sau {duration:.2f}s. {e.message}")
+            print(f"[LLM_CLIENT] ❌ ERROR: HTTP {e.status_code} from OpenRouter after {duration:.2f}s. {e.message}")
             return self._fallback_to_llama(messages)
         except Exception as e:
             duration = time.time() - start_time
-            print(f"[LLM_CLIENT] ⚠️ Lỗi không xác định từ OpenRouter ({str(e)}) sau {duration:.2f}s. KHỞI ĐỘNG FALLBACK DÙNG LLAMA 3.3...")
+            print(f"[LLM_CLIENT] ⚠️ Unknown error from OpenRouter ({str(e)}) after {duration:.2f}s. SWITCHING TO FALLBACK USING LLAMA 3.3...")
             return self._fallback_to_llama(messages)
 
-        print(f"[LLM_CLIENT] Đã nhận được JSON gốc từ AI. Đang làm sạch Markdown...")
+        print(f"[LLM_CLIENT] Received raw JSON from AI. Cleaning Markdown...")
         clean_json = clean_markdown_json(raw_json)
-        print(f"[LLM_CLIENT] Bắt đầu đẩy vào Validator...")
+        print(f"[LLM_CLIENT] Starting to push into Validator...")
         return self.retry_engine.run(clean_json)
 
     def _fallback_to_llama(self, messages) -> str:
-        print(f"[LLM_CLIENT] [FALLBACK] Đang gửi Request tới OpenRouter (Llama 3.3 70B)...")
+        print(f"[LLM_CLIENT] [FALLBACK] Sending Request to OpenRouter (Llama 3.3 70B)...")
         start_time = time.time()
         try:
             response = self.client.chat.completions.create(
@@ -78,10 +78,10 @@ class GeometryAIEngine:
                 timeout=30.0
             )
             duration = time.time() - start_time
-            print(f"[LLM_CLIENT] [FALLBACK] <<< Thành công từ Llama 3.3 sau {duration:.2f}s.")
+            print(f"[LLM_CLIENT] [FALLBACK] <<< Success from Llama 3.3 after {duration:.2f}s.")
             raw_json = response.choices[0].message.content
             clean_json = clean_markdown_json(raw_json)
             return self.retry_engine.run(clean_json)
         except Exception as ge:
-            print(f"[LLM_CLIENT] ❌ [FALLBACK] Cả Llama 3.3 cũng lỗi: {str(ge)}")
+            print(f"[LLM_CLIENT] ❌ [FALLBACK] Llama 3.3 also failed: {str(ge)}")
             raise ge

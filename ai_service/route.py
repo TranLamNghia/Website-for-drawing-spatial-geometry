@@ -28,13 +28,23 @@ async def extract_geometry(request: ProblemRequest):
 class MathSolverRequest(BaseModel):
     problem_text: str
     facts_json: Dict[str, Any]
+    current_points: Dict[str, Any]
+    validation_failures: list
+    base_a_value: float = 1.0
 
 @router.post("/solve-math")
 async def solve_math_geometry(request: MathSolverRequest):
     try:
-        result = sympy_engine.generate_and_solve(request.problem_text, request.facts_json)
+        result = sympy_engine.generate_and_solve(
+            request.problem_text, 
+            request.facts_json, 
+            request.current_points, 
+            request.validation_failures,
+            request.base_a_value
+        )
         if result.get("status") == "error":
-            raise HTTPException(status_code=400, detail=result.get("message"))
+            error_detail = result.get("details", result.get("message"))
+            raise HTTPException(status_code=400, detail=error_detail)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Math Solver Error: {str(e)}")

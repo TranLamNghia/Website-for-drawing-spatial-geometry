@@ -7,7 +7,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Thêm định tuyến (Routers)
 app.include_router(new_nlp_router.router, prefix="/api", tags=["NLP"])
 
 @app.get("/")

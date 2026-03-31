@@ -60,7 +60,6 @@ VALID SHAPE TYPES:
 def load_rules(file_name: str) -> str:
     try:
         rules = load_json(RULE_DIR / file_name)
-        # Bọc json.dumps để đảm bảo format ra chuỗi JSON chuẩn (nháy kép), không bị lỗi dict nháy đơn của Python
         return json.dumps(rules, ensure_ascii=False, indent=2) 
     except FileNotFoundError:
         return ""
@@ -123,7 +122,6 @@ def build_prompt(problem_text: str):
     few_shot_block = build_few_shot_block()
     rules_block = build_rules_prompt()
 
-    # SYSTEM PROMPT MỚI: Ép AI làm máy bóc tách, cấm giải toán.
     system_prompt = f"""
 You are a STRICT NLP Extraction System. Your ONLY job is to extract text into structured JSON.
 YOU ARE NOT A MATH SOLVER. DO NOT ATTEMPT TO SOLVE OR VALIDATE THE GEOMETRY PROBLEM.

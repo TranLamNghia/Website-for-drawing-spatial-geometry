@@ -7,7 +7,7 @@ from datetime import datetime
 BASE_DIR = Path(__file__).parent.parent
 SCHEMA_PATH = BASE_DIR / "schemas" / "geometry_schema.json"
 schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-validator = Draft7Validator(schema) # Khởi tạo Validator gốc
+validator = Draft7Validator(schema) # Initialize Base Validator
 
 def clean_markdown_json(raw_text: str) -> str:
     cleaned = re.sub(r'^```json\s*', '', raw_text.strip(), flags=re.IGNORECASE)
@@ -23,9 +23,9 @@ def _save_debug_json(raw_data, prefix="schema_error"):
         
         safe_content = json.dumps(raw_data, indent=2, ensure_ascii=False) if isinstance(raw_data, dict) else str(raw_data)
         file_path.write_text(safe_content, encoding="utf-8")
-        print(f"[VALIDATOR] Đã lưu JSON lỗi vào: {file_path}")
+        print(f"[VALIDATOR] Saved error JSON to: {file_path}")
     except Exception as io_err:
-        print(f"[VALIDATOR] Không thể lưu JSON lỗi: {io_err}")
+        print(f"[VALIDATOR] Failed to save error JSON: {io_err}")
 
 def validate_json(raw_data):
     try:
@@ -41,7 +41,7 @@ def validate_json(raw_data):
             path = " -> ".join([str(p) for p in error.path])
             if not path:
                 path = "root"
-            error_messages.append(f"- Lỗi: {error.message} (tại: '{path}')")
+            error_messages.append(f"- Error: {error.message} (at: '{path}')")
             
         error_str = "\n".join(error_messages)
         
@@ -53,4 +53,4 @@ def validate_json(raw_data):
     except json.JSONDecodeError as e:
         # Save failed raw text for debugging syntax errors
         _save_debug_json(raw_data, "syntax_error")
-        return False, f"Lỗi cú pháp JSON: {str(e)}"
+        return False, f"JSON syntax error: {str(e)}"
