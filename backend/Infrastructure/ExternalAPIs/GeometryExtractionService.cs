@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Application.DTOs;
 using Application.Interfaces;
+using Domains.MathCore;
 
 namespace Infrastructure.ExternalAPIs;
 
@@ -49,5 +50,39 @@ public class GeometryExtractionService : IGeometryExtractionService
         }
 
         return dto;
+    }
+
+    public async Task<Dictionary<string, Point3D>?> FallbackSolveMathAsync(MathSolverRequestDto request)
+    {
+        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        var jsonContent = new StringContent(JsonSerializer.Serialize(request, options), Encoding.UTF8, "application/json");
+
+        try
+        {
+            var response = await _httpClient.PostAsync("solve-math", jsonContent);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errStr = await response.Content.ReadAsStringAsync();
+                throw new Exception($"Math Sandbox Error: {errStr}");
+            }
+
+            var responseString = await response.Content.ReadAsStringAsync();
+            using var document = JsonDocument.Parse(responseString);
+            
+            if (document.RootElement.TryGetProperty("data", out var dataElement))
+            {
+                var result = JsonSerializer.Deserialize<Dictionary<string, Point3D>>(dataElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return result;
+            }
+            
+            // Trường hợp fallback nếu python nhả thẳng dict
+            return JsonSerializer.Deserialize<Dictionary<string, Point3D>>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AI_FALLBACK] Error calling solve-math: {ex.Message}");
+            return null;
+        }
     }
 }
