@@ -18,7 +18,7 @@ public class GeometryController : ControllerBase
     }
 
     [HttpPost("process1")]
-    public IActionResult ProcessProblem1([FromBody] System.Text.Json.JsonElement rawJson)
+    public async Task<IActionResult> ProcessProblem1([FromBody] System.Text.Json.JsonElement rawJson)
     {
         try
         {
@@ -32,6 +32,27 @@ public class GeometryController : ControllerBase
 
             // 3. Chạy Geometry Compiler trực tiếp
             var context = _compiler.Compile(dto);
+            
+            // 4. KIỂM ĐỊNH (FALLBACK MATH SANDBOX NẾU HEURISTIC TẠCH)
+            if (context.ValidationReport != null && !context.ValidationReport.AllPassed)
+            {
+                Console.WriteLine($"[CONTROLLER] Heuristic Compiler tạch {context.ValidationReport.TotalFailed} góc/cạnh. Đang kích hoạt AI SymPy Fallback!");
+                
+                var solverRequest = new Application.DTOs.MathSolverRequestDto
+                {
+                    ProblemText = "Tính toán tự động từ ProcessProblem1 (JSON Raw)",
+                    FactsJson = dto,
+                    CurrentPoints = context.Points,
+                    ValidationFailures = context.ValidationReport.Failures,
+                    BaseAValue = context.UnitLength
+                };
+
+                var newPoints = await _aiService.FallbackSolveMathAsync(solverRequest);
+                if (newPoints != null && newPoints.Count > 0)
+                {
+                    _compiler.RefineWithNewPoints(context, dto, newPoints);
+                }
+            }
             return Ok(new 
             {
                 message = "Biên dịch tọa độ thành công từ JSON trực tiếp!",
@@ -64,6 +85,26 @@ public class GeometryController : ControllerBase
                 return BadRequest(new { message = "Không thể trích xuất dữ liệu từ AI Service." });
 
             var context = _compiler.Compile(dto);
+
+            // 4. KIỂM ĐỊNH LẠI - NẾU LỖI THÌ GOI PYTHON MATH SANDBOX
+            if (context.ValidationReport != null && !context.ValidationReport.AllPassed)
+            {
+                Console.WriteLine($"[CONTROLLER] Đang gửi Request cứu trợ sang AI Math Sandbox...");
+                var solverRequest = new Application.DTOs.MathSolverRequestDto
+                {
+                    ProblemText = problemText,
+                    FactsJson = dto,
+                    CurrentPoints = context.Points,
+                    ValidationFailures = context.ValidationReport.Failures,
+                    BaseAValue = context.UnitLength  // Gửi Base_a_value sang Python!
+                };
+
+                var newPoints = await _aiService.FallbackSolveMathAsync(solverRequest);
+                if (newPoints != null && newPoints.Count > 0)
+                {
+                    _compiler.RefineWithNewPoints(context, dto, newPoints);
+                }
+            }
             return Ok(new 
             {
                 message = "Biên dịch tọa độ thành công!",

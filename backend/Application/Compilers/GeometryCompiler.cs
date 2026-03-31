@@ -56,6 +56,32 @@ public class GeometryCompiler : IGeometryCompiler
         return context;
     }
 
+    public void RefineWithNewPoints(CompilationContext context, GeometryProblemDto problem, Dictionary<string, Point3D> newPoints)
+    {
+        Console.WriteLine($"[COMPILER] Mở khóa sức mạnh AI Fallback! Đang sáp nhập {newPoints.Count} điểm mới vào hệ thống...");
+        
+        // Ghi đè tọa độ
+        foreach (var kvp in newPoints)
+        {
+            if (context.Points.ContainsKey(kvp.Key))
+            {
+                context.Points[kvp.Key] = kvp.Value;
+            }
+            else
+            {
+                context.Points.Add(kvp.Key, kvp.Value);
+            }
+        }
+
+        // Chạy lại hàm dựng điểm phụ (trung điểm, trọng tâm...) để các đỉnh AI sinh ra tạo ra trung điểm / giao điểm chuẩn
+        BuildDependentEntities(problem, context);
+
+        // Chạy lại kiểm định vòng 2
+        context.ValidationReport = _validationEngine.Validate(problem, context);
+        
+        Console.WriteLine($"[COMPILER] Fallback hoàn tất. Kết quả Re-Validation: AllPassed = {context.ValidationReport.AllPassed}");
+    }
+
     /// <summary>
     /// Giai đoạn 1: Đọc Fact "shape" và dựng tọa độ mặt đáy (z = 0)
     /// </summary>
