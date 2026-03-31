@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  math_sandbox:
+    build: .
+    container_name: math_sandbox
+    ports:
+      - "8002:8002"
+    mem_limit: 512m # Limit RAM to prevent LLM from creating infinite loops
+    cpus: "0.5"
+    restart: always
