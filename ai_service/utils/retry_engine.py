@@ -29,7 +29,7 @@ class RetryEngine:
             {"role": "user", "content": repair_prompt}
         ]
 
-        print("     [RETRY_ENGINE] Đang yêu cầu AI sửa lỗi...")
+        print("     [RETRY_ENGINE] Requesting AI to fix error...")
         
         try:
             response = self.client.chat.completions.create(
@@ -39,7 +39,7 @@ class RetryEngine:
             )
             return response.choices[0].message.content
         except Exception as e:
-            print(f"     [RETRY_ENGINE] ⚠️ Gemini lỗi, gọi Llama 3.3 sửa lỗi phòng hờ...")
+            print(f"     [RETRY_ENGINE] ⚠️ Gemini failed, calling Llama 3.3 as fallback...")
             response = self.client.chat.completions.create(
                 model="meta-llama/llama-3.3-70b-instruct", 
                 messages=messages,
@@ -51,15 +51,15 @@ class RetryEngine:
         is_valid, error = validate_json(raw_json)
 
         if is_valid:
-            print("[RETRY_ENGINE] ✅ Validator báo: JSON HỢP LỆ TUYỆT ĐỐI. Trả kết quả thành công!")
+            print("[RETRY_ENGINE] ✅ Validator: JSON IS PERFECTLY VALID. Returning success!")
             return raw_json
 
-        print(f"[RETRY_ENGINE] ❌ LỖI JSON GỐC: {simplify_error(error)}")
-        print(f"[RETRY_ENGINE] Sẽ tiến hành sửa lỗi tự động tối đa {self.max_retries} lần...")
+        print(f"[RETRY_ENGINE] ❌ ORIGINAL JSON ERROR: {simplify_error(error)}")
+        print(f"[RETRY_ENGINE] Proceeding with automatic fix maximum {self.max_retries} times...")
 
         # Error-fixing loop
         for attempt in range(self.max_retries):
-            print(f"  -> Lần sửa thứ {attempt + 1}/{self.max_retries}...")
+            print(f"  -> Fix attempt {attempt + 1}/{self.max_retries}...")
             error_msg = simplify_error(error)
             
             raw_json = self.repair(raw_json, error_msg)
@@ -68,10 +68,10 @@ class RetryEngine:
             is_valid, error = validate_json(raw_json)
 
             if is_valid:
-                print(f"  -> ✅ Đã sửa thành công ở lần thứ {attempt + 1}! JSON hoàn hảo.")
+                print(f"  -> ✅ Fixed successfully on attempt {attempt + 1}! JSON is perfect.")
                 return raw_json
             else:
-                print(f"  -> ⚠️ Sửa thất bại. Vẫn bị lỗi: {simplify_error(error)}")
+                print(f"  -> ⚠️ Fix failed. Still getting error: {simplify_error(error)}")
 
-        print("[RETRY_ENGINE] ❌ Đã hết số lần sửa cho phép. Bắt buộc báo lỗi lên API.")
+        print("[RETRY_ENGINE] ❌ Ran out of retries. Must throw error to API.")
         raise ValueError(f"AI failed to generate valid geometry schema: {simplify_error(error)}")
