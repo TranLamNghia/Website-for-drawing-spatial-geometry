@@ -151,7 +151,8 @@ public class GeometryCompiler : IGeometryCompiler
         if (height == -1 && baseTarget.Length >= 4) height = GetDynamicEdgeLength(problem, baseTarget, 0, 3, -1, aValue);
         if (height == -1) 
         {
-            if (effectiveShape == ShapeType.Rectangle || effectiveShape == ShapeType.Parallelogram) height = width * 2; 
+            if (effectiveShape == ShapeType.Rectangle || effectiveShape == ShapeType.Parallelogram) height = width * 2;
+            else if (effectiveShape == ShapeType.Triangle) height = width * 1.4; // Tránh cân bằng 
             else height = width; 
         }
 
@@ -203,25 +204,21 @@ public class GeometryCompiler : IGeometryCompiler
                 }
                 break;
 
-            case ShapeType.Rhombus: // Hình thoi (4 cạnh = width, góc 60 độ)
-                if (baseTarget.Length >= 4) {
-                    context.Points[baseTarget[0].ToString()] = new Point3D(0, 0, 0);      
-                    context.Points[baseTarget[1].ToString()] = new Point3D(width, 0, 0);      
-                    context.Points[baseTarget[2].ToString()] = new Point3D(width * 1.5, width * Math.Sqrt(3) / 2, 0); 
-                    context.Points[baseTarget[3].ToString()] = new Point3D(width * 0.5, width * Math.Sqrt(3) / 2, 0); 
-                }
-                break;
-
+            case ShapeType.Rhombus: // Hình thoi 
             case ShapeType.Parallelogram: // Hình bình hành
                 if (baseTarget.Length >= 4) {
-                    double diagBD = GetDynamicEdgeLength(problem, baseTarget, 1, 3, -1, aValue); // BD
-                    double diagAC = GetDynamicEdgeLength(problem, baseTarget, 0, 2, -1, aValue); // AC
-                    
                     double b = height; // AD (hoặc BC)
                     double c = width;  // AB
+                    if (effectiveShape == ShapeType.Rhombus) b = c; // Hình thoi b = c
                     
+                    double diagBD = GetDynamicEdgeLength(problem, baseTarget, 1, 3, -1, aValue); // BD
+                    double diagAC = GetDynamicEdgeLength(problem, baseTarget, 0, 2, -1, aValue); // AC
+                    double explicitAngleA = GetDynamicAngle(problem, baseTarget, 0, 1, 3); // Cố gắng đọc góc đỉnh Mốc (A)
+
                     double cosA = 0.5; // Mặc định góc A = 60 độ
-                    if (diagBD > 0) {
+                    if (explicitAngleA > 0) {
+                        cosA = Math.Cos(explicitAngleA * Math.PI / 180.0);
+                    } else if (diagBD > 0) {
                         cosA = (b*b + c*c - diagBD*diagBD) / (2*b*c);
                     } else if (diagAC > 0) {
                         cosA = (diagAC*diagAC - b*b - c*c) / (2*b*c);
@@ -286,7 +283,7 @@ public class GeometryCompiler : IGeometryCompiler
                     double aLen = height; // BC
                     double cLen = width;  // AB
                     
-                    double cosB = 0.5; // Mặc định góc B = 60 độ
+                    double cosB = 0.3; // Mặc định góc B khoảng 72 độ (cos 0.3) để tránh tam giác đều
                     if (ac > 0) {
                         cosB = (aLen*aLen + cLen*cLen - ac*ac) / (2*aLen*cLen);
                         cosB = Math.Max(-1, Math.Min(1, cosB));
@@ -357,6 +354,42 @@ public class GeometryCompiler : IGeometryCompiler
             return EvaluateExpression(data.Value, aValue);
         }
         return defaultVal;
+    }
+
+    private double GetDynamicAngle(GeometryProblemDto problem, string target, int vertexIdx, int adjIdx1, int adjIdx2)
+    {
+        if (target.Length < 3 || vertexIdx >= target.Length || adjIdx1 >= target.Length || adjIdx2 >= target.Length) return -1;
+        
+        string vStr = target[vertexIdx].ToString();
+        string vAdj1 = target[adjIdx1].ToString();
+        string vAdj2 = target[adjIdx2].ToString();
+        
+        string edge1 = $"{vStr}{vAdj1}";
+        string edge2 = $"{vStr}{vAdj2}";
+        string edge1_r = $"{vAdj1}{vStr}";
+        string edge2_r = $"{vAdj2}{vStr}";
+
+        var fact = problem.Facts.FirstOrDefault(f => 
+        {
+            if (f.Type != FactType.Angle) return false;
+            var ad = f.GetDataAs<AngleData>();
+            if (ad == null || ad.Objects == null || ad.Objects.Count < 2) return false;
+            
+            if (ad.AngleType == AngleType.line_line)
+            {
+                var o1 = ad.Objects[0];
+                var o2 = ad.Objects[1];
+                if ((o1 == edge1 || o1 == edge1_r) && (o2 == edge2 || o2 == edge2_r)) return true;
+                if ((o2 == edge1 || o2 == edge1_r) && (o1 == edge2 || o1 == edge2_r)) return true;
+            }
+            return false;
+        });
+
+        if (fact != null && fact.GetDataAs<AngleData>() is AngleData data && data.Value != null)
+        {
+            if (double.TryParse(data.Value, out double ang)) return ang;
+        }
+        return -1;
     }
     
     private double EvaluateExpression(string expr, double a)

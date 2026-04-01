@@ -25,8 +25,9 @@ public class IncenterHandler : IFactHandler
 
             if (points.Count >= 3)
             {
-                context.Points[iPoint] = Point3D.GetIncenter(points[0], points[1], points[2]);
-                Console.WriteLine($"[HANDLER] Đã dựng tâm nội tiếp {iPoint} của tam giác {triangle}");
+                var result = Point3D.GetIncenter(points.ToArray());
+                context.Points[iPoint] = result.Center;
+                Console.WriteLine($"[HANDLER] Đã dựng tâm nội tiếp {iPoint} của {triangle}");
             }
         }
     }
