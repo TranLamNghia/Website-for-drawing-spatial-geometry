@@ -28,17 +28,8 @@ public class Sphere3D
     // Tìm mặt cầu ngoại tiếp tứ diện
     public static Sphere3D GetCircumsphere(Point3D p1, Point3D p2, Point3D p3, Point3D p4)
     {
-        var plane1 = Plane3D.CreatePerpendicularBisector(p1, p2);
-        var plane2 = Plane3D.CreatePerpendicularBisector(p1, p3);
-        var plane3 = Plane3D.CreatePerpendicularBisector(p1, p4);
-        var intersectionLine = plane1.IntersectWith(plane2);
-        if (intersectionLine == null) throw new Exception("4 điểm này đồng phẳng, không tạo được mặt cầu!");
-
-        var center = plane3.IntersectWith(intersectionLine);
-        if (center == null) throw new Exception("Không thể tìm được tâm mặt cầu.");
-
+        var center = Point3D.GetCircumcenter(p1, p2, p3, p4);
         double radius = center.DistanceToPoint(p1);
-
         return new Sphere3D(center, radius);
     }
 

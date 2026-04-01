@@ -33,7 +33,24 @@ public class AngleValidator : IFactValidator
                 var line2 = context.GetLine(obj2);
                 if (line1 == null || line2 == null)
                     return ValidationResult.Skip(fact.Id, "Angle", $"Chưa có đủ tọa độ cho {obj1} hoặc {obj2}");
-                actualAngle = line1.AngleWith(line2);
+                
+                double expectedAngleInput = double.TryParse(data.Value, out double ev) ? ev : -1;
+
+                if (expectedAngleInput > 90)
+                {
+                    var v1 = line1.Direction;
+                    var v2 = line2.Direction;
+                    double dot = v1.DotProduct(v2);
+                    double mags = v1.Magnitude() * v2.Magnitude();
+                    if (mags >= 1e-9)
+                        actualAngle = Math.Acos(dot / mags) * (180.0 / Math.PI);
+                    else
+                        actualAngle = 0;
+                }
+                else
+                {
+                    actualAngle = line1.AngleWith(line2);
+                }
                 break;
             }
             case AngleType.line_plane:
@@ -64,7 +81,9 @@ public class AngleValidator : IFactValidator
 
         double tolerance = 0.5; // Sai số 0.5 độ
         if (Math.Abs(expectedAngle - actualAngle) <= tolerance)
+        {
             return ValidationResult.Pass(fact.Id, "Angle", expectedAngle, actualAngle);
+        }
 
         return ValidationResult.Fail(fact.Id, "Angle", expectedAngle, actualAngle);
     }

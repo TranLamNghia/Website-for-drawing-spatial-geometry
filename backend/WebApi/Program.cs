@@ -41,6 +41,7 @@ builder.Services.AddScoped<IFactValidator, CentroidValidator>();
 builder.Services.AddScoped<IFactValidator, MidpointValidator>();
 builder.Services.AddScoped<IFactValidator, ProjectionValidator>();
 builder.Services.AddScoped<IFactValidator, ShapeValidator>();
+builder.Services.AddScoped<IFactValidator, CircumcenterValidator>();
 builder.Services.AddScoped<FactValidationEngine>();
 
 var app = builder.Build();

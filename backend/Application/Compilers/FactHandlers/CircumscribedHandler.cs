@@ -21,12 +21,14 @@ public class CircumscribedHandler : IFactHandler
 
         if (!context.Points.ContainsKey(spherePoint))
         {
-            var points = context.GetPointsFromPlane(solid);
-            if (points.Count >= 4)
+            string solidChars = new string(solid.Where(char.IsUpper).ToArray());
+            var points = context.GetPointsFromPlane(solidChars);
+
+            if (points.Count == solidChars.Length && points.Count >= 4)
             {
                 var sphere = Sphere3D.GetCircumsphere(points[0], points[1], points[2], points[3]);
                 context.Points[spherePoint] = sphere.Center;
-                Console.WriteLine($"[HANDLER] Đã dựng tâm mặt cầu ngoại tiếp {spherePoint} của {solid}");
+                Console.WriteLine($"[HANDLER] Đã dựng tâm mặt cầu ngoại tiếp {spherePoint} của {solid} tại {sphere.Center}");
             }
         }
     }

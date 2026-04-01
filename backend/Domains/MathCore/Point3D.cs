@@ -48,8 +48,8 @@ public class Point3D
         return new Point3D(sumX / points.Length, sumY / points.Length, sumZ / points.Length);
     }
  
-    // Tìm tâm đường tròn nội tiếp
-    public static Point3D GetIncenter(Point3D p1, Point3D p2, Point3D p3)
+    // Tìm tâm đường tròn nội tiếp của tam giác
+    public static Point3D GetIncenter3(Point3D p1, Point3D p2, Point3D p3)
     {
         double a = p2.DistanceToPoint(p3);
         double b = p1.DistanceToPoint(p3);
@@ -62,19 +62,37 @@ public class Point3D
             (a * p1.Z + b * p2.Z + c * p3.Z) / sum
         );
     }
- 
-    // Tìm tâm đường tròn ngoại tiếp
-    public static Point3D GetCircumcenter(Point3D p1, Point3D p2, Point3D p3)
+
+    // SIÊU HÀM TÂM NỘI TIẾP: Tìm Incenter cho tam giác hoặc đa giác bất kỳ
+    public static (Point3D Center, double Radius, bool IsConsistent) GetIncenter(params Point3D[] points)
     {
-        // Sử dụng giao điểm của 2 mặt trung trực và mặt phẳng chứa tam giác
-        var plane = new Plane3D(p1, p2, p3);
-        var bisector12 = Plane3D.CreatePerpendicularBisector(p1, p2);
-        var bisector23 = Plane3D.CreatePerpendicularBisector(p2, p3);
- 
-        var lineIntersect = bisector12.IntersectWith(bisector23);
-        if (lineIntersect == null) return p1; // Lỗi hiếm gặp
- 
-        return plane.IntersectWith(lineIntersect) ?? p1;
+        if (points == null || points.Length < 3) return (new Point3D(0, 0, 0), 0, false);
+
+        if (points.Length == 3)
+        {
+            Point3D incenter = GetIncenter3(points[0], points[1], points[2]);
+            double a = points[1].DistanceToPoint(points[2]);
+            double b = points[0].DistanceToPoint(points[2]);
+            double c = points[0].DistanceToPoint(points[1]);
+            double p = (a + b + c) / 2;
+            double area = GetTriangleArea(points[0], points[1], points[2]);
+            double r = area / p;
+            return (incenter, r, true); // Tam giác luôn nội tiếp được vòng tròn
+        }
+
+        // Đa giác (>= 4 điểm)
+        var edges = new System.Collections.Generic.List<Line3D>();
+        for (int i = 0; i < points.Length; i++)
+        {
+            var p1 = points[i];
+            var p2 = points[(i + 1) % points.Length];
+            edges.Add(new Line3D(p1, new Vector3D(p1, p2)));
+        }
+
+        var plane = new Plane3D(points[0], points[1], points[2]);
+        var interiorPoint = GetCentroid(points); // Lấy trọng tâm làm điểm tham chiếu bên trong
+
+        return GetIncenterPolygon(edges, plane, interiorPoint);
     }
  
     // Tìm trực tâm
@@ -100,61 +118,188 @@ public class Point3D
         return v1.CrossProduct(v2).Magnitude() / 2.0;
     }
 
-    // Tìm tâm mặt cầu nội tiếp tứ diện
-    public static Point3D GetTetrahedronIncenter(Point3D a, Point3D b, Point3D c, Point3D d)
+    // Hàm giải hệ phương trình 3 ẩn bằng quy tắc Cramer
+    private static Point3D? SolveLinearSystem3x3(double[,] A, double[] B)
     {
-        // Tính diện tích 4 mặt đối diện
-        double sA = GetTriangleArea(b, c, d); // Mặt đối diện đỉnh A
-        double sB = GetTriangleArea(a, c, d); // Mặt đối diện đỉnh B
-        double sC = GetTriangleArea(a, b, d); // Mặt đối diện đỉnh C
-        double sD = GetTriangleArea(a, b, c); // Mặt đối diện đỉnh D
+        double det = A[0,0] * (A[1,1] * A[2,2] - A[1,2] * A[2,1]) -
+                    A[0,1] * (A[1,0] * A[2,2] - A[1,2] * A[2,0]) +
+                    A[0,2] * (A[1,0] * A[2,1] - A[1,1] * A[2,0]);
 
-        double sumArea = sA + sB + sC + sD;
-        if (sumArea < 1e-9) return a; // Tránh lỗi chia cho 0 nếu bị suy biến
+        if (Math.Abs(det) < 1e-9) return null;
 
-        return new Point3D(
-            (sA * a.X + sB * b.X + sC * c.X + sD * d.X) / sumArea,
-            (sA * a.Y + sB * b.Y + sC * c.Y + sD * d.Y) / sumArea,
-            (sA * a.Z + sB * b.Z + sC * c.Z + sD * d.Z) / sumArea
-        );
+        double detX = B[0] * (A[1,1] * A[2,2] - A[1,2] * A[2,1]) -
+                    A[0,1] * (B[1] * A[2,2] - A[1,2] * B[2]) +
+                    A[0,2] * (B[1] * A[2,1] - A[1,1] * B[2]);
+
+        double detY = A[0,0] * (B[1] * A[2,2] - A[1,2] * B[2]) -
+                    B[0] * (A[1,0] * A[2,2] - A[1,2] * A[2,0]) +
+                    A[0,2] * (A[1,0] * B[2] - B[1] * A[2,0]);
+
+        double detZ = A[0,0] * (A[1,1] * B[2] - B[1] * A[2,1]) -
+                    A[0,1] * (A[1,0] * B[2] - B[1] * A[2,0]) +
+                    B[0] * (A[1,0] * A[2,1] - A[1,1] * A[2,0]);
+
+        return new Point3D(detX / det, detY / det, detZ / det);
     }
 
-    // SIÊU HÀM: Tìm tâm mặt cầu nội tiếp của khối chóp đều (VD: S.ABCD)
-    public static Point3D GetRegularPyramidIncenter(Point3D apex, params Point3D[] basePoints)
+    // Tâm mặt cầu / đường tròn ngoại tiếp đa diện
+    public static Point3D GetCircumcenter(params Point3D[] pts)
     {
-        if (basePoints.Length < 3)
-            throw new ArgumentException("Đáy của hình chóp phải có ít nhất 3 đỉnh.");
+        if (pts.Length < 3) return pts[0];
+        
+        Point3D p1 = pts[0];
+        double[,] A = new double[3, 3];
+        double[] B = new double[3];
 
-        // 1. Tìm tâm đáy H (Vì là chóp đều, hình chiếu của đỉnh trùng với trọng tâm đáy)
-        var h = GetCentroid(basePoints);
-
-        // 2. Tính chiều cao h (Khoảng cách từ S đến H)
-        double height = apex.DistanceToPoint(h);
-        if (height < 1e-9) return h; // Tránh lỗi chia cho 0 nếu chóp bị bẹp (chiều cao = 0)
-
-        // 3. Tính Diện tích đáy và Diện tích xung quanh
-        double baseArea = 0;
-        double lateralArea = 0;
-        int n = basePoints.Length;
-
-        for (int i = 0; i < n; i++)
+        // Lập 2 phương trình đầu tiên từ P2 và P3 theo công thức 2(Pi - P1).I = ||Pi||^2 - ||P1||^2
+        for (int i = 0; i < 2; i++)
         {
-            var p1 = basePoints[i];
-            var p2 = basePoints[(i + 1) % n]; // Đỉnh tiếp theo (nối vòng tròn)
-
-            // Cắt đáy thành các tam giác nhỏ nối từ tâm H: Diện tích tam giác (H, p1, p2)
-            baseArea += GetTriangleArea(h, p1, p2);
-
-            // Diện tích mặt bên: Diện tích tam giác (S, p1, p2)
-            lateralArea += GetTriangleArea(apex, p1, p2);
+            Point3D pi = pts[i + 1];
+            A[i, 0] = 2 * (pi.X - p1.X);
+            A[i, 1] = 2 * (pi.Y - p1.Y);
+            A[i, 2] = 2 * (pi.Z - p1.Z);
+            B[i] = (pi.X * pi.X + pi.Y * pi.Y + pi.Z * pi.Z) - (p1.X * p1.X + p1.Y * p1.Y + p1.Z * p1.Z);
         }
 
-        // 4. Tính bán kính nội tiếp r
-        double r = (baseArea * height) / (baseArea + lateralArea);
+        if (pts.Length == 3)
+        {
+            // TRƯỜNG HỢP ĐƯỜNG TRÒN NGOẠI TIẾP (2D trong 3D)
+            // Thêm phương trình 3: I nằm trên mặt phẳng (P1P2P3) => (I - P1).Normal = 0
+            var plane = new Plane3D(pts[0], pts[1], pts[2]); //
+            A[2, 0] = plane.A;
+            A[2, 1] = plane.B;
+            A[2, 2] = plane.C;
+            B[2] = -plane.D; // Vì Ax + By + Cz + D = 0 => Ax + By + Cz = -D
+        }
+        else
+        {
+            // TRƯỜNG HỢP MẶT CẦU NGOẠI TIẾP (3D)
+            // Lấy phương trình 3 từ điểm P4
+            Point3D p4 = pts[3];
+            A[2, 0] = 2 * (p4.X - p1.X);
+            A[2, 1] = 2 * (p4.Y - p1.Y);
+            A[2, 2] = 2 * (p4.Z - p1.Z);
+            B[2] = (p4.X * p4.X + p4.Y * p4.Y + p4.Z * p4.Z) - (p1.X * p1.X + p1.Y * p1.Y + p1.Z * p1.Z);
+        }
 
-        // 5. Tìm tọa độ điểm I nằm trên đoạn thẳng H -> S
-        // Tỉ lệ khoảng cách từ H đến I so với cả đoạn HS chính là (r / height)
-        return h.GetPointAtRatio(apex, r / height);
+        return SolveLinearSystem3x3(A, B) ?? GetCentroid(pts); // Fallback về trọng tâm nếu suy biến
+    }
+
+    // Tìm tâm đường tròn nội tiếp đa giác
+    public static (Point3D Center, double Radius, bool IsConsistent) GetIncenterPolygon(List<Line3D> edges, Plane3D plane, Point3D interiorPoint)
+    {
+        // Step 0-4: Chuẩn hóa các cạnh (biến thành vector pháp tuyến trong mặt phẳng)
+        // Lưu ý: Đây là phần khó nhất vì phải tìm vector vuông góc với cạnh VÀ nằm trên mặt phẳng
+        var normalizedLines = new List<(Vector3D Normal, double D)>();
+        foreach (var edge in edges)
+        {
+            // Vector pháp tuyến của cạnh = Tích có hướng của (Chỉ phương cạnh) và (Pháp tuyến mặt phẳng)
+            var lineNormal = edge.Direction.CrossProduct(plane.Normal).Normalize();
+            double d = -(lineNormal.X * edge.Point.X + lineNormal.Y * edge.Point.Y + lineNormal.Z * edge.Point.Z);
+
+            // Step 3: Định hướng vào trong đa giác
+            if (lineNormal.X * interiorPoint.X + lineNormal.Y * interiorPoint.Y + lineNormal.Z * interiorPoint.Z + d < 0)
+            {
+                lineNormal = lineNormal * -1; // Sửa lỗi gọi hàm Multiply() bằng toán tử * đã nạp chồng
+                d = -d;
+            }
+            normalizedLines.Add((lineNormal, d));
+        }
+
+        // Step 5-7: Thiết lập hệ 3x3 (2 phương trình cạnh + 1 phương trình mặt phẳng)
+        double[,] A = new double[3, 3];
+        double[] B = new double[3];
+
+        // Lấy 2 cạnh đầu tiên để khử r: (n2 - n1).I = d1 - d2
+        var l1 = normalizedLines[0];
+        for (int i = 0; i < 2; i++)
+        {
+            var li = normalizedLines[i + 1];
+            A[i, 0] = li.Normal.X - l1.Normal.X;
+            A[i, 1] = li.Normal.Y - l1.Normal.Y;
+            A[i, 2] = li.Normal.Z - l1.Normal.Z;
+            B[i] = l1.D - li.D;
+        }
+
+        // Phương trình 3: Tâm I phải nằm trên mặt phẳng chứa đa giác
+        A[2, 0] = plane.A; A[2, 1] = plane.B; A[2, 2] = plane.C;
+        B[2] = -plane.D;
+
+        // Step 8-10: Giải và Kiểm tra
+        Point3D? incenter = SolveLinearSystem3x3(A, B);
+        if (incenter == null) return (new Point3D(0,0,0), 0, false);
+
+        double r = l1.Normal.X * incenter.X + l1.Normal.Y * incenter.Y + l1.Normal.Z * incenter.Z + l1.D;
+
+        // GẮN CỜ: Kiểm tra tất cả các cạnh còn lại
+        bool isConsistent = true;
+        foreach (var l in normalizedLines)
+        {
+            double dist = Math.Abs(l.Normal.X * incenter.X + l.Normal.Y * incenter.Y + l.Normal.Z * incenter.Z + l.D);
+            if (Math.Abs(dist - r) > 1e-3) { isConsistent = false; break; }
+        }
+
+        return (incenter, r, isConsistent);
+    }
+
+    // Tâm mặt cầu nội tiếp đa diện
+    public static (Point3D Center, double Radius, bool IsConsistent) GetInsphere(List<Plane3D> faces, Point3D interiorPoint)
+    {
+        // Step 0-4: Chuẩn hóa và Định hướng tất cả các mặt phẳng hướng vào trong
+        var normalizedPlanes = new List<(Vector3D Normal, double D)>();
+        foreach (var face in faces)
+        {
+            double mag = face.Normal.Magnitude();
+            double a = face.A / mag;
+            double b = face.B / mag;
+            double c = face.C / mag;
+            double d = face.D / mag;
+
+            // Step 3: Đảm bảo f(P) > 0 để pháp tuyến hướng vào trong khối
+            if (a * interiorPoint.X + b * interiorPoint.Y + c * interiorPoint.Z + d < 0)
+            {
+                a = -a; b = -b; c = -c; d = -d;
+            }
+            normalizedPlanes.Add((new Vector3D(a, b, c), d));
+        }
+
+        // Step 5-7: Thiết lập hệ phương trình khử r
+        // Lấy mặt phẳng đầu tiên làm mốc (n1.I + d1 = r)
+        var p1 = normalizedPlanes[0];
+        double[,] A = new double[3, 3];
+        double[] B = new double[3];
+
+        // Tạo 3 phương trình từ 3 mặt phẳng tiếp theo (i = 1, 2, 3)
+        // Công thức Step 6: (ni - n1).I = d1 - di
+        for (int i = 0; i < 3; i++)
+        {
+            var pi = normalizedPlanes[i + 1];
+            A[i, 0] = pi.Normal.X - p1.Normal.X;
+            A[i, 1] = pi.Normal.Y - p1.Normal.Y;
+            A[i, 2] = pi.Normal.Z - p1.Normal.Z;
+            B[i] = p1.D - pi.D;
+        }
+
+        // Step 8: Giải hệ tìm I(x, y, z)
+        Point3D? incenter = SolveLinearSystem3x3(A, B);
+        if (incenter == null) return (new Point3D(0,0,0), 0, false);
+
+        // Step 9: Tính bán kính r từ mặt mốc
+        double r = p1.Normal.X * incenter.X + p1.Normal.Y * incenter.Y + p1.Normal.Z * incenter.Z + p1.D;
+
+        // Step 10: Kiểm tra tính đồng nhất (BƯỚC GẮN CỜ)
+        bool isConsistent = true;
+        foreach (var p in normalizedPlanes)
+        {
+            double dist = Math.Abs(p.Normal.X * incenter.X + p.Normal.Y * incenter.Y + p.Normal.Z * incenter.Z + p.D);
+            if (Math.Abs(dist - r) > 1e-3) // Sai số cho phép
+            {
+                isConsistent = false;
+                break;
+            }
+        }
+
+        return (incenter, r, isConsistent);
     }
 
     // Hiện tọa độ điểm

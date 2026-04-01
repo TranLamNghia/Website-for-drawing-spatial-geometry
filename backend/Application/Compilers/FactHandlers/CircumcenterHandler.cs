@@ -25,8 +25,8 @@ public class CircumcenterHandler : IFactHandler
 
             if (points.Count >= 3)
             {
-                context.Points[oPoint] = Point3D.GetCircumcenter(points[0], points[1], points[2]);
-                Console.WriteLine($"[HANDLER] Đã dựng tâm ngoại tiếp {oPoint} của tam giác {triangle}");
+                context.Points[oPoint] = Point3D.GetCircumcenter(points.ToArray());
+                Console.WriteLine($"[HANDLER] Đã dựng tâm {oPoint} của {data.Shape} (Shape-agnostic)");
             }
         }
     }
