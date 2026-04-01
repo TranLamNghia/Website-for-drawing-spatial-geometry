@@ -4,7 +4,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent
 ENUM_DIR = BASE_DIR.parent / "schemas" / "enums"
 SCHEMA_DIR = BASE_DIR.parent / "schemas"
-RULE_DIR = BASE_DIR.parent / "rules"
+RULE_DIR = BASE_DIR.parent / "schemas" / "rules"
 
 # ======================
 # LOAD FILES
@@ -136,6 +136,10 @@ Strict Rules:
 - The 'language' field must always be 'vi' and any 'notes' must be written in Vietnamese.
 - CRITICAL: Extract plane names WITHOUT parentheses (e.g., output "SBD" instead of "(SBD)").
 - CRITICAL: Format ALL math expressions and lengths as code expressions (e.g., output "a * sqrt(3) / 4" instead of "a√3/4"). Use *, /, +, -, and sqrt() explicitly.
+- CRITICAL: For 'circumscribed' and 'inscribed', the 'outer' and 'inner' fields represent the NAME OF THE CENTER POINT. You MUST read BOTH the facts and the queries to find what this center is called. If the query asks for 'tâm I', you MUST use 'I' for these fields in the Facts block! If no name is given anywhere, invent a 1-letter uppercase name (like 'I' or 'O').
+- EXTREMELY CRITICAL: NEVER, UNDER ANY CIRCUMSTANCES, use shape names or parentheses like '(S)', '(O)', 'sphere' for 'outer' or 'inner'. They MUST be exactly 1 uppercase letter representing a point.
+- CRITICAL: For queries asking to find or identify a point (e.g. 'Xác định tâm I'), the query type MUST be 'coordinates' with target 'I'. DO NOT invent query types like 'circumcenter'.
+- CRITICAL: Do NOT add unexpected fields like 'value' to queries. A query only requires 'type' and 'data' (with fields like 'target' or 'from'/'to' depending on the template).
 """.strip()
 
     user_prompt = f"""
