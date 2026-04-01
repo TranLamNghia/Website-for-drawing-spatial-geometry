@@ -5,6 +5,8 @@ import os
 import tempfile
 import json
 import traceback
+from datetime import datetime
+import time
 
 app = FastAPI(title="Math Sandbox (SymPy Code Interpreter)")
 
@@ -15,6 +17,32 @@ class ExecutionRequest(BaseModel):
 async def execute_code(request: ExecutionRequest):
     code = request.code
     
+    # Ghi lại file chạy vào sympyBin theo dạng mới để không bị ghi đè
+    try:
+        # Trong Docker, sympyBin đã được mount vào /app/sympyBin
+        bin_dir = "/app/sympyBin"
+        if not os.path.exists(bin_dir):
+            os.makedirs(bin_dir)
+            
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        debug_filename = f"script_{timestamp}.py"
+        debug_path = os.path.join(bin_dir, debug_filename)
+        
+        with open(debug_path, "w", encoding="utf-8") as f:
+            f.write(code)
+        
+        # Vẫn ghi 1 file last_script.py cho tiện
+        with open(os.path.join(bin_dir, "last_script.py"), "w", encoding="utf-8") as f:
+            f.write(code)
+            
+        print(f"[DEBUG] Script saved to {debug_path}")
+    except Exception as e:
+        print(f"[WARN] Can't save debug script to sympyBin: {e}")
+
+    print("--- GENERATED CODE ---")
+    print(code)
+    print("----------------------")
+
     # Create temp environment to run code safely
     with tempfile.TemporaryDirectory() as temp_dir:
         file_path = os.path.join(temp_dir, "script.py")
