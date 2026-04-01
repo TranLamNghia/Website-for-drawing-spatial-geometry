@@ -9,3 +9,6 @@ services:
     mem_limit: 512m # Limit RAM to prevent LLM from creating infinite loops
     cpus: "0.5"
     restart: always
+    volumes:
+      - .:/app
+      - ../sympyBin:/app/sympyBin
