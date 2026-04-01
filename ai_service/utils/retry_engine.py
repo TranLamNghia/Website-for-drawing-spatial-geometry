@@ -16,10 +16,20 @@ class RetryEngine:
         self.client = client
 
     def repair(self, raw_json: str, error_msg: str) -> str:
+        try:
+            from prompts.prompt_builder import build_rules_prompt
+            rules = build_rules_prompt()
+        except:
+            rules = ""
+            
         repair_prompt = f"""
         You MUST fix the following JSON to strictly match the schema.
         ERROR: {error_msg}
         RAW JSON: {raw_json}
+        
+        RULES YOU MUST FOLLOW WHEN FIXING:
+        {rules}
+        
         Return the FULL, COMPLETE FIXED JSON including all root keys (metadata, entities, facts, queries, extraction_meta). DO NOT truncate or omit any section.
         Return ONLY the JSON.
         """

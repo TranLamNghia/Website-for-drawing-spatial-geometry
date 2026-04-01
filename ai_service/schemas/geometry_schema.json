@@ -912,6 +912,7 @@
                         "locus",
                         "proof_parallel",
                         "proof_perpendicular",
+                        "proof_equal",
                         "equation_line",
                         "equation_plane",
                         "equation_sphere",
@@ -1400,6 +1401,34 @@
                         "properties": {
                             "target": {
                                 "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_proof_equal": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "proof_equal"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "objects"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "objects": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 2
                             }
                         }
                     }
