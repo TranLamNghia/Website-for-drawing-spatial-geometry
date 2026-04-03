@@ -15,6 +15,15 @@ ehthumbs_vista.db
 [Tt]humbs.db
 
 # ==============================
+# 00. PROJECT SPECIFIC BINS & TEMP
+# ==============================
+jsonBin/
+sympyBin/
+**/sympyBin/
+**/jsonBin/
+
+
+# ==============================
 # 02. CODE EDITORS (VSCode, PyCharm)
 # ==============================
 .idea/
@@ -95,6 +104,9 @@ out/
 # Test reports
 coverage/
 .nyc_output/
+
+# TypeScript build info
+*.tsbuildinfo
 # ==============================
 # 05. VISUAL STUDIO & .NET (TỪ GITHUB)
 # ==============================
