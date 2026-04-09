@@ -43,10 +43,12 @@ export function Canvas3D() {
   const [showBasePlane, setShowBasePlane] = useState(true)
   const { geometryData, highlightedEdges } = useGeometry()
 
+  // Refs for persistent Three.js objects to ensure cleanup
   const sceneRef = useRef<THREE.Scene | null>(null)
   const renderersRef = useRef<{ webgl: THREE.WebGLRenderer, css2d: CSS2DRenderer } | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
   const controlsRef = useRef<OrbitControls | null>(null)
+  const dynamicGroupRef = useRef<THREE.Group>(new THREE.Group())
 
   const stateRefs = useRef({ showAxes, showBasePlane })
   useEffect(() => {
@@ -55,49 +57,63 @@ export function Canvas3D() {
 
   // Initialization (Run once)
   useEffect(() => {
-    if (!mountRef.current) return
+    const container = mountRef.current
+    if (!container) return
+
+    // CRITICAL: Clear any existing content to prevent duplication in Dev mode (React StrictMode)
+    container.innerHTML = ''
 
     // Scene
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(GEO_COLORS.BG)
     sceneRef.current = scene
 
+    // Add persistent dynamic group
+    dynamicGroupRef.current = new THREE.Group()
+    dynamicGroupRef.current.name = 'dynamic-geometry'
+    scene.add(dynamicGroupRef.current)
+
     // Camera (Z-up)
-    const camera = new THREE.PerspectiveCamera(40, mountRef.current.clientWidth / mountRef.current.clientHeight, 0.1, 200)
+    const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 400)
     camera.up.set(0, 0, 1)
-    camera.position.set(20, -15, 12) // Slightly farther to feel open
+    camera.position.set(25, -20, 15)
     cameraRef.current = camera
 
     // WebGL Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight)
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setSize(container.clientWidth, container.clientHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    mountRef.current.appendChild(renderer.domElement)
+    container.appendChild(renderer.domElement)
 
     // CSS2D Renderer
     const labelRenderer = new CSS2DRenderer()
-    labelRenderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight)
+    labelRenderer.setSize(container.clientWidth, container.clientHeight)
     labelRenderer.domElement.style.position = 'absolute'
     labelRenderer.domElement.style.top = '0'
     labelRenderer.domElement.style.pointerEvents = 'none'
-    mountRef.current.appendChild(labelRenderer.domElement)
+    labelRenderer.domElement.className = 'label-renderer-surface'
+    container.appendChild(labelRenderer.domElement)
 
     renderersRef.current = { webgl: renderer, css2d: labelRenderer }
 
-    // OrbitControls attached to WEBGL DOM element
+    // OrbitControls
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
-    controls.minDistance = 5.0
-    controls.maxDistance = 60.0
-    controls.target.set(0, 0, 2.5) // Shift origin lower on screen
+    controls.minDistance = 2.0
+    controls.maxDistance = 150.0
+    controls.target.set(0, 0, 0)
     controlsRef.current = controls
 
     // Ambient Lighting
-    scene.add(new THREE.AmbientLight(0xffffff, 1.0))
+    scene.add(new THREE.AmbientLight(0xffffff, 1.2))
+    const sun = new THREE.DirectionalLight(0xffffff, 0.5)
+    sun.position.set(10, 10, 20)
+    scene.add(sun)
 
-    // Static Environment Setup
+    // Environment Setup
     const envGroup = new THREE.Group()
+    envGroup.name = 'static-environment'
     scene.add(envGroup)
 
     // 1. Faded Ground Plane (Soft Circular Edge GeoGebra Style)
@@ -314,33 +330,42 @@ export function Canvas3D() {
         }
       }
     })
-    
-    if (mountRef.current) {
-        resizeObserver.observe(mountRef.current)
+    if (container) {
+        resizeObserver.observe(container)
     }
-
+    
     return () => {
       resizeObserver.disconnect()
       cancelAnimationFrame(frameId)
-      if (mountRef.current) {
-        if (renderer.domElement.parentNode) mountRef.current.removeChild(renderer.domElement)
-        if (labelRenderer.domElement.parentNode) mountRef.current.removeChild(labelRenderer.domElement)
+      if (container) {
+        if (renderer.domElement.parentNode) container.removeChild(renderer.domElement)
+        if (labelRenderer.domElement.parentNode) container.removeChild(labelRenderer.domElement)
       }
       renderer.dispose()
+      labelRenderer.setSize(0, 0) // Force some internal cleanup
     }
   }, []) // Empty dependency array ensures it only binds once
 
   // Dynamic Geometry (Pyramid, Queries)
   useEffect(() => {
     const scene = sceneRef.current
-    if (!scene) return
+    const group = dynamicGroupRef.current
+    if (!scene || !group) return
 
-    const old = scene.getObjectByName('dynamic-geometry')
-    if (old) scene.remove(old)
-
-    const group = new THREE.Group()
-    group.name = 'dynamic-geometry'
-    scene.add(group)
+    // Explicit cleanup of the persistent group
+    const clearGroup = (g: THREE.Group) => {
+      while(g.children.length > 0){ 
+        const obj = g.children[0]
+        g.remove(obj)
+        if (obj instanceof THREE.Mesh || obj instanceof THREE.Line || obj instanceof THREE.LineSegments) {
+          obj.geometry?.dispose()
+          if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose())
+          else obj.material?.dispose()
+        }
+      }
+    }
+    
+    clearGroup(group)
 
     if (!geometryData) return
 
@@ -349,21 +374,23 @@ export function Canvas3D() {
       nodes[name] = new THREE.Vector3(coords[0], coords[1], coords[2])
     })
 
+    // Reusable point geometry
+    const dotGeo = new THREE.SphereGeometry(0.12, 16, 16)
+    const dotMat = new THREE.MeshBasicMaterial({ color: GEO_COLORS.POINT })
+
     // Draw Points
     Object.entries(nodes).forEach(([name, vec]) => {
-        const dotGeo = new THREE.SphereGeometry(0.06, 16, 16)
-        const dotMat = new THREE.MeshBasicMaterial({ color: GEO_COLORS.POINT })
         const dot = new THREE.Mesh(dotGeo, dotMat)
         dot.position.copy(vec)
         group.add(dot)
 
         if (showLabels) {
             const el = document.createElement('div')
-            el.className = 'text-sm font-bold italic font-serif text-[#1a1a2e]'
-            el.style.textShadow = '1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff'
+            el.className = 'text-sm font-bold italic font-serif text-[#1a1a2e] pointer-events-none select-none drop-shadow-md'
+            el.style.textShadow = '1px 1px 0 #fff, -1px -1px 0 #fff'
             el.textContent = name
             const lbl = new CSS2DObject(el)
-            lbl.position.copy(vec).add(new THREE.Vector3(-0.2, -0.2, 0.2))
+            lbl.position.copy(vec).add(new THREE.Vector3(0.2, 0.2, 0.2))
             group.add(lbl)
         }
     })
@@ -378,37 +405,42 @@ export function Canvas3D() {
        })
        if (nodes['A'] && nodes['B'] && nodes['C']) facePoints.push(['A', 'B', 'C'])
        if (nodes['A'] && nodes['C'] && nodes['D']) facePoints.push(['A', 'C', 'D'])
-    } else if (pts.includes('A') && pts.includes('B') && pts.includes('C') && pts.includes('D')) {
-       facePoints.push(['A', 'B', 'C'], ['A', 'C', 'D'])
+    } else if (pts.length >= 3) {
+       const sorted = pts.sort()
+       for(let i=1; i < sorted.length - 1; i++) {
+         facePoints.push([sorted[0], sorted[i], sorted[i+1]])
+       }
     }
 
     if (facePoints.length > 0) {
         const positions: number[] = []
         facePoints.forEach(([a,b,c]) => {
-            positions.push(nodes[a].x, nodes[a].y, nodes[a].z)
-            positions.push(nodes[b].x, nodes[b].y, nodes[b].z)
-            positions.push(nodes[c].x, nodes[c].y, nodes[c].z)
+            if (nodes[a] && nodes[b] && nodes[c]) {
+              positions.push(nodes[a].x, nodes[a].y, nodes[a].z)
+              positions.push(nodes[b].x, nodes[b].y, nodes[b].z)
+              positions.push(nodes[c].x, nodes[c].y, nodes[c].z)
+            }
         })
 
-        const geom = new THREE.BufferGeometry()
-        geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-        geom.computeVertexNormals()
+        if (positions.length > 0) {
+          const geom = new THREE.BufferGeometry()
+          geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+          geom.computeVertexNormals()
 
-        // Pass 1: Semi-transparent visual representation
-        const matVisual = new THREE.MeshBasicMaterial({
-            color: GEO_COLORS.FACE, opacity: 0.1, transparent: true, side: THREE.DoubleSide, depthWrite: false
-        })
-        group.add(new THREE.Mesh(geom, matVisual))
+          const matVisual = new THREE.MeshBasicMaterial({
+              color: GEO_COLORS.FACE, opacity: 0.1, transparent: true, side: THREE.DoubleSide, depthWrite: false
+          })
+          group.add(new THREE.Mesh(geom, matVisual))
 
-        // Pass 2: Invisible Depth Blocker
-        const matDepthBlocker = new THREE.MeshBasicMaterial({
-            color: 0x000000, colorWrite: false, side: THREE.DoubleSide, depthWrite: true,
-            polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 
-        })
-        group.add(new THREE.Mesh(geom, matDepthBlocker))
+          const matDepthBlocker = new THREE.MeshBasicMaterial({
+              color: 0x000000, colorWrite: false, side: THREE.DoubleSide, depthWrite: true,
+              polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 
+          })
+          group.add(new THREE.Mesh(geom, matDepthBlocker))
+        }
     }
 
-    // Edges (HLR)
+    // Edges
     const solidEdgesPos: number[] = []
     const highlightEdgesPos: number[] = []
     const edges = geometryData.edges || []
@@ -437,12 +469,9 @@ export function Canvas3D() {
         const linesGeom = new THREE.BufferGeometry()
         linesGeom.setAttribute('position', new THREE.Float32BufferAttribute(solidEdgesPos, 3))
 
-        // Solid lines (LessEqualDepth)
         const matSolid = new THREE.LineBasicMaterial({ color: GEO_COLORS.EDGE_SOLID, depthFunc: THREE.LessEqualDepth })
-        const meshSolid = new THREE.LineSegments(linesGeom, matSolid)
-        group.add(meshSolid)
+        group.add(new THREE.LineSegments(linesGeom, matSolid))
 
-        // Dashed lines (GreaterDepth)
         const matDashed = new THREE.LineDashedMaterial({ 
             color: GEO_COLORS.EDGE_DASHED, dashSize: 0.15, gapSize: 0.1, depthFunc: THREE.GreaterDepth
         })
@@ -451,7 +480,9 @@ export function Canvas3D() {
         group.add(meshDashed)
     }
 
+    return () => clearGroup(group)
   }, [geometryData, showLabels, highlightedEdges])
+
 
   const handleZoom = (dir: number) => {
      if (cameraRef.current && controlsRef.current) {
@@ -464,15 +495,15 @@ export function Canvas3D() {
   return (
     <div className="w-full h-full relative" ref={mountRef}>
       {/* Floated Controls */}
-      <div className="absolute bottom-4 right-4 flex flex-col gap-2 z-10">
-         <div className="flex flex-col bg-white border border-[#ddd] rounded shadow-sm overflow-hidden">
-            <button onClick={() => handleZoom(1)} className="p-2 hover:bg-gray-50 border-b border-[#eee] text-gray-600"><ZoomIn size={18} /></button>
-            <button onClick={() => handleZoom(-1)} className="p-2 hover:bg-gray-50 text-gray-600"><ZoomOut size={18} /></button>
+      <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-10">
+         <div className="flex flex-col bg-white/90 backdrop-blur-md border border-[#ddd] rounded-xl shadow-lg overflow-hidden translate-y-[-80px]">
+            <button onClick={() => handleZoom(1)} className="p-3 hover:bg-[#6671d1] hover:text-white border-b border-[#eee] text-gray-600 transition-colors"><ZoomIn size={20} /></button>
+            <button onClick={() => handleZoom(-1)} className="p-3 hover:bg-[#6671d1] hover:text-white text-gray-600 transition-colors"><ZoomOut size={20} /></button>
          </div>
-         <div className="flex flex-col bg-white border border-[#ddd] rounded shadow-sm overflow-hidden">
-            <button onClick={() => setShowAxes(!showAxes)} className={`p-2 hover:bg-gray-50 border-b border-[#eee] ${showAxes ? 'text-[#6671d1]' : 'text-gray-400'}`}><Crosshair size={18} /></button>
-            <button onClick={() => setShowBasePlane(!showBasePlane)} className={`p-2 hover:bg-gray-50 border-b border-[#eee] ${showBasePlane ? 'text-[#6671d1]' : 'text-gray-400'}`}><Layers size={18} /></button>
-            <button onClick={() => setShowLabels(!showLabels)} className={`p-2 hover:bg-gray-50 border-b border-[#eee] ${showLabels ? 'text-[#6671d1]' : 'text-gray-400'}`}><Eye size={18} /></button>
+         <div className="flex flex-col bg-white/90 backdrop-blur-md border border-[#ddd] rounded-xl shadow-lg overflow-hidden translate-y-[-80px]">
+            <button onClick={() => setShowAxes(!showAxes)} className={`p-3 hover:bg-gray-50 border-b border-[#eee] transition-colors ${showAxes ? 'text-[#6671d1]' : 'text-gray-400'}`}><Crosshair size={20} /></button>
+            <button onClick={() => setShowBasePlane(!showBasePlane)} className={`p-3 hover:bg-gray-50 border-b border-[#eee] transition-colors ${showBasePlane ? 'text-[#6671d1]' : 'text-gray-400'}`}><Layers size={20} /></button>
+            <button onClick={() => setShowLabels(!showLabels)} className={`p-3 hover:bg-gray-50 transition-colors ${showLabels ? 'text-[#6671d1]' : 'text-gray-400'}`}><Eye size={20} /></button>
          </div>
       </div>
     </div>

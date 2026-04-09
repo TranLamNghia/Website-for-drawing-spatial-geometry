@@ -35,6 +35,8 @@ public class GeometryCompiler : IGeometryCompiler
 
         // Giai đoạn 2: Tìm hình chiếu và dựng chiều cao Z cho đỉnh chóp
         BuildApex(problem, context);
+        // Dựng đáy trên cho khối lăng trụ (nếu có)
+        BuildPrismTopBase(problem, context);
 
         // Giai đoạn 3: Tính toán trung điểm, trọng tâm, giao điểm... (cho các cạnh bên, v.v...)
         BuildDependentEntities(problem, context);
@@ -88,7 +90,7 @@ public class GeometryCompiler : IGeometryCompiler
     private void BuildBase(GeometryProblemDto problem, CompilationContext context)
     {
         var valid2D = new[] { ShapeType.Square, ShapeType.Rectangle, ShapeType.Rhombus, ShapeType.Parallelogram, ShapeType.Trapezoid, ShapeType.Triangle, ShapeType.Equilateral_triangle, ShapeType.Right_triangle, ShapeType.Isosceles_triangle, ShapeType.Isosceles_right_triangle };
-        var valid3D = new[] { ShapeType.Tetrahedron, ShapeType.Regular_tetrahedron, ShapeType.Cube, ShapeType.Rectangular_cuboid, ShapeType.Pyramid, ShapeType.Regular_pyramid };
+        var valid3D = new[] { ShapeType.Tetrahedron, ShapeType.Regular_tetrahedron, ShapeType.Cube, ShapeType.Rectangular_cuboid, ShapeType.Pyramid, ShapeType.Regular_pyramid, ShapeType.Prism, ShapeType.Regular_prism, ShapeType.Parallelepiped, ShapeType.Regular_parallelepiped };
 
         var shapeFacts = problem.Facts
             .Where(f => f.Type == FactType.Shape)
@@ -114,12 +116,15 @@ public class GeometryCompiler : IGeometryCompiler
             rawTarget = solidFact.Target;
         }
 
-        string target = new string(rawTarget.Where(char.IsUpper).ToArray());
+        string targetRaw = new string(rawTarget.Where(c => char.IsLetterOrDigit(c) || c == '\'' || c == '.').ToArray());
+        string target = targetRaw.Contains(".") ? targetRaw.Split('.')[0] : targetRaw;
+        // Bỏ số và dấu phẩy khỏi target của ĐÁY vì hàm bên dưới đếm index 0,1,2 (giả thiết 1 đỉnh = 1 ký tự)
+        target = new string(target.Where(char.IsUpper).ToArray());
 
         if (target.Length < 3)
         {
-            target = (solidFact != null && (solidFact.Shape == ShapeType.Cube || solidFact.Shape == ShapeType.Rectangular_cuboid)) 
-                     ? "ABCDEFGH" : "ABCD";
+            target = (solidFact != null && (solidFact.Shape == ShapeType.Cube || solidFact.Shape == ShapeType.Rectangular_cuboid || solidFact.Shape == ShapeType.Parallelepiped || solidFact.Shape == ShapeType.Regular_rectangular_cuboid || solidFact.Shape == ShapeType.Regular_parallelepiped || solidFact.Shape == ShapeType.Regular_cube)) 
+                     ? "ABCD" : "ABC";
         }
 
         // 2. TÁCH ĐỈNH - ĐÁY VÀ GHI ĐÈ TÍNH CHẤT (OVERRIDE PROPERTIES)
@@ -662,6 +667,72 @@ public class GeometryCompiler : IGeometryCompiler
 
             Console.WriteLine($"[COMPILER] --- GĐ2: Đã dựng đỉnh {apexChar} tại {context.Points[apexChar]} ---");
         }
+    }
+
+    private List<string> ParseVertices(string input)
+    {
+        var matches = System.Text.RegularExpressions.Regex.Matches(input, @"[A-Z][0-9]*'*");
+        return matches.Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
+    }
+
+    private void BuildPrismTopBase(GeometryProblemDto problem, CompilationContext context)
+    {
+        var validPrisms = new[] { ShapeType.Prism, ShapeType.Regular_prism, ShapeType.Cube, ShapeType.Rectangular_cuboid, ShapeType.Parallelepiped, ShapeType.Regular_rectangular_cuboid, ShapeType.Regular_parallelepiped, ShapeType.Regular_cube };
+        var solidFact = problem.Facts
+            .FirstOrDefault(f => f.Type == FactType.Shape && f.GetDataAs<ShapeData>() is ShapeData sd && validPrisms.Contains(sd.Shape));
+        
+        if (solidFact == null || solidFact.GetDataAs<ShapeData>() is not ShapeData solidData) return;
+        
+        string rawTarget = solidData.Target ?? "";
+        if (!rawTarget.Contains(".")) return; // Không rõ vế đáy/đỉnh
+
+        string[] parts = rawTarget.Split('.');
+        List<string> bottomBase = ParseVertices(parts[0]);
+        List<string> topBase = ParseVertices(parts[1]);
+
+        if (bottomBase.Count == 0 || topBase.Count == 0 || bottomBase.Count != topBase.Count) return;
+
+        // Ước tính chiều cao
+        double height = -1;
+        
+        // Dò độ dài cạnh bên trực tiếp (VD: AA')
+        string testLateralEdge = $"{topBase[0]}{bottomBase[0]}";
+        string testLateralEdge2 = $"{bottomBase[0]}{topBase[0]}";
+        
+        var heightFact = problem.Facts.FirstOrDefault(f => 
+        {
+            if (f.Type != FactType.Length) return false;
+            var ld = f.GetDataAs<LengthData>();
+            if (ld == null || string.IsNullOrEmpty(ld.Target)) return false;
+            string t = ld.Target.ToLower();
+            return t == testLateralEdge.ToLower() || t == testLateralEdge2.ToLower() || t == "height" || t == "chiều cao" || t == "h" || t == "cc";
+        });
+
+        if (heightFact != null && heightFact.GetDataAs<LengthData>() is LengthData hd && hd.Value != null)
+        {
+            height = EvaluateExpression(hd.Value, context.UnitLength);
+        }
+
+        if (height == -1) 
+        {
+            // Mặc định lăng trụ vuông/lập phương theo đáy, ngược lại thì cao = 1.2 cạnh đáy
+            height = solidData.Shape == ShapeType.Cube || solidData.Shape == ShapeType.Regular_cube ? context.UnitLength : context.UnitLength * 1.2;
+        }
+
+        var translation = new Point3D(0, 0, height);
+
+        for (int i = 0; i < bottomBase.Count; i++)
+        {
+            string bVertex = bottomBase[i];
+            string tVertex = topBase[i];
+
+            if (context.Points.TryGetValue(bVertex, out var p))
+            {
+                context.Points[tVertex] = new Point3D(p.X + translation.X, p.Y + translation.Y, p.Z + translation.Z);
+            }
+        }
+        
+        Console.WriteLine($"[COMPILER] --- GĐ2: Đã dựng đỉnh mặt trên lăng trụ {string.Join("", topBase)} ---");
     }
 
     private bool CheckIfLateralEdgesAreEqual(GeometryProblemDto problem, string apex, string baseTarget, CompilationContext context)

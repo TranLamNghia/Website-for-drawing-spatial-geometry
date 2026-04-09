@@ -33,24 +33,30 @@ public class AngleValidator : IFactValidator
                 var line2 = context.GetLine(obj2);
                 if (line1 == null || line2 == null)
                     return ValidationResult.Skip(fact.Id, "Angle", $"Chưa có đủ tọa độ cho {obj1} hoặc {obj2}");
-                
-                double expectedAngleInput = double.TryParse(data.Value, out double ev) ? ev : -1;
 
-                if (expectedAngleInput > 90)
+                var v1 = line1.Direction;
+                var v2 = line2.Direction;
+
+                string commonPoint = FindCommonPoint(obj1, obj2);
+                if (!string.IsNullOrEmpty(commonPoint))
                 {
-                    var v1 = line1.Direction;
-                    var v2 = line2.Direction;
-                    double dot = v1.DotProduct(v2);
-                    double mags = v1.Magnitude() * v2.Magnitude();
-                    if (mags >= 1e-9)
-                        actualAngle = Math.Acos(dot / mags) * (180.0 / Math.PI);
-                    else
-                        actualAngle = 0;
+                    if (obj1.EndsWith(commonPoint)) 
+                        v1 = new Domains.MathCore.Vector3D(0, 0, 0) - v1;
+
+                    if (obj2.EndsWith(commonPoint)) 
+                        v2 = new Domains.MathCore.Vector3D(0, 0, 0) - v2;
                 }
-                else
+
+                double dot = v1.DotProduct(v2);
+                double mags = v1.Magnitude() * v2.Magnitude();
+                
+                if (mags >= 1e-9)
                 {
-                    actualAngle = line1.AngleWith(line2);
+                    double cosTheta = Math.Clamp(dot / mags, -1.0, 1.0);
+                    actualAngle = Math.Acos(cosTheta) * (180.0 / Math.PI);
                 }
+                else actualAngle = 0;
+
                 break;
             }
             case AngleType.line_plane:
@@ -86,5 +92,19 @@ public class AngleValidator : IFactValidator
         }
 
         return ValidationResult.Fail(fact.Id, "Angle", expectedAngle, actualAngle);
+    }
+
+    private string FindCommonPoint(string obj1, string obj2)
+    {
+        if (string.IsNullOrEmpty(obj1) || string.IsNullOrEmpty(obj2)) return null;
+        
+        foreach (char c1 in obj1)
+        {
+            foreach (char c2 in obj2)
+            {
+                if (c1 == c2) return c1.ToString();
+            }
+        }
+        return null;
     }
 }

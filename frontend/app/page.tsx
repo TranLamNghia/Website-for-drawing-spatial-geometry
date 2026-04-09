@@ -12,49 +12,51 @@ export default function Home() {
   const [rightOpen, setRightOpen] = useState(true)
 
   return (
-    <div className="h-screen bg-[#f8f9fa]">
+    <div className="h-screen bg-[#f8f9fa] overflow-hidden relative">
       <GeometryProvider>
-        <div className="flex h-screen overflow-hidden">
-          {/* Left Sidebar */}
-          <div 
-            className={`transition-all duration-300 ease-in-out bg-white overflow-x-hidden flex-shrink-0 ${leftOpen ? 'w-96 border-r border-[#ddd]' : 'w-0 border-r-0'}`}
-          >
-            <div className="w-96 h-full overflow-y-auto">
-              <LeftSidebar />
-            </div>
-          </div>
- 
-          {/* Center 3D Visualization */}
-          <div className="flex-1 flex flex-col bg-white relative min-w-0">
-            {/* Toggle Left Sidebar */}
-            <button 
-              onClick={() => setLeftOpen(!leftOpen)}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-white/90 backdrop-blur-sm border border-l-0 border-[#ddd] shadow-md rounded-r-xl p-2 hover:bg-gray-50 transition-colors text-gray-600 focus:outline-none"
-              title={leftOpen ? "Thu gọn thanh bên trái" : "Mở thanh bên trái"}
-            >
-              {leftOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
-            </button>
+        {/* Main Canvas (Background) */}
+        <div className="absolute inset-0 z-0">
+          <Canvas3D />
+        </div>
 
-            <Canvas3D />
-
-            {/* Toggle Right Sidebar */}
-            <button 
-              onClick={() => setRightOpen(!rightOpen)}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-white/90 backdrop-blur-sm border border-r-0 border-[#ddd] shadow-md rounded-l-xl p-2 hover:bg-gray-50 transition-colors text-gray-600 focus:outline-none"
-              title={rightOpen ? "Thu gọn thanh bên phải" : "Mở thanh bên phải"}
-            >
-              {rightOpen ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-            </button>
+        {/* Left Sidebar Overlay */}
+        <div 
+          className={`absolute left-0 top-0 bottom-0 z-30 transition-all duration-500 ease-in-out bg-white/90 backdrop-blur-md shadow-2xl flex-shrink-0 ${
+            leftOpen ? 'w-96 translate-x-0 overflow-visible' : 'w-96 -translate-x-[384px] overflow-visible'
+          } border-r border-[#ddd]`}
+        >
+          <div className="w-full h-full overflow-y-auto">
+            <LeftSidebar />
           </div>
- 
-          {/* Right Sidebar */}
-          <div 
-            className={`transition-all duration-300 ease-in-out bg-white overflow-x-hidden flex-shrink-0 ${rightOpen ? 'w-96 border-l border-[#ddd]' : 'w-0 border-l-0'}`}
+          
+          {/* Toggle Button */}
+          <button 
+            onClick={() => setLeftOpen(!leftOpen)}
+            className="absolute -right-10 top-1/2 -translate-y-1/2 z-40 bg-white/95 backdrop-blur-sm border border-l-0 border-[#ddd] shadow-xl rounded-r-2xl p-3 hover:bg-[#6671d1] hover:text-white transition-all text-gray-500 flex items-center justify-center group"
+            title={leftOpen ? "Thu gọn thanh bên trái" : "Mở thanh bên trái"}
           >
-            <div className="w-96 h-full overflow-y-auto">
-              <RightSidebar />
-            </div>
+            {leftOpen ? <ChevronLeft size={24} className="group-hover:scale-110 transition-transform" /> : <ChevronRight size={24} className="group-hover:scale-110 transition-transform" />}
+          </button>
+        </div>
+
+        {/* Right Sidebar Overlay */}
+        <div 
+          className={`absolute right-0 top-0 bottom-0 z-30 transition-all duration-500 ease-in-out bg-white/90 backdrop-blur-md shadow-2xl flex-shrink-0 ${
+            rightOpen ? 'w-96 translate-x-0 overflow-visible' : 'w-96 translate-x-[384px] overflow-visible'
+          } border-l border-[#ddd]`}
+        >
+          <div className="w-full h-full overflow-y-auto">
+            <RightSidebar />
           </div>
+
+          {/* Toggle Button */}
+          <button 
+            onClick={() => setRightOpen(!rightOpen)}
+            className="absolute -left-10 top-1/2 -translate-y-1/2 z-40 bg-white/95 backdrop-blur-sm border border-r-0 border-[#ddd] shadow-xl rounded-l-2xl p-3 hover:bg-[#6671d1] hover:text-white transition-all text-gray-500 flex items-center justify-center group"
+            title={rightOpen ? "Thu gọn thanh bên phải" : "Mở thanh bên phải"}
+          >
+            {rightOpen ? <ChevronRight size={24} className="group-hover:scale-110 transition-transform" /> : <ChevronLeft size={24} className="group-hover:scale-110 transition-transform" />}
+          </button>
         </div>
       </GeometryProvider>
     </div>

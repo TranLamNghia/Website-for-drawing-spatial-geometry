@@ -27,5 +27,6 @@ public enum FactType
     Circumscribed,
     Area,
     Volume,
-    Perimeter
+    Perimeter,
+    Opposite_ray
 }

@@ -57,6 +57,7 @@ public class GeometryController : ControllerBase
             {
                 message = "Biên dịch tọa độ thành công từ JSON trực tiếp!",
                 points = context.Points,
+                data = dto,
                 validation = new 
                 {
                     allPassed = context.ValidationReport?.AllPassed ?? true,
@@ -109,6 +110,7 @@ public class GeometryController : ControllerBase
             {
                 message = "Biên dịch tọa độ thành công!",
                 points = context.Points,
+                data = dto,
                 validation = new 
                 {
                     allPassed = context.ValidationReport?.AllPassed ?? true,

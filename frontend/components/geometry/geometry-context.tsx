@@ -77,29 +77,39 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const [queries, setQueries] = useState<Query[]>([])
   const [selectedQueryId, setSelectedQueryId] = useState<string | null>(null)
 
+  const contextValue = React.useMemo(() => ({
+    geometryData,
+    setGeometryData,
+    selectedEntity,
+    setSelectedEntity,
+    validation,
+    setValidation,
+    cameraControls,
+    setCameraControls,
+    highlightedEdges,
+    setHighlightedEdges,
+    isConsistent,
+    setIsConsistent,
+    errorMessage,
+    setErrorMessage,
+    queries,
+    setQueries,
+    selectedQueryId,
+    setSelectedQueryId,
+  }), [
+    geometryData,
+    selectedEntity,
+    validation,
+    cameraControls,
+    highlightedEdges,
+    isConsistent,
+    errorMessage,
+    queries,
+    selectedQueryId
+  ])
+
   return (
-    <GeometryContext.Provider
-      value={{
-        geometryData,
-        setGeometryData,
-        selectedEntity,
-        setSelectedEntity,
-        validation,
-        setValidation,
-        cameraControls,
-        setCameraControls,
-        highlightedEdges,
-        setHighlightedEdges,
-        isConsistent,
-        setIsConsistent,
-        errorMessage,
-        setErrorMessage,
-        queries,
-        setQueries,
-        selectedQueryId,
-        setSelectedQueryId,
-      }}
-    >
+    <GeometryContext.Provider value={contextValue}>
       {children}
     </GeometryContext.Provider>
   )

@@ -148,6 +148,7 @@
                         "circumcenter",
                         "orthocenter",
                         "centroid",
+                        "opposite_ray",
                         "area",
                         "volume",
                         "perimeter"
@@ -229,6 +230,9 @@
                 },
                 {
                     "$ref": "#/definitions/fact_perimeter"
+                },
+                {
+                    "$ref": "#/definitions/fact_opposite_ray"
                 }
             ]
         },
@@ -916,7 +920,8 @@
                         "equation_line",
                         "equation_plane",
                         "equation_sphere",
-                        "coordinates"
+                        "coordinates",
+                        "proof_existence"
                     ]
                 },
                 "data": {
@@ -974,6 +979,12 @@
                 },
                 {
                     "$ref": "#/definitions/query_coordinates"
+                },
+                {
+                    "$ref": "#/definitions/query_proof_equal"
+                },
+                {
+                    "$ref": "#/definitions/query_proof_existence"
                 }
             ]
         },
@@ -1435,6 +1446,36 @@
                 }
             }
         },
+        "query_proof_existence": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "proof_existence"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "additionalProperties": false,
+                        "properties": {
+                            "points": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "shape": {
+                                "type": "string"
+                            },
+                            "target": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "fact_centroid": {
             "if": {
                 "properties": {
@@ -1462,6 +1503,38 @@
                                 },
                                 "minItems": 1,
                                 "maxItems": 1
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "fact_opposite_ray": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "opposite_ray"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "point",
+                            "origin",
+                            "ray_point"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "point": {
+                                "type": "string"
+                            },
+                            "origin": {
+                                "type": "string"
+                            },
+                            "ray_point": {
+                                "type": "string"
                             }
                         }
                     }
