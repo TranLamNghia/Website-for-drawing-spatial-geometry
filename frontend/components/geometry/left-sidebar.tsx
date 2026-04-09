@@ -13,6 +13,7 @@ const SAMPLE_PROBLEM = `Cho hình chóp S.ABCD có đáy ABCD là hình vuông c
 
 export function LeftSidebar() {
   const {
+    geometryData,
     setGeometryData,
     setValidation,
     setIsConsistent,
@@ -21,8 +22,78 @@ export function LeftSidebar() {
   } = useGeometry()
   const [problem, setProblem] = useState(SAMPLE_PROBLEM)
   const [activeTab, setActiveTab] = useState('input')
-  const [jsonData, setJsonData] = useState<GeometryData | null>(null)
+  const [jsonInput, setJsonInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+
+  const handleApplyJson = (text: string) => {
+    try {
+      const result = JSON.parse(text)
+      
+      // Determine if this is a BE response or internal GeographyData
+      const isInternal = result.points && Array.isArray(Object.values(result.points)[0])
+      
+      let mappedData: GeometryData
+      
+      if (isInternal) {
+        mappedData = result as GeometryData
+      } else {
+        // Map BE response (entities, validation, points: {A: {x,y,z}})
+        const points: Record<string, [number, number, number]> = {}
+        const rawPoints = result.points || {}
+        Object.entries(rawPoints).forEach(([name, coords]: [string, any]) => {
+          const x = coords.x ?? coords.X ?? 0
+          const y = coords.y ?? coords.Y ?? 0
+          const z = coords.z ?? coords.Z ?? 0
+          points[name] = [x, y, z]
+        })
+
+        const rawSegments = result.edges || result.segments || result.data?.entities?.segments || []
+        const pointNames = Object.keys(points).sort((a,b) => b.length - a.length) // Longest first for greedy match
+        
+        const mappedEdges = rawSegments.map((s: string) => {
+          if (typeof s !== 'string') return ''
+          if (s.includes('-')) return s
+          
+          // Greedy split based on pointNames
+          for(const p of pointNames) {
+            if (s.startsWith(p)) {
+              const rest = s.slice(p.length)
+              if (pointNames.includes(rest)) return `${p}-${rest}`
+            }
+          }
+
+          if (s.length === 2) return `${s[0]}-${s[1]}`
+          return s
+        }).filter(Boolean)
+
+        mappedData = {
+          points,
+          is_consistent: result.validation?.allPassed ?? true,
+          error_message: result.validation?.allPassed ? '' : 'Dữ liệu không khớp',
+          edges: mappedEdges,
+          queries: result.data?.queries?.map((q: any) => ({
+            id: q.id || Math.random().toString(),
+            text: q.question_text || '',
+            edges: [] 
+          })) || [],
+          circles: result.circles || result.data?.entities?.circles || [],
+          planes: result.planes || result.data?.entities?.planes || [],
+          spheres: result.spheres || result.data?.entities?.spheres || []
+        }
+      }
+
+      setGeometryData(mappedData)
+      setIsConsistent(mappedData.is_consistent)
+      setQueries(mappedData.queries || [])
+      setValidation({
+        isConsistent: mappedData.is_consistent,
+        issues: result.validation?.failures?.map((f: any) => f.message) || []
+      })
+      setErrorMessage('')
+    } catch (e: any) {
+      setErrorMessage('JSON không hợp lệ: ' + e.message)
+    }
+  }
 
   const handleSolveNow = async () => {
     setIsLoading(true)
@@ -40,43 +111,10 @@ export function LeftSidebar() {
       }
 
       const result = await response.json()
+      setJsonInput(JSON.stringify(result, null, 2))
+      handleApplyJson(JSON.stringify(result))
       
-      const points: Record<string, [number, number, number]> = {}
-      Object.entries(result.points).forEach(([name, coords]: [string, any]) => {
-        const x = coords.x ?? coords.X ?? 0
-        const y = coords.y ?? coords.Y ?? 0
-        const z = coords.z ?? coords.Z ?? 0
-        points[name] = [x, y, z]
-      })
-
-      const rawSegments = result.data?.entities?.segments || []
-      const mappedEdges = rawSegments.map((s: string) => {
-        if (s.length === 2) return `${s[0]}-${s[1]}`
-        return s
-      })
-
-      const mappedData: GeometryData = {
-        points,
-        is_consistent: result.validation.allPassed,
-        error_message: result.validation.allPassed ? '' : 'Dữ liệu không hoàn toàn khớp',
-        edges: mappedEdges,
-        queries: result.data?.queries?.map((q: any) => ({
-          id: q.id || Math.random().toString(),
-          text: q.question_text || '',
-          edges: [] 
-        })) || []
-      }
-
-      setGeometryData(mappedData)
-      setJsonData(mappedData)
-      setIsConsistent(mappedData.is_consistent)
-      setQueries(mappedData.queries || [])
-      setValidation({
-        isConsistent: mappedData.is_consistent,
-        issues: result.validation.failures.map((f: any) => f.message)
-      })
-      
-      if (mappedData.is_consistent) {
+      if (result.validation?.allPassed) {
          setActiveTab('data')
       }
     } catch (error: any) {
@@ -125,25 +163,26 @@ export function LeftSidebar() {
           </Button>
         </TabsContent>
 
-        <TabsContent value="data" className="flex-1 overflow-auto group">
-          {jsonData ? (
-            <div className="space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-800 mb-2">Các điểm (Points)</h3>
-                <div className="bg-gray-50 rounded-lg p-3 font-mono text-xs space-y-2 overflow-x-auto max-h-40 border border-gray-100">
-                  {Object.entries(jsonData.points).map(([name, coords]) => (
-                    <div key={name} className="text-gray-600">
-                      <span className="text-[#6671d1] font-bold">{name}:</span> [{coords[0].toFixed(2)}, {coords[1].toFixed(2)}, {coords[2].toFixed(2)}]
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-40 text-gray-400 text-sm">
-               Hãy giải đề để xem JSON
-            </div>
-          )}
+        <TabsContent value="data" className="flex-1 flex flex-col gap-4 overflow-hidden">
+          <div className="flex-1 flex flex-col min-h-0">
+            <label className="text-sm font-semibold text-gray-700 block mb-2">
+              Chỉnh sửa / Dán JSON phản hồi
+            </label>
+            <Textarea
+              value={jsonInput}
+              onChange={(e) => setJsonInput(e.target.value)}
+              placeholder='Dán JSON vào đây (vd: { "points": { "A": {"x":0, "y":0, "z":0} }, ... })'
+              className="flex-1 font-mono text-[10px] bg-gray-50 border-gray-200 resize-none text-gray-800"
+            />
+          </div>
+          <Button
+            onClick={() => handleApplyJson(jsonInput)}
+            variant="outline"
+            className="w-full border-[#6671d1] text-[#6671d1] hover:bg-[#6671d1]/5"
+          >
+            <Play className="w-4 h-4 mr-2" />
+            Áp dụng JSON
+          </Button>
         </TabsContent>
       </Tabs>
 
@@ -153,12 +192,12 @@ export function LeftSidebar() {
           <CardTitle className="text-sm">Bóc tách thực thể</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4 space-y-3">
-           {jsonData ? (
+           {geometryData ? (
              <>
                <div>
                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Điểm</p>
                  <div className="flex flex-wrap gap-2">
-                   {Object.keys(jsonData.points).map(p => (
+                   {Object.keys(geometryData.points).map(p => (
                      <Badge key={p} variant="secondary" className="bg-[#6671d1]/10 text-[#6671d1] border-none">{p}</Badge>
                    ))}
                  </div>
