@@ -70,6 +70,17 @@ async def execute_code(request: ExecutionRequest):
                 if json_start != -1 and json_end != -1:
                     clean_json_str = stdout_str[json_start:json_end]
                     points_data = json.loads(clean_json_str)
+
+                    # Save result to JSON file in sympyBin for tracking
+                    try:
+                        res_filename = f"result_{timestamp}.json"
+                        res_path = os.path.join(bin_dir, res_filename)
+                        with open(res_path, "w", encoding="utf-8") as f:
+                            json.dump(points_data, f, indent=4)
+                        print(f"[DEBUG] Result saved to {res_path}")
+                    except Exception as e:
+                        print(f"[WARN] Can't save result JSON: {e}")
+
                     return {"status": "success", "data": points_data}
                 else:
                     return {"status": "error", "message": "Can't find valid JSON output from script", "stdout": stdout_str}

@@ -140,6 +140,7 @@ Strict Rules:
 - EXTREMELY CRITICAL: NEVER, UNDER ANY CIRCUMSTANCES, use shape names or parentheses like '(S)', '(O)', 'sphere' for 'outer' or 'inner'. They MUST be exactly 1 uppercase letter representing a point.
 - CRITICAL: For queries asking to find or identify a point (e.g. 'Xác định tâm I'), the query type MUST be 'coordinates' with target 'I'. DO NOT invent query types like 'circumcenter'.
 - CRITICAL: Do NOT add unexpected fields like 'value' to queries. A query only requires 'type' and 'data' (with fields like 'target' or 'from'/'to' depending on the template).
+- CRITICAL: For prism and regular_prism, preserve apostrophes and periods in solid names exactly as written (e.g. output "ABCD.A'B'C'D'"). DO NOT strip them.
 """.strip()
 
     user_prompt = f"""

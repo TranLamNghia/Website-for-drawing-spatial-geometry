@@ -20,6 +20,7 @@
         "circumcenter",
         "incenter",
         "orthocenter",
+        "opposite_ray",
         "area",
         "volume",
         "perimeter"

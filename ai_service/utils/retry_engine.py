@@ -1,19 +1,12 @@
 from .validator import validate_json, clean_markdown_json
-import openai
+from api.llm_provider import llm_provider
 
 def simplify_error(error):
     return str(error)
 
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_QWEN3_APIKEY")
-
 class RetryEngine:
-    def __init__(self, client, max_retries=2):
+    def __init__(self, max_retries=2):
         self.max_retries = max_retries
-        self.client = client
 
     def repair(self, raw_json: str, error_msg: str) -> str:
         try:
@@ -40,22 +33,11 @@ class RetryEngine:
         ]
 
         print("     [RETRY_ENGINE] Requesting AI to fix error...")
-        
         try:
-            response = self.client.chat.completions.create(
-                model="google/gemini-2.5-flash", 
-                messages=messages,
-                temperature=0.1
-            )
-            return response.choices[0].message.content
+            return llm_provider.get_completion(messages)
         except Exception as e:
-            print(f"     [RETRY_ENGINE] ⚠️ Gemini failed, calling Llama 3.3 as fallback...")
-            response = self.client.chat.completions.create(
-                model="meta-llama/llama-3.3-70b-instruct", 
-                messages=messages,
-                temperature=0.1
-            )
-            return response.choices[0].message.content
+            print(f"     [RETRY_ENGINE] ❌ Repair failed: {str(e)}")
+            return raw_json # Return original if fix fails completely
 
     def run(self, raw_json: str) -> str:
         is_valid, error = validate_json(raw_json)

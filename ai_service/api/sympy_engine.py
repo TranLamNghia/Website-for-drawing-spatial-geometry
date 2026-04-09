@@ -1,28 +1,13 @@
-import openai
-import os
 import json
 import requests
-from dotenv import load_dotenv
 from pathlib import Path
-
-load_dotenv()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_QWEN3_APIKEY")
+from api.llm_provider import llm_provider
 
 BASE_DIR = Path(__file__).parent.parent
 PROMPT_FILE = BASE_DIR / "prompts" / "sympy_prompt.txt"
 
 class SympyAIEngine:
     def __init__(self):
-        self.headers = {
-            "HTTP-Referer": "http://localhost:8001",
-            "X-Title": "SpatialGeometry Math Engine"
-        }
-        self.client = openai.Client(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=OPENROUTER_API_KEY,
-            timeout=60.0,
-            default_headers=self.headers
-        )
         self.sandbox_url = "http://localhost:8002/execute"
 
     def generate_and_solve(self, problem_text: str, facts_json: dict, current_points: dict, validation_failures: list, base_a_value: float) -> dict:
@@ -57,17 +42,12 @@ class SympyAIEngine:
         for attempt in range(1, MAX_RETRIES + 1):
             print(f"\n[SYMPY_ENGINE] --- ATTEMPT {attempt}/{MAX_RETRIES} ---")
             try:
-                response = self.client.chat.completions.create(
-                    model="google/gemini-2.5-flash",
-                    messages=messages,
-                    temperature=0.1,
-                    timeout=60.0
-                )
-                raw_code = response.choices[0].message.content
+                raw_code = llm_provider.get_completion(messages)
                 print(f"[SYMPY_ENGINE] Received Script from LLM ({len(raw_code)} ký tự).")
             except Exception as e:
                 print(f"[SYMPY_ENGINE] ❌ Error calling LLM API: {str(e)}")
                 return {"status": "error", "message": f"Error calling LLM API: {str(e)}"}
+
 
             clean_code = raw_code.strip()
             if clean_code.startswith("```python"):

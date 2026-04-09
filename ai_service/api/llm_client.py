@@ -1,87 +1,30 @@
-import openai
 import os
 import time
 from dotenv import load_dotenv
 from prompts.prompt_builder import build_prompt
 from utils.retry_engine import RetryEngine
 from utils.validator import clean_markdown_json
+from .llm_provider import llm_provider
 
 
 load_dotenv()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_QWEN3_APIKEY")
-GEMINI_APIKEY = os.getenv("GEMINI_APIKEY")
 
 class GeometryAIEngine:
     def __init__(self):
-        # Initialize LLM client to OpenRouter Cloud
-        print(f"[LLM_INIT] Initializing OpenAI Client (BaseURL: https://openrouter.ai/api/v1)")
-        
-        # Add headers for OpenRouter (Recommended by OpenRouter)
-        self.headers = {
-            "HTTP-Referer": "http://localhost:8001", 
-            "X-Title": "SpatialGeometry Math Engine"
-        }
-        
-        self.client = openai.Client(
-            base_url="https://openrouter.ai/api/v1", 
-            api_key=OPENROUTER_API_KEY, 
-            timeout=60.0,
-            default_headers=self.headers
-        )
-        
-        self.retry_engine = RetryEngine(client=self.client)
+        # We now use the central llm_provider instead of managing our own client
+        self.retry_engine = RetryEngine()
 
     def extract_json(self, problem_text: str) -> str:
         print(f"\n[LLM_CLIENT] Starting processing problem: '{problem_text[:40]}...'")
         messages = build_prompt(problem_text)
         
-        start_time = time.time()
-        print(f"[LLM_CLIENT] [{time.strftime('%H:%M:%S')}] Sending Request to Gemini (Google)...")
-        
         try:
-            print(f"[LLM_CLIENT] >>> Waiting for response from Server (Timeout: 60s)...")
-            response = self.client.chat.completions.create(
-                model="google/gemini-2.5-flash", 
-                messages=messages,
-                temperature=0.1,
-                timeout=60.0
-            )
-            duration = time.time() - start_time
-            print(f"[LLM_CLIENT] <<< [200 OK] Received response from Gemini 2.5 (OpenRouter) after {duration:.2f}s.")
-            raw_json = response.choices[0].message.content
-        except openai.APITimeoutError:
-            duration = time.time() - start_time
-            print(f"[LLM_CLIENT] ❌ ERROR: Request timeout (60s) after {duration:.2f}s. Switching to Llama 3.3...")
-            return self._fallback_to_llama(messages)
-        except openai.APIStatusError as e:
-            duration = time.time() - start_time
-            print(f"[LLM_CLIENT] ❌ ERROR: HTTP {e.status_code} from OpenRouter after {duration:.2f}s. {e.message}")
-            return self._fallback_to_llama(messages)
+            raw_json = llm_provider.get_completion(messages)
         except Exception as e:
-            duration = time.time() - start_time
-            print(f"[LLM_CLIENT] ⚠️ Unknown error from OpenRouter ({str(e)}) after {duration:.2f}s. SWITCHING TO FALLBACK USING LLAMA 3.3...")
-            return self._fallback_to_llama(messages)
+            print(f"[LLM_CLIENT] ❌ All attempts failed (Primary & Fallback): {str(e)}")
+            raise e
 
         print(f"[LLM_CLIENT] Received raw JSON from AI. Cleaning Markdown...")
         clean_json = clean_markdown_json(raw_json)
         print(f"[LLM_CLIENT] Starting to push into Validator...")
-        return self.retry_engine.run(clean_json)
-
-    def _fallback_to_llama(self, messages) -> str:
-        print(f"[LLM_CLIENT] [FALLBACK] Sending Request to OpenRouter (Llama 3.3 70B)...")
-        start_time = time.time()
-        try:
-            response = self.client.chat.completions.create(
-                model="meta-llama/llama-3.3-70b-instruct", 
-                messages=messages,
-                temperature=0.1,
-                timeout=30.0
-            )
-            duration = time.time() - start_time
-            print(f"[LLM_CLIENT] [FALLBACK] <<< Success from Llama 3.3 after {duration:.2f}s.")
-            raw_json = response.choices[0].message.content
-            clean_json = clean_markdown_json(raw_json)
-            return self.retry_engine.run(clean_json)
-        except Exception as ge:
-            print(f"[LLM_CLIENT] ❌ [FALLBACK] Llama 3.3 also failed: {str(ge)}")
-            raise ge
+        return self.retry_engine.run(clean_json)

@@ -72,11 +72,21 @@ public class GeometryExtractionService : IGeometryExtractionService
             
             if (document.RootElement.TryGetProperty("data", out var dataElement))
             {
+                // Check if data is an error message instead of point coordinates
+                if (dataElement.ValueKind == JsonValueKind.Object && dataElement.TryGetProperty("ERROR", out _))
+                {
+                    Console.WriteLine($"[AI_FALLBACK] SymPy failed: {dataElement.GetProperty("ERROR").GetString()}");
+                    return null;
+                }
+
                 var result = JsonSerializer.Deserialize<Dictionary<string, Point3D>>(dataElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 return result;
             }
             
             // Trường hợp fallback nếu python nhả thẳng dict
+            string rawStr = document.RootElement.GetRawText();
+            if (rawStr.Contains("\"ERROR\"")) return null;
+
             return JsonSerializer.Deserialize<Dictionary<string, Point3D>>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         }
         catch (Exception ex)

@@ -16,6 +16,7 @@
         "equation_plane",
         "equation_sphere",
         "coordinates",
-        "proof_equal"
+        "proof_equal",
+        "proof_existence"
     ]
 }

@@ -10,6 +10,17 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll",
+        builder =>
+        {
+            builder.AllowAnyOrigin()
+                   .AllowAnyMethod()
+                   .AllowAnyHeader();
+        });
+});
 builder.Services.AddHttpClient<IGeometryExtractionService, GeometryExtractionService>(client => 
 {
     client.Timeout = TimeSpan.FromMinutes(3); // Tăng timeout từ 100s (mặc định) lên 3 phút
@@ -31,6 +42,7 @@ builder.Services.AddScoped<IFactHandler, ParallelHandler>();
 builder.Services.AddScoped<IFactHandler, PerpendicularHandler>();
 builder.Services.AddScoped<IFactHandler, AngleHandler>();
 builder.Services.AddScoped<IFactHandler, LengthHandler>();
+builder.Services.AddScoped<IFactHandler, OppositeRayHandler>();
 
 // Đăng ký FactValidators (Kiểm định ngược tọa độ)
 builder.Services.AddScoped<IFactValidator, LengthValidator>();
@@ -48,6 +60,8 @@ var app = builder.Build();
 
 app.UseSwagger();
 app.UseSwaggerUI();
+
+app.UseCors("AllowAll");
 
 app.UseHttpsRedirection();
 app.UseAuthorization();

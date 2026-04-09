@@ -14,6 +14,7 @@ public enum ShapeType
     Rectangle,
     Rhombus,
     Parallelogram,
+    Parallelepiped,
     Trapezoid,
     Circle,
     Sphere,
