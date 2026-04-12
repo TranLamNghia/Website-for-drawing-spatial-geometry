@@ -24,11 +24,26 @@ public class CircumscribedHandler : IFactHandler
             string solidChars = new string(solid.Where(char.IsUpper).ToArray());
             var points = context.GetPointsFromPlane(solidChars);
 
-            if (points.Count == solidChars.Length && points.Count >= 4)
+            if (points.Count >= 3)
             {
-                var sphere = Sphere3D.GetCircumsphere(points[0], points[1], points[2], points[3]);
-                context.Points[spherePoint] = sphere.Center;
-                Console.WriteLine($"[HANDLER] Đã dựng tâm mặt cầu ngoại tiếp {spherePoint} của {solid} tại {sphere.Center}");
+                var center = Point3D.GetCircumcenter(points.ToArray());
+                context.Points[spherePoint] = center;
+                double radius = center.DistanceToPoint(points[0]);
+
+                if (points.Count == 3)
+                {
+                    var plane = new Plane3D(points[0], points[1], points[2]);
+                    context.Circles.Add(new CircleData { 
+                        Center = spherePoint, 
+                        Radius = radius, 
+                        Normal = new double[] { plane.A, plane.B, plane.C } 
+                    });
+                }
+                else
+                {
+                    context.Spheres.Add(new SphereData { Center = spherePoint, Radius = radius });
+                }
+                Console.WriteLine($"[HANDLER] Đã dựng tâm ngoại tiếp {spherePoint} của {solid} (R={radius:F2})");
             }
         }
     }

@@ -18,18 +18,22 @@ public class ShapeValidator : IFactValidator
             return ValidationResult.Skip(fact.Id, fact.Type.ToString(), "Dữ liệu Shape rỗng");
 
         string target = data.Target.ToUpper();
+        var targetVertices = System.Text.RegularExpressions.Regex.Matches(target, @"[A-Z][0-9]*'*(?:\.[A-Z][0-9]*'*)?").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
         
+        // Loại bỏ dấu chấm nếu có trong tên đỉnh (đối với lăng trụ xiên)
+        var vertexKeys = targetVertices.SelectMany(v => v.Split('.')).Where(v => !string.IsNullOrEmpty(v)).ToList();
+
         var points = new List<Domains.MathCore.Point3D>();
-        foreach(char c in target) {
-            var p = context.GetPoint(c.ToString());
+        foreach(string v in vertexKeys) {
+            var p = context.GetPoint(v);
             if (p != null) points.Add(p);
         }
 
-        if (points.Count < target.Length)
+        if (points.Count < vertexKeys.Count)
             return ValidationResult.Skip(fact.Id, fact.Type.ToString(), $"Chưa dựng đủ đỉnh cho {target}");
 
         // Kiểm tra Tam giác cân
-        if (data.Shape == ShapeType.Isosceles_triangle && target.Length == 3)
+        if (data.Shape == ShapeType.Isosceles_triangle && vertexKeys.Count == 3)
         {
             double d1 = points[0].DistanceToPoint(points[1]);
             double d2 = points[1].DistanceToPoint(points[2]);
@@ -45,7 +49,7 @@ public class ShapeValidator : IFactValidator
         }
 
         // Kiểm tra Tam giác đều
-        if (data.Shape == ShapeType.Equilateral_triangle && target.Length == 3)
+        if (data.Shape == ShapeType.Equilateral_triangle && vertexKeys.Count == 3)
         {
             double d1 = points[0].DistanceToPoint(points[1]);
             double d2 = points[1].DistanceToPoint(points[2]);
@@ -60,7 +64,7 @@ public class ShapeValidator : IFactValidator
         }
         
         // Kiểm tra Tam giác vuông (kiểm tra định lý Pytago hoặc Tích vô hướng)
-        if (data.Shape == ShapeType.Right_triangle && target.Length == 3)
+        if (data.Shape == ShapeType.Right_triangle && vertexKeys.Count == 3)
         {
             double d1Sq = Math.Pow(points[0].DistanceToPoint(points[1]), 2);
             double d2Sq = Math.Pow(points[1].DistanceToPoint(points[2]), 2);
@@ -73,6 +77,12 @@ public class ShapeValidator : IFactValidator
                 return ValidationResult.Pass(fact.Id, "Shape.RightTriangle", 0, diff);
             else
                 return ValidationResult.Fail(fact.Id, "Shape.RightTriangle", 0, diff);
+        }
+
+        if (data.Shape == ShapeType.Circle || data.Shape == ShapeType.Sphere)
+        {
+            if (!string.IsNullOrEmpty(data.Center) && context.GetPoint(data.Center) != null)
+                return ValidationResult.Pass(fact.Id, $"Shape.{data.Shape}", 0, 0);
         }
 
         // Tạm thời Skip các hình dạng khác chưa định nghĩa logic đo đạc (Rectangle/Square dễ check nhưng đáy mặc định đã đúng)

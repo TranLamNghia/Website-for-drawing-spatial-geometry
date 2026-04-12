@@ -21,20 +21,18 @@ public class AreaValidator : IFactValidator
             return ValidationResult.Skip(fact.Id, "Area", "Thiếu dữ liệu target/value");
 
         string target = data.Target;
+        var vertices = System.Text.RegularExpressions.Regex.Matches(target, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
         
-        // Lọc lấy các ký tự là tên điểm (A-Z)
-        string pointNames = new string(target.Where(char.IsUpper).ToArray());
-        
-        if (pointNames.Length < 3)
-            return ValidationResult.Skip(fact.Id, "Area", $"Target '{target}' không đủ 3 điểm để tính diện tích");
+        if (vertices.Count < 3)
+            return ValidationResult.Skip(fact.Id, "Area", $"Target '{target}' không đủ 3 đỉnh để tính diện tích");
 
         // Lấy tọa độ các điểm 
         var points = new System.Collections.Generic.List<Point3D>();
-        foreach (char c in pointNames)
+        foreach (string v in vertices)
         {
-            var p = context.GetPoint(c.ToString());
+            var p = context.GetPoint(v);
             if (p == null)
-                return ValidationResult.Skip(fact.Id, "Area", $"Chưa có tọa độ điểm {c}");
+                return ValidationResult.Skip(fact.Id, "Area", $"Chưa có tọa độ điểm {v}");
             points.Add(p);
         }
 

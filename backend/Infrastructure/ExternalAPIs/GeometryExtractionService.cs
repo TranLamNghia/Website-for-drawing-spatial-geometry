@@ -73,9 +73,10 @@ public class GeometryExtractionService : IGeometryExtractionService
             if (document.RootElement.TryGetProperty("data", out var dataElement))
             {
                 // Check if data is an error message instead of point coordinates
-                if (dataElement.ValueKind == JsonValueKind.Object && dataElement.TryGetProperty("ERROR", out _))
+                if (dataElement.ValueKind == JsonValueKind.Object && dataElement.TryGetProperty("STATUS", out var status) && status.GetString() == "ERROR")
                 {
-                    Console.WriteLine($"[AI_FALLBACK] SymPy failed: {dataElement.GetProperty("ERROR").GetString()}");
+                    string msg = dataElement.TryGetProperty("ERROR_MESSAGE", out var m) ? m.GetString() : "Unknown SymPy Error";
+                    Console.WriteLine($"[AI_FALLBACK] SymPy failed: {msg}");
                     return null;
                 }
 
@@ -83,11 +84,18 @@ public class GeometryExtractionService : IGeometryExtractionService
                 return result;
             }
             
-            // Trường hợp fallback nếu python nhả thẳng dict
+            // Final fallback check: if no "data" property, try checking the root for errors
             string rawStr = document.RootElement.GetRawText();
-            if (rawStr.Contains("\"ERROR\"")) return null;
+            if (rawStr.Contains("\"ERROR\"") || rawStr.Contains("\"status\":\"error\"") || rawStr.Contains("\"status\": \"error\""))
+            {
+                return null;
+            }
 
-            return JsonSerializer.Deserialize<Dictionary<string, Point3D>>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            try {
+                return JsonSerializer.Deserialize<Dictionary<string, Point3D>>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            } catch {
+                return null;
+            }
         }
         catch (Exception ex)
         {

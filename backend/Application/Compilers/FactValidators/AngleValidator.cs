@@ -94,17 +94,13 @@ public class AngleValidator : IFactValidator
         return ValidationResult.Fail(fact.Id, "Angle", expectedAngle, actualAngle);
     }
 
-    private string FindCommonPoint(string obj1, string obj2)
+    private string? FindCommonPoint(string obj1, string obj2)
     {
         if (string.IsNullOrEmpty(obj1) || string.IsNullOrEmpty(obj2)) return null;
         
-        foreach (char c1 in obj1)
-        {
-            foreach (char c2 in obj2)
-            {
-                if (c1 == c2) return c1.ToString();
-            }
-        }
-        return null;
+        var v1 = System.Text.RegularExpressions.Regex.Matches(obj1, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
+        var v2 = System.Text.RegularExpressions.Regex.Matches(obj2, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
+
+        return v1.FirstOrDefault(p => v2.Contains(p));
     }
 }

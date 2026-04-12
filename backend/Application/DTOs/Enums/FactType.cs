@@ -28,5 +28,7 @@ public enum FactType
     Area,
     Volume,
     Perimeter,
-    Opposite_ray
+    Opposite_ray,
+    Equality,
+    Perpendicular_bisector
 }

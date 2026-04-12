@@ -31,15 +31,25 @@ public class InscribedHandler : IFactHandler
                 {
                     var result = Point3D.GetIncenter(points.ToArray());
                     context.Points[inPoint] = result.Center;
-                    Console.WriteLine($"[HANDLER] Đã dựng tâm nội tiếp {inPoint} của đa giác {outer}");
+                    var plane = new Plane3D(points[0], points[1], points[2]);
+                    context.Circles.Add(new CircleData { 
+                        Center = inPoint, 
+                        Radius = result.Radius,
+                        Normal = new double[] { plane.A, plane.B, plane.C }
+                    });
+                    Console.WriteLine($"[HANDLER] Đã dựng tâm nội tiếp {inPoint} của đa giác {outer} (R={result.Radius:F2})");
                 }
             }
             // Case B: Inner sphere of specialized solids (Cubes, Pyramids, Tetrahedrons) 
             // Case B1: Khối Hộp / Lập phương (Đối xứng tâm hoàn toàn -> Dùng Centroid)
             else if (solidChars.Length == 8 && points.Count == 8) 
             {
-                context.Points[inPoint] = Point3D.GetCentroid(points.ToArray());
-                Console.WriteLine($"[HANDLER] Đã dựng tâm nội tiếp {inPoint} (trùng trọng tâm) của khối hộp {outer}");
+                var center = Point3D.GetCentroid(points.ToArray());
+                context.Points[inPoint] = center;
+                var baseCentroid = Point3D.GetCentroid(points.Take(4).ToArray());
+                double r = center.DistanceToPoint(baseCentroid);
+                context.Spheres.Add(new SphereData { Center = inPoint, Radius = r });
+                Console.WriteLine($"[HANDLER] Đã dựng tâm nội tiếp {inPoint} của khối hộp {outer} (R={r:F2})");
             }
             // Case B2: Khối chóp hoặc Tứ điện (S.ABCD có 5 đỉnh, S.ABC có 4 đỉnh)
             else if (solidChars.Length >= 4 && points.Count == solidChars.Length)
@@ -69,7 +79,8 @@ public class InscribedHandler : IFactHandler
 
                     var result = Point3D.GetInsphere(faces, interiorPoint);
                     context.Points[inPoint] = result.Center;
-                    Console.WriteLine($"[HANDLER] Đã dựng tâm mặt cầu nội tiếp {inPoint} của khối {outer}");
+                    context.Spheres.Add(new SphereData { Center = inPoint, Radius = result.Radius });
+                    Console.WriteLine($"[HANDLER] Đã dựng tâm mặt cầu nội tiếp {inPoint} của khối {outer} (R={result.Radius:F2})");
                 }
             }
         }
