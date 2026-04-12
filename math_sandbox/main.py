@@ -61,6 +61,12 @@ async def execute_code(request: ExecutionRequest):
             
             if result.returncode != 0:
                 print(f"[SANDBOX ERROR] STDERR: {result.stderr}")
+                # Log error to file
+                try:
+                    err_path = debug_path.replace(".py", ".err")
+                    with open(err_path, "w", encoding="utf-8") as f:
+                        f.write(result.stderr)
+                except: pass
                 raise HTTPException(status_code=400, detail=f"Script error: {result.stderr}")
                 
             stdout_str = result.stdout.strip()
@@ -70,6 +76,16 @@ async def execute_code(request: ExecutionRequest):
                 if json_start != -1 and json_end != -1:
                     clean_json_str = stdout_str[json_start:json_end]
                     points_data = json.loads(clean_json_str)
+
+                    # If the script reported an internal error via JSON
+                    if isinstance(points_data, dict) and points_data.get("STATUS") == "ERROR":
+                        err_msg = points_data.get("ERROR_MESSAGE", "SymPy script reported error")
+                        try:
+                            err_path = debug_path.replace(".py", ".err")
+                            with open(err_path, "w", encoding="utf-8") as f:
+                                f.write(err_msg)
+                        except: pass
+                        return {"status": "error", "message": err_msg, "details": points_data}
 
                     # Save result to JSON file in sympyBin for tracking
                     try:
