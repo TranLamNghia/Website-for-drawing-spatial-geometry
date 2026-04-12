@@ -14,12 +14,37 @@ export interface Query {
   edges?: string[]
 }
 
+export interface CircleData {
+  center: string
+  radius: number
+  normal?: [number, number, number]
+  name?: string
+  color?: string
+}
+
+export interface PlaneData {
+  points: string[]
+  color?: string
+  opacity?: number
+  density?: number
+}
+
+export interface SphereData {
+  center: string
+  radius: number
+  color?: string
+  opacity?: number
+}
+
 export interface GeometryData {
   points: Record<string, [number, number, number]>
   is_consistent: boolean
   error_message?: string
   queries?: Query[]
   edges?: string[]
+  circles?: CircleData[]
+  planes?: PlaneData[]
+  spheres?: SphereData[]
 }
 
 export interface ValidationResult {
