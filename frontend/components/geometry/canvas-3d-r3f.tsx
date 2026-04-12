@@ -397,50 +397,47 @@ export function Canvas3D() {
       }
     })
 
-    // Advance Depth HLR: Define generic faces
-    const facePoints: [string, string, string][] = []
-    const pts = Object.keys(nodes)
-    if (pts.includes('S')) {
-      ['A', 'B', 'C', 'D'].forEach((p, i, arr) => {
-        const next = arr[(i + 1) % arr.length]
-        if (nodes[p] && nodes[next]) facePoints.push(['S', p, next])
-      })
-      if (nodes['A'] && nodes['B'] && nodes['C']) facePoints.push(['A', 'B', 'C'])
-      if (nodes['A'] && nodes['C'] && nodes['D']) facePoints.push(['A', 'C', 'D'])
-    } else if (pts.length >= 3) {
-      const sorted = pts.sort()
-      for (let i = 1; i < sorted.length - 1; i++) {
-        facePoints.push([sorted[0], sorted[i], sorted[i + 1]])
+    // Draw Planes
+    geometryData.planes?.forEach(p => {
+      if (!p.points) return
+      const pNodes = p.points.map(name => nodes[name]).filter(Boolean)
+      if (pNodes.length < 3) return
+
+      const color = p.color || '#6671d1'
+
+      // 2. Slice Polygon (The points defined in JSON)
+      const sliceGeom = new THREE.BufferGeometry()
+      const slicePos: number[] = []
+      for (let i = 1; i < pNodes.length - 1; i++) {
+        slicePos.push(pNodes[0].x, pNodes[0].y, pNodes[0].z)
+        slicePos.push(pNodes[i].x, pNodes[i].y, pNodes[i].z)
+        slicePos.push(pNodes[i + 1].x, pNodes[i + 1].y, pNodes[i + 1].z)
       }
-    }
+      sliceGeom.setAttribute('position', new THREE.Float32BufferAttribute(slicePos, 3))
+      sliceGeom.computeVertexNormals()
 
-    if (facePoints.length > 0) {
-      const positions: number[] = []
-      facePoints.forEach(([a, b, c]) => {
-        if (nodes[a] && nodes[b] && nodes[c]) {
-          positions.push(nodes[a].x, nodes[a].y, nodes[a].z)
-          positions.push(nodes[b].x, nodes[b].y, nodes[b].z)
-          positions.push(nodes[c].x, nodes[c].y, nodes[c].z)
-        }
-      })
+      // 1. Visual Plane (Solid shading)
+      group.add(new THREE.Mesh(sliceGeom, new THREE.MeshBasicMaterial({ 
+        color, 
+        transparent: true, 
+        opacity: p.opacity || 0.15, 
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      })))
 
-      if (positions.length > 0) {
-        const geom = new THREE.BufferGeometry()
-        geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-        geom.computeVertexNormals()
+      // 2. Depth Blocker (Essential for Hidden Line Detection)
+      group.add(new THREE.Mesh(sliceGeom, new THREE.MeshBasicMaterial({
+        colorWrite: false, 
+        depthWrite: true, 
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      })))
 
-        const matVisual = new THREE.MeshBasicMaterial({
-          color: GEO_COLORS.FACE, opacity: 0.1, transparent: true, side: THREE.DoubleSide, depthWrite: false
-        })
-        group.add(new THREE.Mesh(geom, matVisual))
-
-        const matDepthBlocker = new THREE.MeshBasicMaterial({
-          color: 0x000000, colorWrite: false, side: THREE.DoubleSide, depthWrite: true,
-          polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
-        })
-        group.add(new THREE.Mesh(geom, matDepthBlocker))
-      }
-    }
+    })
 
     // Edges
     const solidEdgesPos: number[] = []
@@ -496,82 +493,7 @@ export function Canvas3D() {
       group.add(circle)
     })
 
-    // Draw Planes
-    geometryData.planes?.forEach(p => {
-      const pNodes = p.points.map(name => nodes[name]).filter(Boolean)
-      if (pNodes.length < 3) return
 
-      const color = p.color || '#6671d1'
-
-      // 1. Calculate Plane Normal & Basis
-      const v1 = new THREE.Vector3().subVectors(pNodes[1], pNodes[0]).normalize()
-      const norm = new THREE.Vector3().crossVectors(v1, new THREE.Vector3().subVectors(pNodes[2], pNodes[0])).normalize()
-      const v2 = new THREE.Vector3().crossVectors(norm, v1).normalize()
-
-      // 2. Large Context Plane (20x20)
-      const largePlaneGeo = new THREE.PlaneGeometry(20, 20)
-      const largePlaneMat = new THREE.MeshBasicMaterial({ 
-        color, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false 
-      })
-      const largePlane = new THREE.Mesh(largePlaneGeo, largePlaneMat)
-      largePlane.position.copy(pNodes[0])
-      largePlane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), norm)
-      group.add(largePlane)
-
-      // 3. Slice Polygon (The points defined in JSON)
-      const sliceGeom = new THREE.BufferGeometry()
-      const slicePos: number[] = []
-      for (let i = 1; i < pNodes.length - 1; i++) {
-        slicePos.push(pNodes[0].x, pNodes[0].y, pNodes[0].z)
-        slicePos.push(pNodes[i].x, pNodes[i].y, pNodes[i].z)
-        slicePos.push(pNodes[i + 1].x, pNodes[i + 1].y, pNodes[i + 1].z)
-      }
-      sliceGeom.setAttribute('position', new THREE.Float32BufferAttribute(slicePos, 3))
-      group.add(new THREE.Mesh(sliceGeom, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.15, side: THREE.DoubleSide })))
-
-      // 4. Hatching (Diagonal Lines)
-      const pts2d = pNodes.map(p => {
-        const rel = new THREE.Vector3().subVectors(p, pNodes[0])
-        return new THREE.Vector2(rel.dot(v1), rel.dot(v2))
-      })
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-      pts2d.forEach(pt => {
-        minX = Math.min(minX, pt.x); maxX = Math.max(maxX, pt.x)
-        minY = Math.min(minY, pt.y); maxY = Math.max(maxY, pt.y)
-      })
-
-      const hatchLines: THREE.Vector3[] = []
-      const density = p.density || 12 // Default increased for more detail
-      const step = (maxX - minX + maxY - minY) / density
-      for (let d = minX + minY - step; d <= maxX + maxY + step; d += step) {
-         const intercepts: THREE.Vector2[] = []
-         for (let i = 0; i < pts2d.length; i++) {
-            const pa = pts2d[i], pb = pts2d[(i+1)%pts2d.length]
-            const denom = (pb.x - pa.x) + (pb.y - pa.y)
-            if (Math.abs(denom) > 1e-6) {
-               const t = (d - pa.x - pa.y) / denom
-               if (t >= 0 && t <= 1) intercepts.push(new THREE.Vector2(pa.x + t*(pb.x - pa.x), pa.y + t*(pb.y - pa.y)))
-            }
-         }
-         intercepts.sort((a,b) => a.x - b.x)
-         for(let i=0; i < intercepts.length - 1; i += 2) {
-            hatchLines.push(
-               pNodes[0].clone().addScaledVector(v1, intercepts[i].x).addScaledVector(v2, intercepts[i].y),
-               pNodes[0].clone().addScaledVector(v1, intercepts[i+1].x).addScaledVector(v2, intercepts[i+1].y)
-            )
-         }
-      }
-      if (hatchLines.length > 0) {
-        const hGeom = new THREE.BufferGeometry().setFromPoints(hatchLines)
-        group.add(new THREE.LineSegments(hGeom, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5, depthTest: false })))
-      }
-
-      // 5. Intersection Outline (Perimeter)
-      const periPts: THREE.Vector3[] = []
-      for(let i=0; i < pNodes.length; i++) periPts.push(pNodes[i], pNodes[(i+1)%pNodes.length])
-      const periGeom = new THREE.BufferGeometry().setFromPoints(periPts)
-      group.add(new THREE.LineSegments(periGeom, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7, linewidth: 2, depthTest: false })))
-    })
 
     // Draw Spheres
     geometryData.spheres?.forEach(s => {

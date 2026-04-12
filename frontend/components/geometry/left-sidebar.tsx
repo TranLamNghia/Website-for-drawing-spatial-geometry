@@ -71,11 +71,11 @@ export function LeftSidebar() {
           is_consistent: result.validation?.allPassed ?? true,
           error_message: result.validation?.allPassed ? '' : 'Dữ liệu không khớp',
           edges: mappedEdges,
-          queries: result.data?.queries?.map((q: any) => ({
+          queries: (result.queries || result.data?.queries || []).map((q: any) => ({
             id: q.id || Math.random().toString(),
-            text: q.question_text || '',
+            text: q.question_text || q.raw_text || '',
             edges: [] 
-          })) || [],
+          })),
           circles: result.circles || result.data?.entities?.circles || [],
           planes: result.planes || result.data?.entities?.planes || [],
           spheres: result.spheres || result.data?.entities?.spheres || []
