@@ -39,7 +39,9 @@
                 "rays",
                 "vectors",
                 "planes",
-                "solids"
+                "solids",
+                "circles",
+                "spheres"
             ],
             "additionalProperties": false,
             "properties": {
@@ -77,6 +79,18 @@
                     }
                 },
                 "solids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "circles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "spheres": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -151,7 +165,9 @@
                         "opposite_ray",
                         "area",
                         "volume",
-                        "perimeter"
+                        "perimeter",
+                        "equality",
+                        "perpendicular_bisector"
                     ]
                 },
                 "data": {
@@ -233,6 +249,12 @@
                 },
                 {
                     "$ref": "#/definitions/fact_opposite_ray"
+                },
+                {
+                    "$ref": "#/definitions/fact_equality"
+                },
+                {
+                    "$ref": "#/definitions/fact_perpendicular_bisector"
                 }
             ]
         },
@@ -921,7 +943,8 @@
                         "equation_plane",
                         "equation_sphere",
                         "coordinates",
-                        "proof_existence"
+                        "proof_existence",
+                        "length"
                     ]
                 },
                 "data": {
@@ -985,6 +1008,9 @@
                 },
                 {
                     "$ref": "#/definitions/query_proof_existence"
+                },
+                {
+                    "$ref": "#/definitions/query_length"
                 }
             ]
         },
@@ -1618,6 +1644,89 @@
                                 "type": "string"
                             },
                             "value": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "fact_equality": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "equality"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "objects"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "objects": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 2
+                            },
+                            "value": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "fact_perpendicular_bisector": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "perpendicular_bisector"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "line",
+                            "segment"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "line": {
+                                "type": "string"
+                            },
+                            "segment": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "query_length": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "length"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "target"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "target": {
                                 "type": "string"
                             }
                         }

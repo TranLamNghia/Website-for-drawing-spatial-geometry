@@ -10,6 +10,8 @@
         "rays": [],
         "vectors": [],
         "planes": [],
+        "circles": [],
+        "spheres": [],
         "solids": []
     },
     "facts": [],

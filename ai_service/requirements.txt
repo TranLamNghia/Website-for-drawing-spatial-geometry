@@ -6,3 +6,4 @@ numpy==2.2.3
 openai>=1.0.0
 python-dotenv
 requests
+google-auth>=2.0.0

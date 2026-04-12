@@ -1,11 +1,12 @@
 {
-    "object_types": [
-        "point",
-        "segment",
-        "line",
-        "plane",
-        "solid",
-        "ray",
-        "vector"
-    ]
+  "object_types": [
+    "points",
+    "segments",
+    "rays",
+    "vectors",
+    "planes",
+    "solids",
+    "circles",
+    "spheres"
+  ]
 }
