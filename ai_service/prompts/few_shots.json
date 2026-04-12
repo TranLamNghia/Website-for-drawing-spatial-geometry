@@ -13,6 +13,8 @@
         "rays": [],
         "vectors": [],
         "planes": ["ABCD", "SAB", "SCD"],
+        "circles": [],
+        "spheres": [],
         "solids": ["S.ABCD"]
       },
       "facts": [
@@ -128,6 +130,8 @@
         "rays": [],
         "vectors": [],
         "planes": [],
+        "circles": [],
+        "spheres": [],
         "solids": []
       },
       "facts": [
@@ -223,7 +227,9 @@
         "rays": [],
         "vectors": [],
         "planes": ["(P)", "(Q)"],
-        "solids": ["(S)", "ABCD.A'B'C'D'", "(N)"]
+        "circles": [],
+        "spheres": ["(S)"],
+        "solids": ["ABCD.A'B'C'D'", "(N)"]
       },
       "facts": [
         {
@@ -323,6 +329,8 @@
         "rays": [],
         "vectors": [],
         "planes": [],
+        "circles": [],
+        "spheres": [],
         "solids": []
       },
       "facts": [
@@ -393,6 +401,8 @@
         "rays": [],
         "vectors": [],
         "planes": ["ABCD", "BCD"],
+        "circles": [],
+        "spheres": [],
         "solids": []
       },
       "facts": [

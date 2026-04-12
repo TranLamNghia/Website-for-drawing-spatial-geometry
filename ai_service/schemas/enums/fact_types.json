@@ -23,6 +23,8 @@
         "opposite_ray",
         "area",
         "volume",
-        "perimeter"
+        "perimeter",
+        "equality",
+        "perpendicular_bisector"
     ]
 }

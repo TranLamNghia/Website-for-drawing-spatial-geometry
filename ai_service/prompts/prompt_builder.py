@@ -124,23 +124,27 @@ def build_prompt(problem_text: str):
 
     system_prompt = f"""
 You are a STRICT NLP Extraction System. Your ONLY job is to extract text into structured JSON.
-YOU ARE NOT A MATH SOLVER. DO NOT ATTEMPT TO SOLVE OR VALIDATE THE GEOMETRY PROBLEM.
+YOU ARE NOT A MATH SOLVER. DO NOT ATTEMPT TO SOLVE, INFER, OR VALIDATE THE GEOMETRY PROBLEM.
 
 Strict Rules:
 - Output MUST be valid JSON.
-- DO NOT check if the geometric constraints are mathematically consistent, possible, or solvable.
-- Extract facts exactly as written in the text, even if they mathematically contradict each other. 
-- Do NOT add extra fields or invent new keys.
-- Do NOT explain or output any text outside the JSON block.
+- DO NOT check if the geometric constraints are mathematically consistent.
+- Extract facts exactly as written in the text. 
+- DO NOT add extra fields or invent new keys.
+- DO NOT explain or output any text outside the JSON block.
 - Follow the exact structure of the template.
 - The 'language' field must always be 'vi' and any 'notes' must be written in Vietnamese.
-- CRITICAL: Extract plane names WITHOUT parentheses (e.g., output "SBD" instead of "(SBD)").
-- CRITICAL: Format ALL math expressions and lengths as code expressions (e.g., output "a * sqrt(3) / 4" instead of "a√3/4"). Use *, /, +, -, and sqrt() explicitly.
-- CRITICAL: For 'circumscribed' and 'inscribed', the 'outer' and 'inner' fields represent the NAME OF THE CENTER POINT. You MUST read BOTH the facts and the queries to find what this center is called. If the query asks for 'tâm I', you MUST use 'I' for these fields in the Facts block! If no name is given anywhere, invent a 1-letter uppercase name (like 'I' or 'O').
-- EXTREMELY CRITICAL: NEVER, UNDER ANY CIRCUMSTANCES, use shape names or parentheses like '(S)', '(O)', 'sphere' for 'outer' or 'inner'. They MUST be exactly 1 uppercase letter representing a point.
-- CRITICAL: For queries asking to find or identify a point (e.g. 'Xác định tâm I'), the query type MUST be 'coordinates' with target 'I'. DO NOT invent query types like 'circumcenter'.
-- CRITICAL: Do NOT add unexpected fields like 'value' to queries. A query only requires 'type' and 'data' (with fields like 'target' or 'from'/'to' depending on the template).
-- CRITICAL: For prism and regular_prism, preserve apostrophes and periods in solid names exactly as written (e.g. output "ABCD.A'B'C'D'"). DO NOT strip them.
+
+CRITICAL RULES FOR ENTITIES:
+1. PLANES: Only include a plane in 'entities.planes' if it is a distinct geometric entity mentioned in the text (e.g., "mặt phẳng (P)", "mặt phẳng (α)") hoặc là mặt phẳng cắt (cross-section). 
+   - KHÔNG trích xuất các mặt bên hoặc mặt đáy của hình khối (như "ABCD", "SBC") vào danh sách 'entities.planes' nếu chúng đã là một phần của khối đa diện (như "S.ABCD").
+   - Các mặt phẳng liên quan đến câu hỏi tính toán (như "khoảng cách đến (SBC)") sẽ được ghi nhận trực tiếp trong phần 'queries' mà không cần liệt kê trong 'entities.planes'.
+2. OVER-INFERENCE: Tuyệt đối KHÔNG tự ý thêm các thực thể như 'spheres' (mặt cầu) hay 'circles' (đường tròn) nếu văn bản không nhắc đến, ngay cả khi các tính chất hình học (như SA=SB=SC=SD) gợi ý về sự tồn tại của chúng.
+3. PLANE NAMES: Trích xuất tên mặt phẳng KHÔNG bao gồm dấu ngoặc đơn (ví dụ: "SBD" thay vì "(SBD)").
+4. MATH EXPRESSIONS: Định dạng mọi biểu thức toán học và độ dài dưới dạng biểu thức code (ví dụ: "a * sqrt(3) / 2").
+5. EQUIDISTANT APEX: Nếu "Đỉnh cách đều các đỉnh của đáy" (ví dụ: A' cách đều A, B, C), hãy trích xuất thêm một Fact 'projection' với target là hình chiếu của đỉnh đó lên tâm đường tròn ngoại tiếp (Circumcenter) của mặt đáy.
+6. EQUALITY: Sử dụng Fact type 'equality' cho các biểu thức bằng nhau như "AA' = BB' = CC'". 
+7. ENTITIES: Nhớ liệt kê các điểm đặc biệt như tâm đường tròn (O, I, G, H...) vào 'entities.points'. Nếu có mặt cầu hay đường tròn, hãy trích xuất vào 'entities.spheres' hoặc 'entities.circles'.
 """.strip()
 
     user_prompt = f"""

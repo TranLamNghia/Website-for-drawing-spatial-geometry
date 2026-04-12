@@ -11,6 +11,8 @@ class SympyAIEngine:
         self.sandbox_url = "http://localhost:8002/execute"
 
     def generate_and_solve(self, problem_text: str, facts_json: dict, current_points: dict, validation_failures: list, base_a_value: float) -> dict:
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         print(f"\n[SYMPY_ENGINE] Starting calling LLM to write Python script...")
         
         system_prompt = PROMPT_FILE.read_text(encoding="utf-8")
@@ -70,19 +72,40 @@ class SympyAIEngine:
                 print(f"[SYMPY_ENGINE] ❌ Error connecting to Math Sandbox: {str(e)}")
                 return {"status": "error", "message": f"Error connecting to Docker: {str(e)}"}
 
-            if sandbox_resp.status_code == 200:
+            # Save debug info even before failure/success (Redundant logging for safety)
+            try:
+                debug_log_path = BASE_DIR.parent / "sympyBin" / f"debug_{timestamp}_{attempt}.txt"
+                is_failed = (sandbox_resp.status_code != 200 or 
+                             data.get("status") == "error" or 
+                             (isinstance(data.get("data"), dict) and data.get("data", {}).get("STATUS") == "ERROR"))
+                
+                with open(debug_log_path, "w", encoding="utf-8") as f:
+                    f.write(f"PROBLEM:\n{problem_text}\n\n")
+                    f.write(f"CODE:\n{clean_code}\n\n")
+                    if is_failed:
+                        f.write(f"ERROR RESULT:\n{json.dumps(data, indent=2)}")
+                    else:
+                        f.write(f"SUCCESS RESULT:\n{json.dumps(data, indent=2)}")
+            except: pass
+
+            if sandbox_resp.status_code == 200 and data.get("status") != "error" and not (isinstance(data.get("data"), dict) and data.get("data").get("STATUS") == "ERROR"):
                 print(f"[SYMPY_ENGINE] 🟢 SUCCESS! Sandbox returned coordinates after {attempt} attempts!")
                 return data
             else:
-                error_detail = data.get("detail", str(data))
+                error_detail = data.get("message", data.get("detail", str(data)))
                 print(f"[SYMPY_ENGINE] 🔴 SANDBOX ERROR (Attempt {attempt}):\n{error_detail}")
                 
                 if attempt < MAX_RETRIES:
-                    print(f"[SYMPY_ENGINE] Self-healing")
+                    advice = ""
+                    if "Could not find root" in error_detail:
+                        advice = "\nPRO TIP: This usually means your system is OVER-CONSTRAINED (Equations > Variables). Ensure you have EXACTLY as many variables as equations."
+                    if "positive-definite" in error_detail:
+                        advice = "\nPRO TIP: This usually means your system is INCONSISTENT or equations are redundant/singular. Try to simplify the geometric constraints."
+                    
                     messages.append({"role": "assistant", "content": raw_code})
                     messages.append({
                         "role": "user", 
-                        "content": f"The Python script failed with this exception Traceback:\n{error_detail}\n\nPlease fix the bug and rewrite the ENTIRE script. Output ONLY Python code without markdown."
+                        "content": f"The Python script failed with this exception Traceback:\n{error_detail}\n{advice}\n\nPlease fix the bug and rewrite the ENTIRE script. Output ONLY Python code without markdown."
                     })
                 else:
                     print(f"[SYMPY_ENGINE] 💣 FAILED! Tried {MAX_RETRIES} times but still failed. Return error to BE.")
