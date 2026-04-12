@@ -32,8 +32,10 @@ public class ProjectionValidator : IFactValidator
         if (actualProj == null || fromPoint == null)
             return ValidationResult.Skip(fact.Id, "Projection", $"Chưa có tọa độ {projName} hoặc {fromName}");
 
+        var ontoVertices = System.Text.RegularExpressions.Regex.Matches(ontoName, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
+
         // Chiếu lên mặt phẳng
-        if (ontoName.Length >= 3)
+        if (ontoVertices.Count >= 3)
         {
             var plane = context.GetPlane(ontoName);
             if (plane == null)
@@ -48,7 +50,7 @@ public class ProjectionValidator : IFactValidator
             return ValidationResult.Fail(fact.Id, "Projection", 0, distance);
         }
         // Chiếu lên đường thẳng
-        else if (ontoName.Length == 2)
+        else if (ontoVertices.Count == 2)
         {
             var line = context.GetLine(ontoName);
             if (line == null)

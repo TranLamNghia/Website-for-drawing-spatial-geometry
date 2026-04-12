@@ -43,6 +43,7 @@ builder.Services.AddScoped<IFactHandler, PerpendicularHandler>();
 builder.Services.AddScoped<IFactHandler, AngleHandler>();
 builder.Services.AddScoped<IFactHandler, LengthHandler>();
 builder.Services.AddScoped<IFactHandler, OppositeRayHandler>();
+builder.Services.AddScoped<IFactHandler, ShapeHandler>();
 
 // Đăng ký FactValidators (Kiểm định ngược tọa độ)
 builder.Services.AddScoped<IFactValidator, LengthValidator>();

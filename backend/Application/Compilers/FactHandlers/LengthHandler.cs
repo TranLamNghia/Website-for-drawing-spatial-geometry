@@ -18,11 +18,8 @@ public class LengthHandler : IFactHandler
         string edge = data.Target; // VD: "AB"
         if (edge.Length < 2) return;
 
-        double d = 0;
-        if (double.TryParse(data.Value, out double val)) d = val;
-
-        // VD: Nếu đã có A mà chưa có B, và biết hướng AB là 1 tia nhất định (Phức tạp hơn Stage 1&2...)
-        Console.WriteLine($"[HANDLER] Ghi nhận độ dài: {edge} = {d}");
+        // Log the raw value (e.g., "a" or "5")
+        Console.WriteLine($"[HANDLER] Ghi nhận độ dài: {edge} = {data.Value}");
         // Các Case "M trên AB sao cho AM = 3" được tách thành BelongsTo + Length.
     }
 }

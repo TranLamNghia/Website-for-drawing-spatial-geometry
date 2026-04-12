@@ -21,14 +21,16 @@ public class LengthValidator : IFactValidator
             return ValidationResult.Skip(fact.Id, "Length", "Thiếu dữ liệu target/value");
 
         string edge = data.Target;
-        if (edge.Length < 2)
-            return ValidationResult.Skip(fact.Id, "Length", $"Target '{edge}' quá ngắn");
+        var vertices = System.Text.RegularExpressions.Regex.Matches(edge, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
+        
+        if (vertices.Count < 2)
+            return ValidationResult.Skip(fact.Id, "Length", $"Target '{edge}' không chứa đủ 2 đỉnh");
 
-        var p1 = context.GetPoint(edge[0].ToString());
-        var p2 = context.GetPoint(edge[1].ToString());
+        var p1 = context.GetPoint(vertices[0]);
+        var p2 = context.GetPoint(vertices[1]);
 
         if (p1 == null || p2 == null)
-            return ValidationResult.Skip(fact.Id, "Length", $"Chưa có tọa độ điểm {edge[0]} hoặc {edge[1]}");
+            return ValidationResult.Skip(fact.Id, "Length", $"Chưa có tọa độ điểm {vertices[0]} hoặc {vertices[1]}");
 
         double expectedLength = EvaluateExpression(data.Value, unitLength);
         double actualLength = p1.DistanceToPoint(p2);

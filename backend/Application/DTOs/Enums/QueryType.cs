@@ -21,5 +21,6 @@ public enum QueryType
     equation_plane,
     equation_sphere,
     coordinates,
-    proof_equal
+    proof_equal,
+    length
 }

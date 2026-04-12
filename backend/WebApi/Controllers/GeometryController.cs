@@ -57,7 +57,30 @@ public class GeometryController : ControllerBase
             {
                 message = "Biên dịch tọa độ thành công từ JSON trực tiếp!",
                 points = context.Points,
-                data = dto,
+                segments = dto.Entities.Segments.Concat(context.GeneratedSegments)
+                    .Select(s => s.Contains("-") ? s : string.Join("-", System.Text.RegularExpressions.Regex.Matches(s, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value))).Distinct(),
+                planes = dto.Entities.Planes
+                    .Select(p => System.Text.RegularExpressions.Regex.Matches(p, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value.Trim().ToUpper()).ToArray())
+                    .Where(pts => {
+                        if (pts.Length == 0) return false;
+                        bool exists = context.GeneratedPlanes.Any(gp => 
+                            pts.All(pt => gp.Points.Select(gpp => gpp.ToUpper()).Contains(pt)));
+                        return !exists;
+                    })
+                    .Select(pts => new { 
+                        points = pts,
+                        color = "#6671d1",
+                        density = 15,
+                        opacity = 0.1
+                    }).Concat(context.GeneratedPlanes.Select(p => new {
+                        points = p.Points,
+                        color = p.Color,
+                        density = p.Density,
+                        opacity = p.Opacity
+                    })),
+                circles = context.Circles,
+                spheres = context.Spheres,
+                queries = dto.Queries,
                 validation = new 
                 {
                     allPassed = context.ValidationReport?.AllPassed ?? true,
@@ -110,7 +133,30 @@ public class GeometryController : ControllerBase
             {
                 message = "Biên dịch tọa độ thành công!",
                 points = context.Points,
-                data = dto,
+                segments = dto.Entities.Segments.Concat(context.GeneratedSegments)
+                    .Select(s => s.Contains("-") ? s : string.Join("-", System.Text.RegularExpressions.Regex.Matches(s, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value))).Distinct(),
+                planes = dto.Entities.Planes
+                    .Select(p => System.Text.RegularExpressions.Regex.Matches(p, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value.Trim().ToUpper()).ToArray())
+                    .Where(pts => {
+                        if (pts.Length == 0) return false;
+                        bool exists = context.GeneratedPlanes.Any(gp => 
+                            pts.All(pt => gp.Points.Select(gpp => gpp.ToUpper()).Contains(pt)));
+                        return !exists;
+                    })
+                    .Select(pts => new { 
+                        points = pts,
+                        color = "#6671d1",
+                        density = 15,
+                        opacity = 0.1
+                    }).Concat(context.GeneratedPlanes.Select(p => new {
+                        points = p.Points,
+                        color = p.Color,
+                        density = p.Density,
+                        opacity = p.Opacity
+                    })),
+                circles = context.Circles,
+                spheres = context.Spheres,
+                queries = dto.Queries,
                 validation = new 
                 {
                     allPassed = context.ValidationReport?.AllPassed ?? true,
