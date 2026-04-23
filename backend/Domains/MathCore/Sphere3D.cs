@@ -29,6 +29,7 @@ public class Sphere3D
     public static Sphere3D GetCircumsphere(Point3D p1, Point3D p2, Point3D p3, Point3D p4)
     {
         var center = Point3D.GetCircumcenter(p1, p2, p3, p4);
+        if (center == null) center = Point3D.GetCentroid(p1, p2, p3, p4);
         double radius = center.DistanceToPoint(p1);
         return new Sphere3D(center, radius);
     }

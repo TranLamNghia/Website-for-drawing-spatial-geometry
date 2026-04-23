@@ -27,6 +27,8 @@ public class CircumscribedHandler : IFactHandler
             if (points.Count >= 3)
             {
                 var center = Point3D.GetCircumcenter(points.ToArray());
+                if (center == null) return;
+                
                 context.Points[spherePoint] = center;
                 double radius = center.DistanceToPoint(points[0]);
 

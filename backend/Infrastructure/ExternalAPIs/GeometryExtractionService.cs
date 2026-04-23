@@ -75,7 +75,7 @@ public class GeometryExtractionService : IGeometryExtractionService
                 // Check if data is an error message instead of point coordinates
                 if (dataElement.ValueKind == JsonValueKind.Object && dataElement.TryGetProperty("STATUS", out var status) && status.GetString() == "ERROR")
                 {
-                    string msg = dataElement.TryGetProperty("ERROR_MESSAGE", out var m) ? m.GetString() : "Unknown SymPy Error";
+                    string msg = dataElement.TryGetProperty("ERROR_MESSAGE", out var m) ? (m.GetString() ?? "Unknown SymPy Error") : "Unknown SymPy Error";
                     Console.WriteLine($"[AI_FALLBACK] SymPy failed: {msg}");
                     return null;
                 }

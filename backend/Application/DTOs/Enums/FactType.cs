@@ -30,5 +30,8 @@ public enum FactType
     Perimeter,
     Opposite_ray,
     Equality,
-    Perpendicular_bisector
+    Perpendicular_bisector,
+    Ray,
+    Perpendicular_ray,
+    Angle_bisector
 }

@@ -37,7 +37,7 @@ public class AngleValidator : IFactValidator
                 var v1 = line1.Direction;
                 var v2 = line2.Direction;
 
-                string commonPoint = FindCommonPoint(obj1, obj2);
+                string? commonPoint = FindCommonPoint(obj1, obj2);
                 if (!string.IsNullOrEmpty(commonPoint))
                 {
                     if (obj1.EndsWith(commonPoint)) 

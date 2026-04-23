@@ -26,6 +26,7 @@ public class GeometryCompiler : IGeometryCompiler
     {
         // Khởi tạo cuốn sổ tay trắng
         var context = new CompilationContext();
+        context.IdentityPoints = new HashSet<string>(problem.Entities.Points.Select(p => p.ToUpper()));
 
         // Giai đoạn 1: Dựng móng nhà (Mặt đáy nằm trên mp z = 0)
         BuildBase(problem, context);
@@ -44,6 +45,12 @@ public class GeometryCompiler : IGeometryCompiler
         // Giai đoạn 3: Tính toán trung điểm, trọng tâm, giao điểm... (cho các cạnh bên, v.v...)
         BuildDependentEntities(problem, context);
 
+        // Giai đoạn 3.5: Hợp nhất các điểm trùng tọa độ (VD: O trùng G trong tam giác đều)
+        MergePoints(problem, context);
+
+        // Giai đoạn 3.7: Xử lý Cross-Section từ Queries (VD: "cross_section_S.ABCD_MNP")
+        ProcessCrossSectionQueries(problem, context);
+
         // Bỏ đoạn tự sửa tên điểm descriptiveKeys theo ý kiến người dùng để giữ nguyên điểm AI trả về
 
         // Xóa bỏ phần thập phân nhỏ hơn 1e-10
@@ -57,6 +64,9 @@ public class GeometryCompiler : IGeometryCompiler
         // Giai đoạn 4: KIỂM ĐỊNH NGƯỢC (Validation)
         // Dùng tọa độ vừa dựng để kiểm tra ngược lại từng Fact (Diện tích, Độ dài, Góc...)
         context.ValidationReport = _validationEngine.Validate(problem, context);
+
+        // Giai đoạn 5: Tính Side cho từng điểm so với mặt phẳng cắt (Cross-section)
+        ComputePointSides(context);
 
         return context;
     }
@@ -83,6 +93,9 @@ public class GeometryCompiler : IGeometryCompiler
 
         // Chạy lại kiểm định vòng 2
         context.ValidationReport = _validationEngine.Validate(problem, context);
+
+        // Tính lại Side cho cross-section
+        ComputePointSides(context);
         
         Console.WriteLine($"[COMPILER] Fallback hoàn tất. Kết quả Re-Validation: AllPassed = {context.ValidationReport.AllPassed}");
     }
@@ -943,6 +956,348 @@ public class GeometryCompiler : IGeometryCompiler
                 handler.Handle(fact, context); 
             }
         }
+    }
+
+    private void MergePoints(GeometryProblemDto problem, CompilationContext context)
+    {
+        // 1. Chỉ hợp nhất các điểm KHÔNG nằm trong danh sách thực thể chính (identity points)
+        // Hoặc chỉ hợp nhất nếu chúng thực sự trùng tọa độ 100%
+        var identityPoints = new HashSet<string>(problem.Entities.Points.Select(p => p.ToUpper()));
+        
+        var priorityList = problem.Entities.Points.ToList();
+        var keys = context.Points.Keys.OrderBy(k => {
+            int idx = priorityList.IndexOf(k);
+            return idx == -1 ? 999 : idx;
+        }).ToList();
+
+        var merged = new HashSet<string>();
+
+        for (int i = 0; i < keys.Count; i++)
+        {
+            string pPrimary = keys[i];
+            if (merged.Contains(pPrimary)) continue;
+            if (!context.Points.TryGetValue(pPrimary, out var pos1)) continue;
+
+            for (int j = i + 1; j < keys.Count; j++)
+            {
+                string pSecondary = keys[j];
+                if (merged.Contains(pSecondary)) continue;
+                
+                // NGUYÊN TẮC VÀNG: Không bao giờ hợp nhất 2 điểm định danh (A, B, C, G...)
+                if (identityPoints.Contains(pSecondary.ToUpper()) && identityPoints.Contains(pPrimary.ToUpper()))
+                    continue;
+
+                if (!context.Points.TryGetValue(pSecondary, out var pos2)) continue;
+
+                if (pos1.DistanceToPoint(pos2) < 1e-4)
+                {
+                    Console.WriteLine($"[COMPILER] Hợp nhất điểm dư thừa: {pSecondary} -> {pPrimary}");
+                    context.ReplacePointReference(pSecondary, pPrimary);
+                    context.Points.Remove(pSecondary);
+                    merged.Add(pSecondary);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phát hiện các query chứa "cross_section" và tự động tính thiết diện.
+    /// Format target: "cross_section_S.ABCD_MNP" → solid=S.ABCD, plane=MNP
+    /// </summary>
+    private void ProcessCrossSectionQueries(GeometryProblemDto problem, CompilationContext context)
+    {
+        foreach (var query in problem.Queries)
+        {
+            string target = "";
+            try
+            {
+                if (query.Data.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                    query.Data.TryGetProperty("target", out var targetProp))
+                {
+                    target = targetProp.GetString() ?? "";
+                }
+            }
+            catch { continue; }
+
+            if (!target.StartsWith("cross_section", StringComparison.OrdinalIgnoreCase)) continue;
+
+            Console.WriteLine($"[COMPILER] Phát hiện Cross-Section Query: {target}");
+
+            // Parse: "cross_section_S.ABCD_MNP" → solid="S.ABCD", planeStr="MNP"
+            var afterPrefix = target.Substring("cross_section_".Length); // "S.ABCD_MNP"
+            
+            string solidStr = "";
+            string planeStr = "";
+
+            // Tìm vị trí phân tách: Khối chứa '.', phần còn lại là tên mp
+            if (afterPrefix.Contains("."))
+            {
+                // Tìm '_' cuối cùng sau dấu '.' để tách solid và plane
+                int dotIdx = afterPrefix.IndexOf('.');
+                int sepIdx = afterPrefix.IndexOf('_', dotIdx);
+                if (sepIdx > 0)
+                {
+                    solidStr = afterPrefix.Substring(0, sepIdx);
+                    planeStr = afterPrefix.Substring(sepIdx + 1);
+                }
+            }
+            else
+            {
+                // Không có '.', ví dụ "cross_section_ABCD_MNP" (Tetrahedron)
+                // Tìm '_' cuối cùng
+                int lastSep = afterPrefix.LastIndexOf('_');
+                if (lastSep > 0)
+                {
+                    solidStr = afterPrefix.Substring(0, lastSep);
+                    planeStr = afterPrefix.Substring(lastSep + 1);
+                }
+            }
+
+            if (string.IsNullOrEmpty(solidStr) || string.IsNullOrEmpty(planeStr))
+            {
+                Console.WriteLine($"[COMPILER] Không parse được cross_section target: {target}");
+                continue;
+            }
+
+            Console.WriteLine($"[COMPILER] Cross-Section: Khối={solidStr}, Mp cắt={planeStr}");
+
+            // Lấy 3 điểm đầu tiên của mặt phẳng cắt
+            var planeVertices = ParseVertices(planeStr);
+            if (planeVertices.Count < 3)
+            {
+                Console.WriteLine($"[COMPILER] Mp cắt cần ít nhất 3 điểm, chỉ có {planeVertices.Count}");
+                continue;
+            }
+
+            var p1 = context.GetPoint(planeVertices[0]);
+            var p2 = context.GetPoint(planeVertices[1]);
+            var p3 = context.GetPoint(planeVertices[2]);
+            if (p1 == null || p2 == null || p3 == null)
+            {
+                Console.WriteLine($"[COMPILER] Thiếu tọa độ cho các đỉnh mặt phẳng cắt: {planeStr}");
+                continue;
+            }
+
+            Domains.MathCore.Plane3D plane;
+            try { plane = new Domains.MathCore.Plane3D(p1, p2, p3); }
+            catch { Console.WriteLine($"[COMPILER] 3 điểm {planeStr} thẳng hàng, không tạo được mp"); continue; }
+
+            // Lấy tất cả cạnh của khối 
+            var solidEdges = GetSolidEdges(solidStr, context);
+            if (solidEdges.Count == 0)
+            {
+                Console.WriteLine($"[COMPILER] Không tìm thấy cạnh nào cho khối {solidStr}");
+                continue;
+            }
+
+            Console.WriteLine($"[COMPILER] Tìm giao mp({planeStr}) với {solidEdges.Count} cạnh của khối {solidStr}");
+
+            var crossSectionPoints = new List<string>();
+            int autoIdx = 1;
+
+            foreach (var (v1, v2) in solidEdges)
+            {
+                var ep1 = context.GetPoint(v1);
+                var ep2 = context.GetPoint(v2);
+                if (ep1 == null || ep2 == null) continue;
+
+                double side1 = plane.A * ep1.X + plane.B * ep1.Y + plane.C * ep1.Z + plane.D;
+                double side2 = plane.A * ep2.X + plane.B * ep2.Y + plane.C * ep2.Z + plane.D;
+
+                if (side1 * side2 < -1e-9)
+                {
+                    var line = new Domains.MathCore.Line3D(ep1, ep2);
+                    var intersection = plane.IntersectWith(line);
+                    if (intersection == null) continue;
+
+                    double segLen = ep1.DistanceToPoint(ep2);
+                    double d1 = ep1.DistanceToPoint(intersection);
+                    double d2 = ep2.DistanceToPoint(intersection);
+                    if (d1 > segLen + 1e-6 || d2 > segLen + 1e-6) continue;
+
+                    string ptName = $"CS{autoIdx++}";
+                    bool merged = false;
+                    foreach (var kvp in context.Points)
+                    {
+                        if (kvp.Value.DistanceToPoint(intersection) < 1e-4)
+                        {
+                            ptName = kvp.Key;
+                            merged = true;
+                            break;
+                        }
+                    }
+                    if (!merged) context.Points[ptName] = intersection;
+                    if (!crossSectionPoints.Contains(ptName)) crossSectionPoints.Add(ptName);
+
+                    Console.WriteLine($"   -> Giao cạnh {v1}{v2}: {ptName} = ({intersection.X:F2}, {intersection.Y:F2}, {intersection.Z:F2})");
+                }
+                else
+                {
+                    if (Math.Abs(side1) < 1e-6 && !crossSectionPoints.Contains(v1))
+                        crossSectionPoints.Add(v1);
+                    if (Math.Abs(side2) < 1e-6 && !crossSectionPoints.Contains(v2))
+                        crossSectionPoints.Add(v2);
+                }
+            }
+
+            if (crossSectionPoints.Count >= 3)
+            {
+                var orderedPoints = OrderCrossSectionPoints(crossSectionPoints, context, plane);
+
+                for (int i = 0; i < orderedPoints.Count; i++)
+                    context.AddGeneratedSegment(orderedPoints[i], orderedPoints[(i + 1) % orderedPoints.Count]);
+
+                context.GeneratedPlanes.Add(new PlaneData
+                {
+                    Points = orderedPoints.ToArray(),
+                    Color = "#ff6b6b",
+                    Opacity = 0.25
+                });
+
+                context.ClippingPlane = new ClippingPlaneEquation
+                {
+                    A = plane.A, B = plane.B, C = plane.C, D = plane.D,
+                    CrossSectionVertices = orderedPoints.ToArray()
+                };
+                context.CrossSectionPoints = orderedPoints;
+
+                Console.WriteLine($"[COMPILER] ✅ Thiết diện thành công: {string.Join("-", orderedPoints)}");
+            }
+            else
+            {
+                Console.WriteLine($"[COMPILER] Chỉ tìm được {crossSectionPoints.Count} giao điểm, không đủ tạo thiết diện.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lấy tất cả cạnh của khối đa diện.
+    /// </summary>
+    private List<(string, string)> GetSolidEdges(string solidStr, CompilationContext context)
+    {
+        var edges = new HashSet<string>();
+        var result = new List<(string, string)>();
+
+        if (solidStr.Contains("."))
+        {
+            var parts = solidStr.Split('.');
+            var topVertices = ParseVertices(parts[0]);
+            var bottomVertices = ParseVertices(parts[1]);
+
+            if (topVertices.Count == 1 && bottomVertices.Count >= 3)
+            {
+                string apex = topVertices[0];
+                for (int i = 0; i < bottomVertices.Count; i++)
+                {
+                    AddSolidEdge(edges, result, apex, bottomVertices[i]);
+                    AddSolidEdge(edges, result, bottomVertices[i], bottomVertices[(i + 1) % bottomVertices.Count]);
+                }
+            }
+            else if (topVertices.Count >= 3 && bottomVertices.Count >= 3)
+            {
+                for (int i = 0; i < topVertices.Count; i++)
+                {
+                    AddSolidEdge(edges, result, topVertices[i], topVertices[(i + 1) % topVertices.Count]);
+                    AddSolidEdge(edges, result, bottomVertices[i], bottomVertices[(i + 1) % bottomVertices.Count]);
+                    AddSolidEdge(edges, result, topVertices[i], bottomVertices[i]);
+                }
+            }
+        }
+        else
+        {
+            var vertices = ParseVertices(solidStr);
+            if (vertices.Count == 4)
+            {
+                for (int i = 0; i < 4; i++)
+                    for (int j = i + 1; j < 4; j++)
+                        AddSolidEdge(edges, result, vertices[i], vertices[j]);
+            }
+        }
+
+        if (result.Count == 0)
+        {
+            foreach (var seg in context.GeneratedSegments)
+            {
+                var pts = seg.Split('-');
+                if (pts.Length == 2) result.Add((pts[0], pts[1]));
+            }
+        }
+
+        return result;
+    }
+
+    private void AddSolidEdge(HashSet<string> existing, List<(string, string)> list, string a, string b)
+    {
+        var key = string.Join("-", new[] { a, b }.OrderBy(x => x));
+        if (existing.Add(key)) list.Add((a, b));
+    }
+
+    /// <summary>
+    /// Sắp xếp các điểm thiết diện theo thứ tự vòng quanh trọng tâm.
+    /// </summary>
+    private List<string> OrderCrossSectionPoints(List<string> pointNames, CompilationContext context, Domains.MathCore.Plane3D plane)
+    {
+        if (pointNames.Count <= 3) return pointNames;
+
+        var points = pointNames.Select(n => context.Points[n]).ToList();
+        var centroid = Domains.MathCore.Point3D.GetCentroid(points.ToArray());
+
+        var normal = plane.Normal;
+        double nLen = normal.Magnitude();
+        var nNorm = new Domains.MathCore.Vector3D(normal.X / nLen, normal.Y / nLen, normal.Z / nLen);
+
+        Domains.MathCore.Vector3D u;
+        if (Math.Abs(nNorm.X) < 0.9)
+            u = new Domains.MathCore.Vector3D(1, 0, 0).CrossProduct(nNorm);
+        else
+            u = new Domains.MathCore.Vector3D(0, 1, 0).CrossProduct(nNorm);
+
+        double uLen = u.Magnitude();
+        u = new Domains.MathCore.Vector3D(u.X / uLen, u.Y / uLen, u.Z / uLen);
+        var v = nNorm.CrossProduct(u);
+
+        var angles = new List<(string name, double angle)>();
+        foreach (var name in pointNames)
+        {
+            var p = context.Points[name];
+            double dx = p.X - centroid.X;
+            double dy = p.Y - centroid.Y;
+            double dz = p.Z - centroid.Z;
+            double projU = dx * u.X + dy * u.Y + dz * u.Z;
+            double projV = dx * v.X + dy * v.Y + dz * v.Z;
+            angles.Add((name, Math.Atan2(projV, projU)));
+        }
+
+        return angles.OrderBy(a => a.angle).Select(a => a.name).ToList();
+    }
+
+    /// <summary>
+    /// Tính Side (Above/Below/OnPlane) cho mỗi điểm so với mặt phẳng cắt.
+    /// Sử dụng phương trình mặt phẳng Ax + By + Cz + D để phân loại.
+    /// </summary>
+    private void ComputePointSides(CompilationContext context)
+    {
+        if (context.ClippingPlane == null) return;
+
+        var cp = context.ClippingPlane;
+        context.PointSides.Clear();
+
+        foreach (var kvp in context.Points)
+        {
+            double val = cp.A * kvp.Value.X + cp.B * kvp.Value.Y + cp.C * kvp.Value.Z + cp.D;
+
+            if (Math.Abs(val) < 1e-4)
+                context.PointSides[kvp.Key] = PointSide.OnPlane;
+            else if (val > 0)
+                context.PointSides[kvp.Key] = PointSide.Above;
+            else
+                context.PointSides[kvp.Key] = PointSide.Below;
+        }
+
+        int above = context.PointSides.Values.Count(s => s == PointSide.Above);
+        int below = context.PointSides.Values.Count(s => s == PointSide.Below);
+        int onPlane = context.PointSides.Values.Count(s => s == PointSide.OnPlane);
+        Console.WriteLine($"[COMPILER] Cross-Section Sides: Above={above}, Below={below}, OnPlane={onPlane}");
     }
 
     private List<string> ParseVertices(string input)

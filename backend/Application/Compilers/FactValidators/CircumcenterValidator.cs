@@ -33,7 +33,9 @@ public class CircumcenterValidator : IFactValidator
         if (points.Count < 3)
             return ValidationResult.Skip(fact.Id, "Circumcenter", $"Chưa có đủ tọa độ cho hình {shapeName}");
 
-        Point3D expectedCenter = Point3D.GetCircumcenter(points.ToArray());
+        Point3D? expectedCenter = Point3D.GetCircumcenter(points.ToArray());
+        if (expectedCenter == null)
+            return ValidationResult.Skip(fact.Id, "Circumcenter", "Lỗi tính tâm ngoại tiếp");
 
         double distance = actualPoint.DistanceToPoint(expectedCenter);
         double tolerance = 0.05; // Ngưỡng sai số 0.05 đơn vị

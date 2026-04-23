@@ -25,8 +25,21 @@ public class CentroidHandler : IFactHandler
 
             if (points.Count >= 3)
             {
-                context.Points[g] = Point3D.GetCentroid(points.ToArray());
-                Console.WriteLine($"[HANDLER] Đã dựng trọng tâm {g} của {polygon}");
+                var centroid = Point3D.GetCentroid(points.ToArray());
+                
+                // Kiểm tra xem tại tọa độ này đã có điểm nào tồn tại chưa
+                string existingPoint = context.Points.FirstOrDefault(kvp => kvp.Value.DistanceToPoint(centroid) < 1e-4).Key;
+
+                if (!string.IsNullOrEmpty(existingPoint))
+                {
+                    Console.WriteLine($"[HANDLER] Trọng tâm {g} trùng với điểm {existingPoint} đã có. Tái sử dụng...");
+                    context.ReplacePointReference(g, existingPoint);
+                }
+                else
+                {
+                    context.Points[g] = centroid;
+                    Console.WriteLine($"[HANDLER] Đã dựng trọng tâm {g} của {polygon}");
+                }
             }
         }
     }
