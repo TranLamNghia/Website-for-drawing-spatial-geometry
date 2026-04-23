@@ -5,6 +5,7 @@ import { LeftSidebar } from '@/components/geometry/left-sidebar'
 import { Canvas3D } from '@/components/geometry/canvas-3d-r3f'
 import { RightSidebar } from '@/components/geometry/right-sidebar'
 import { GeometryProvider } from '@/components/geometry/geometry-context'
+import { ThemeSwitcher } from '@/components/geometry/theme-switcher'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
  
 export default function Home() {
@@ -12,18 +13,22 @@ export default function Home() {
   const [rightOpen, setRightOpen] = useState(true)
 
   return (
-    <div className="h-screen bg-[#f8f9fa] overflow-hidden relative">
+    <div className="h-screen bg-background text-foreground overflow-hidden relative">
       <GeometryProvider>
         {/* Main Canvas (Background) */}
         <div className="absolute inset-0 z-0">
           <Canvas3D />
         </div>
 
+        <div className="absolute top-6 right-[420px] z-50">
+          <ThemeSwitcher />
+        </div>
+
         {/* Left Sidebar Overlay */}
         <div 
-          className={`absolute left-0 top-0 bottom-0 z-30 transition-all duration-500 ease-in-out bg-white/90 backdrop-blur-md shadow-2xl flex-shrink-0 ${
+          className={`absolute left-0 top-0 bottom-0 z-30 transition-all duration-500 ease-in-out bg-card/90 backdrop-blur-md shadow-2xl flex-shrink-0 ${
             leftOpen ? 'w-96 translate-x-0 overflow-visible' : 'w-96 -translate-x-[384px] overflow-visible'
-          } border-r border-[#ddd]`}
+          } border-r border-border`}
         >
           <div className="w-full h-full overflow-y-auto">
             <LeftSidebar />
@@ -32,7 +37,7 @@ export default function Home() {
           {/* Toggle Button */}
           <button 
             onClick={() => setLeftOpen(!leftOpen)}
-            className="absolute -right-10 top-1/2 -translate-y-1/2 z-40 bg-white/95 backdrop-blur-sm border border-l-0 border-[#ddd] shadow-xl rounded-r-2xl p-3 hover:bg-[#6671d1] hover:text-white transition-all text-gray-500 flex items-center justify-center group"
+            className="absolute -right-10 top-1/2 -translate-y-1/2 z-40 bg-card/95 backdrop-blur-sm border border-l-0 border-border shadow-xl rounded-r-2xl p-3 hover:bg-primary hover:text-primary-foreground transition-all text-muted-foreground flex items-center justify-center group"
             title={leftOpen ? "Thu gọn thanh bên trái" : "Mở thanh bên trái"}
           >
             {leftOpen ? <ChevronLeft size={24} className="group-hover:scale-110 transition-transform" /> : <ChevronRight size={24} className="group-hover:scale-110 transition-transform" />}
@@ -41,9 +46,9 @@ export default function Home() {
 
         {/* Right Sidebar Overlay */}
         <div 
-          className={`absolute right-0 top-0 bottom-0 z-30 transition-all duration-500 ease-in-out bg-white/90 backdrop-blur-md shadow-2xl flex-shrink-0 ${
+          className={`absolute right-0 top-0 bottom-0 z-30 transition-all duration-500 ease-in-out bg-card/90 backdrop-blur-md shadow-2xl flex-shrink-0 ${
             rightOpen ? 'w-96 translate-x-0 overflow-visible' : 'w-96 translate-x-[384px] overflow-visible'
-          } border-l border-[#ddd]`}
+          } border-l border-border`}
         >
           <div className="w-full h-full overflow-y-auto">
             <RightSidebar />
@@ -52,7 +57,7 @@ export default function Home() {
           {/* Toggle Button */}
           <button 
             onClick={() => setRightOpen(!rightOpen)}
-            className="absolute -left-10 top-1/2 -translate-y-1/2 z-40 bg-white/95 backdrop-blur-sm border border-r-0 border-[#ddd] shadow-xl rounded-l-2xl p-3 hover:bg-[#6671d1] hover:text-white transition-all text-gray-500 flex items-center justify-center group"
+            className="absolute -left-10 top-1/2 -translate-y-1/2 z-40 bg-card/95 backdrop-blur-sm border border-r-0 border-border shadow-xl rounded-l-2xl p-3 hover:bg-primary hover:text-primary-foreground transition-all text-muted-foreground flex items-center justify-center group"
             title={rightOpen ? "Thu gọn thanh bên phải" : "Mở thanh bên phải"}
           >
             {rightOpen ? <ChevronRight size={24} className="group-hover:scale-110 transition-transform" /> : <ChevronLeft size={24} className="group-hover:scale-110 transition-transform" />}

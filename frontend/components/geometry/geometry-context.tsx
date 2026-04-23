@@ -36,6 +36,14 @@ export interface SphereData {
   opacity?: number
 }
 
+export interface ClippingPlaneData {
+  a: number
+  b: number
+  c: number
+  d: number
+  crossSectionVertices?: string[]
+}
+
 export interface GeometryData {
   points: Record<string, [number, number, number]>
   is_consistent: boolean
@@ -45,6 +53,8 @@ export interface GeometryData {
   circles?: CircleData[]
   planes?: PlaneData[]
   spheres?: SphereData[]
+  clippingPlane?: ClippingPlaneData
+  pointSides?: Record<string, 'above' | 'below' | 'onplane'>
 }
 
 export interface ValidationResult {

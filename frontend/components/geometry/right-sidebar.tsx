@@ -55,9 +55,9 @@ export function RightSidebar() {
           {geometryData ? (
             <>
               {isConsistent ? (
-                <Alert className="bg-green-950 border-green-700">
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                  <AlertDescription className="text-green-100">
+                <Alert className="bg-green-500/10 border-green-500/30">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  <AlertDescription className="text-green-700 dark:text-green-200">
                     <span className="font-semibold">Đề bài hợp lệ!</span>
                     <p className="text-xs mt-1">
                       Bài toán thỏa mãn tất cả các điều kiện hình học.
@@ -65,9 +65,9 @@ export function RightSidebar() {
                   </AlertDescription>
                 </Alert>
               ) : (
-                <Alert className="bg-red-950 border-red-700">
-                  <AlertCircle className="h-4 w-4 text-red-400" />
-                  <AlertDescription className="text-red-100">
+                <Alert className="bg-red-500/10 border-red-500/30">
+                  <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  <AlertDescription className="text-red-700 dark:text-red-200">
                     <span className="font-semibold">MÂU THUẪN LOGIC PHÁT HIỆN</span>
                     {errorMessage && (
                       <p className="text-xs mt-2">{errorMessage}</p>
@@ -75,7 +75,7 @@ export function RightSidebar() {
                     <div className="text-xs mt-2 space-y-1">
                       {validation.issues.map((issue: string, idx: number) => (
                         <div key={idx} className="flex items-start gap-2">
-                          <span className="text-red-400 mt-1">•</span>
+                          <span className="text-red-500 mt-1">•</span>
                           <span>{issue}</span>
                         </div>
                       ))}
@@ -165,7 +165,7 @@ export function RightSidebar() {
                   <Badge
                     key={edge}
                     variant="secondary"
-                    className="bg-blue-900/40 text-blue-300 hover:bg-blue-900/60 cursor-pointer"
+                    className="bg-blue-500/15 text-blue-700 dark:text-blue-300 hover:bg-blue-500/25 cursor-pointer"
                     onMouseEnter={() => handleEntityHover([`${edge[0]}-${edge[1]}`])}
                     onMouseLeave={handleEntityLeave}
                   >
@@ -200,7 +200,7 @@ export function RightSidebar() {
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Trạng thái:</span>
-                <Badge className={isConsistent ? 'bg-green-900 text-green-100' : 'bg-red-900 text-red-100'}>
+                <Badge className={isConsistent ? 'bg-green-500/20 text-green-700 dark:text-green-200' : 'bg-red-500/20 text-red-700 dark:text-red-200'}>
                   {isConsistent ? 'Hợp lệ' : 'Không hợp lệ'}
                 </Badge>
               </div>
