@@ -102,6 +102,8 @@ public class Point3D
         var g = GetCentroid(p1, p2, p3);
         var o = GetCircumcenter(p1, p2, p3);
  
+        if (o == null) return g;
+
         return new Point3D(
             3 * g.X - 2 * o.X,
             3 * g.Y - 2 * o.Y,
@@ -143,9 +145,9 @@ public class Point3D
     }
 
     // Tâm mặt cầu / đường tròn ngoại tiếp đa diện
-    public static Point3D GetCircumcenter(params Point3D[] pts)
+    public static Point3D? GetCircumcenter(params Point3D[] pts)
     {
-        if (pts.Length < 3) return pts[0];
+        if (pts.Length < 3) return null;
         
         Point3D p1 = pts[0];
         double[,] A = new double[3, 3];
@@ -182,7 +184,7 @@ public class Point3D
             B[2] = (p4.X * p4.X + p4.Y * p4.Y + p4.Z * p4.Z) - (p1.X * p1.X + p1.Y * p1.Y + p1.Z * p1.Z);
         }
 
-        return SolveLinearSystem3x3(A, B) ?? GetCentroid(pts); // Fallback về trọng tâm nếu suy biến
+        return SolveLinearSystem3x3(A, B); // Trả về null nếu không giải được (suy biến), không fallback về trọng tâm
     }
 
     // Tìm tâm đường tròn nội tiếp đa giác
