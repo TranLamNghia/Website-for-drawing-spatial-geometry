@@ -167,7 +167,10 @@
                         "volume",
                         "perimeter",
                         "equality",
-                        "perpendicular_bisector"
+                        "perpendicular_bisector",
+                        "ray",
+                        "perpendicular_ray",
+                        "angle_bisector"
                     ]
                 },
                 "data": {
@@ -255,6 +258,15 @@
                 },
                 {
                     "$ref": "#/definitions/fact_perpendicular_bisector"
+                },
+                {
+                    "$ref": "#/definitions/fact_ray"
+                },
+                {
+                    "$ref": "#/definitions/fact_perpendicular_ray"
+                },
+                {
+                    "$ref": "#/definitions/fact_angle_bisector"
                 }
             ]
         },
@@ -1729,6 +1741,106 @@
                             "target": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "fact_ray": {
+        "if": {
+            "properties": {
+                "type": {
+                    "const": "ray"
+                }
+            }
+        },
+        "then": {
+            "properties": {
+                "data": {
+                    "required": [
+                        "point",
+                        "origin",
+                        "ray_point"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                        "point": {
+                            "type": "string"
+                        },
+                        "origin": {
+                            "type": "string"
+                        },
+                        "ray_point": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "fact_perpendicular_ray": {
+        "if": {
+            "properties": {
+                "type": {
+                    "const": "perpendicular_ray"
+                }
+            }
+        },
+        "then": {
+            "properties": {
+                "data": {
+                    "required": [
+                        "point",
+                        "origin",
+                        "perpendicular_to"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                        "point": {
+                            "type": "string"
+                        },
+                        "origin": {
+                            "type": "string"
+                        },
+                        "perpendicular_to": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "fact_angle_bisector": {
+        "if": {
+            "properties": {
+                "type": {
+                    "const": "angle_bisector"
+                }
+            }
+        },
+        "then": {
+            "properties": {
+                "data": {
+                    "required": [
+                        "point",
+                        "vertex",
+                        "ray_1",
+                        "ray_2"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                        "point": {
+                            "type": "string"
+                        },
+                        "vertex": {
+                            "type": "string"
+                        },
+                        "ray_1": {
+                            "type": "string"
+                        },
+                        "ray_2": {
+                            "type": "string"
                         }
                     }
                 }
