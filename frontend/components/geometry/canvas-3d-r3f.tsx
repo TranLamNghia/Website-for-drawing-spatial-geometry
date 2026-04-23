@@ -4,20 +4,44 @@ import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
+import { useTheme } from 'next-themes'
 import { useGeometry } from './geometry-context'
-import { ZoomIn, ZoomOut, Layers, Crosshair, Eye, RefreshCcw } from 'lucide-react'
+import { ZoomIn, ZoomOut, Layers, Crosshair, Eye, RefreshCcw, Scissors } from 'lucide-react'
 
-// GeoGebra Light Palette
-const GEO_COLORS = {
-  BG: 0xffffff,
-  AXIS_X: 0xd32f2f,
-  AXIS_Y: 0x388e3c,
-  AXIS_Z: 0x1976d2,
-  POINT: 0x6671d1,
-  FACE: 0x6671d1,
-  EDGE_SOLID: 0x1a1a2e,
-  EDGE_DASHED: 0x999999,
-  HIGHLIGHT: 0xff9f43,
+function getGeoColors(isDarkTheme: boolean) {
+  if (isDarkTheme) {
+    return {
+      BG: 0x111827,
+      AXIS_X: 0xf87171,
+      AXIS_Y: 0x4ade80,
+      AXIS_Z: 0x60a5fa,
+      POINT: 0x93c5fd,
+      FACE: 0x818cf8,
+      EDGE_SOLID: 0xe5e7eb,
+      EDGE_DASHED: 0x9ca3af,
+      HIGHLIGHT: 0xfbbf24,
+      GRID: 0x374151,
+      PLANE: 0x1f2937,
+      LABEL: '#e5e7eb',
+      LABEL_SHADOW: '#111827',
+    }
+  }
+
+  return {
+    BG: 0xffffff,
+    AXIS_X: 0xd32f2f,
+    AXIS_Y: 0x388e3c,
+    AXIS_Z: 0x1976d2,
+    POINT: 0x6671d1,
+    FACE: 0x6671d1,
+    EDGE_SOLID: 0x1a1a2e,
+    EDGE_DASHED: 0x999999,
+    HIGHLIGHT: 0xff9f43,
+    GRID: 0xd0d0d0,
+    PLANE: 0xcccccc,
+    LABEL: '#1a1a2e',
+    LABEL_SHADOW: '#ffffff',
+  }
 }
 
 function parseEdgeKey(edgeKey: string): [string, string] | null {
@@ -38,9 +62,13 @@ interface TickData {
 
 export function Canvas3D() {
   const mountRef = useRef<HTMLDivElement>(null)
+  const { resolvedTheme } = useTheme()
+  const isDarkTheme = resolvedTheme === 'dark'
+  const GEO_COLORS = getGeoColors(isDarkTheme)
   const [showLabels, setShowLabels] = useState(true)
   const [showAxes, setShowAxes] = useState(true)
   const [showBasePlane, setShowBasePlane] = useState(true)
+  const [clipMode, setClipMode] = useState<'off' | 'above' | 'below'>('off')
   const { geometryData, highlightedEdges } = useGeometry()
 
   // Refs for persistent Three.js objects to ensure cleanup
@@ -54,6 +82,9 @@ export function Canvas3D() {
   useEffect(() => {
     stateRefs.current = { showAxes, showBasePlane }
   }, [showAxes, showBasePlane])
+
+  const clipModeRef = useRef(clipMode)
+  useEffect(() => { clipModeRef.current = clipMode }, [clipMode])
 
   // Initialization (Run once)
   useEffect(() => {
@@ -83,6 +114,7 @@ export function Canvas3D() {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(container.clientWidth, container.clientHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.localClippingEnabled = true
     container.appendChild(renderer.domElement)
 
     // CSS2D Renderer
@@ -131,7 +163,7 @@ export function Canvas3D() {
 
     const planeGeo = new THREE.PlaneGeometry(240, 240)
     const planeMat = new THREE.MeshBasicMaterial({
-      color: 0xcccccc, alphaMap, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false
+      color: GEO_COLORS.PLANE, alphaMap, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false
     })
     const basePlane = new THREE.Mesh(planeGeo, planeMat)
     envGroup.add(basePlane)
@@ -260,20 +292,41 @@ export function Canvas3D() {
       controls.update()
 
       const dist = camera.position.distanceTo(controls.target)
-      let step = 1
-      if (dist > 45) step = 10
-      else if (dist > 25) step = 5
-      else if (dist > 12) step = 2
+      // Make grid "follow zoom": cell size increases when zooming out,
+      // and decreases when zooming in. We approximate projected world size
+      // from camera distance + FOV, then snap to nice step sizes.
+      const fovRad = THREE.MathUtils.degToRad(camera.fov)
+      const worldSpan = 2 * dist * Math.tan(fovRad / 2) // approximate visible span at target distance
+      const targetCells = 18
+      const stepEstimate = worldSpan / targetCells
+      const stepOptions = [1, 2, 5, 10, 20, 50]
+      const step = stepOptions.find(s => s >= stepEstimate) ?? stepOptions[stepOptions.length - 1]
 
-      const maxVis = Math.floor(dist * 1.1)
-      const edgePos = maxVis - (maxVis % step) + step
+      const center = controls.target
+      const centerX = center.x
+      const centerY = center.y
+      const centerZ = center.z
 
-      if (axisLabels['x']) axisLabels['x'].position.set(edgePos, 0, 0)
-      if (axisLabels['y']) axisLabels['y'].position.set(0, edgePos, 0)
-      if (axisLabels['z']) axisLabels['z'].position.set(0, 0, edgePos)
+      // Grid extent is not limited by a fixed "number of cells".
+      // It extends from world origin to (camera target + 10), then mirrored.
+      const extentX = Math.abs(centerX) + 10
+      const extentY = Math.abs(centerY) + 10
+      const extentZ = Math.abs(centerZ) + 10
+
+      const edgePosX = Math.ceil(extentX / step) * step
+      const edgePosY = Math.ceil(extentY / step) * step
+      const edgePosZ = Math.ceil(extentZ / step) * step
+      const edgePos = Math.max(edgePosX, edgePosY)
+
+      // Keep axis labels anchored to the world axes (origin-based),
+      // otherwise they appear to "jump" when controls.target changes.
+      if (axisLabels['x']) axisLabels['x'].position.set(edgePosX, 0, 0)
+      if (axisLabels['y']) axisLabels['y'].position.set(0, edgePosY, 0)
+      if (axisLabels['z']) axisLabels['z'].position.set(0, 0, edgePosZ)
 
       ticksList.forEach(t => {
-        const isVis = Math.abs(t.val) <= maxVis && t.val % step === 0
+        const axisExtent = t.axis === 'x' ? edgePosX : t.axis === 'y' ? edgePosY : edgePosZ
+        const isVis = Math.abs(t.val) <= axisExtent && t.val % step === 0
 
         if (t.mesh.visible !== isVis) {
           t.mesh.visible = isVis
@@ -301,16 +354,21 @@ export function Canvas3D() {
           const gPts: THREE.Vector3[] = []
           for (let i = -edgePos; i <= edgePos; i += step) {
             if (i === 0) continue
-            gPts.push(new THREE.Vector3(i, -edgePos, -0.01), new THREE.Vector3(i, edgePos, -0.01))
-            gPts.push(new THREE.Vector3(-edgePos, i, -0.01), new THREE.Vector3(edgePos, i, -0.01))
+            // Align grid to the same Z plane as the faded base plane
+            const gridZ = basePlane.position.z - 0.001
+            gPts.push(new THREE.Vector3(i, -edgePos, gridZ), new THREE.Vector3(i, edgePos, gridZ))
+            gPts.push(new THREE.Vector3(-edgePos, i, gridZ), new THREE.Vector3(edgePos, i, gridZ))
           }
-          const gMat = new THREE.LineBasicMaterial({ color: 0xd0d0d0, transparent: true, opacity: 0.8, depthWrite: false })
+          const gMat = new THREE.LineBasicMaterial({ color: GEO_COLORS.GRID, transparent: true, opacity: 0.8, depthWrite: false })
           dynamicGrid = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(gPts), gMat)
           envGroup.add(dynamicGrid)
         }
       }
 
       basePlane.visible = stateRefs.current.showBasePlane
+      // Keep the faded base plane roughly matching the grid extent.
+      // basePlane plane geometry is 240x240 => half-size ~ 120.
+      basePlane.scale.set(edgePos / 120, edgePos / 120, 1)
       axesGroup.visible = stateRefs.current.showAxes
 
       renderer.render(scene, camera)
@@ -346,7 +404,7 @@ export function Canvas3D() {
       renderer.dispose()
       labelRenderer.setSize(0, 0) // Force some internal cleanup
     }
-  }, []) // Empty dependency array ensures it only binds once
+  }, [isDarkTheme])
 
   // Dynamic Geometry (Pyramid, Queries)
   useEffect(() => {
@@ -376,20 +434,47 @@ export function Canvas3D() {
       nodes[name] = new THREE.Vector3(coords[0], coords[1], coords[2])
     })
 
+    // === CLIPPING PLANE SETUP ===
+    const clippingPlanes: THREE.Plane[] = []
+    const cpData = geometryData.clippingPlane
+    if (cpData && clipMode !== 'off') {
+      const normal = new THREE.Vector3(cpData.a, cpData.b, cpData.c).normalize()
+      const constant = cpData.d / new THREE.Vector3(cpData.a, cpData.b, cpData.c).length()
+      if (clipMode === 'above') {
+        clippingPlanes.push(new THREE.Plane(normal.clone().negate(), constant))
+      } else {
+        clippingPlanes.push(new THREE.Plane(normal, -constant))
+      }
+    }
+    const hasClip = clippingPlanes.length > 0
+
     // Reusable point geometry
     const dotGeo = new THREE.SphereGeometry(0.06, 16, 16)
-    const dotMat = new THREE.MeshBasicMaterial({ color: '#000000', depthTest: false })
+    // Depth test để điểm "ăn khớp" với lưới/mặt phẳng khi zoom và xoay.
+    const dotMat = new THREE.MeshBasicMaterial({ color: GEO_COLORS.POINT, depthTest: true })
 
     // Draw Points
     Object.entries(nodes).forEach(([name, vec]) => {
-      const dot = new THREE.Mesh(dotGeo, dotMat)
+      const side = geometryData.pointSides?.[name]
+      const isClipped = hasClip && side && (
+        (clipMode === 'above' && side === 'above') ||
+        (clipMode === 'below' && side === 'below')
+      )
+
+      const pointMat = isClipped
+        ? new THREE.MeshBasicMaterial({ color: GEO_COLORS.POINT, depthTest: true, transparent: true, opacity: 0.1 })
+        : dotMat
+
+      const dot = new THREE.Mesh(dotGeo, pointMat)
       dot.position.copy(vec)
       group.add(dot)
 
       if (showLabels) {
         const el = document.createElement('div')
-        el.className = 'text-sm font-bold italic font-serif text-[#1a1a2e] pointer-events-none select-none drop-shadow-md'
-        el.style.textShadow = '1px 1px 0 #fff, -1px -1px 0 #fff'
+        el.className = 'text-sm font-bold italic font-serif pointer-events-none select-none drop-shadow-md'
+        el.style.color = GEO_COLORS.LABEL
+        el.style.textShadow = `1px 1px 0 ${GEO_COLORS.LABEL_SHADOW}, -1px -1px 0 ${GEO_COLORS.LABEL_SHADOW}`
+        if (isClipped) el.style.opacity = '0.15'
         el.textContent = name
         const lbl = new CSS2DObject(el)
         lbl.position.copy(vec).add(new THREE.Vector3(0.2, 0.2, 0.2))
@@ -404,8 +489,11 @@ export function Canvas3D() {
       if (pNodes.length < 3) return
 
       const color = p.color || '#6671d1'
+      const isCrossSection = cpData?.crossSectionVertices && 
+        p.points.length === cpData.crossSectionVertices.length &&
+        p.points.every(pt => cpData.crossSectionVertices!.includes(pt))
 
-      // 2. Slice Polygon (The points defined in JSON)
+      // Slice Polygon
       const sliceGeom = new THREE.BufferGeometry()
       const slicePos: number[] = []
       for (let i = 1; i < pNodes.length - 1; i++) {
@@ -416,31 +504,56 @@ export function Canvas3D() {
       sliceGeom.setAttribute('position', new THREE.Float32BufferAttribute(slicePos, 3))
       sliceGeom.computeVertexNormals()
 
-      // 1. Visual Plane (Solid shading)
-      group.add(new THREE.Mesh(sliceGeom, new THREE.MeshBasicMaterial({ 
-        color, 
+      // Visual Plane (Solid shading)
+      const planeMaterial = new THREE.MeshBasicMaterial({ 
+        color: isCrossSection ? '#ff6b6b' : color, 
         transparent: true, 
-        opacity: p.opacity || 0.15, 
+        opacity: isCrossSection ? 0.3 : (p.opacity || 0.15), 
         side: THREE.DoubleSide,
         polygonOffset: true,
         polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1
-      })))
+        polygonOffsetUnits: 1,
+        clippingPlanes: (hasClip && !isCrossSection) ? clippingPlanes : [],
+      })
+      group.add(new THREE.Mesh(sliceGeom, planeMaterial))
 
-      // 2. Depth Blocker (Essential for Hidden Line Detection)
-      group.add(new THREE.Mesh(sliceGeom, new THREE.MeshBasicMaterial({
+      // Depth Blocker
+      const blockerMat = new THREE.MeshBasicMaterial({
         colorWrite: false, 
         depthWrite: true, 
         side: THREE.DoubleSide,
         polygonOffset: true,
         polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1
-      })))
-
+        polygonOffsetUnits: 1,
+        clippingPlanes: (hasClip && !isCrossSection) ? clippingPlanes : [],
+      })
+      group.add(new THREE.Mesh(sliceGeom, blockerMat))
     })
+
+    // === CROSS-SECTION OUTLINE ===
+    if (cpData?.crossSectionVertices && cpData.crossSectionVertices.length >= 3) {
+      const csVerts = cpData.crossSectionVertices
+        .map(n => nodes[n])
+        .filter(Boolean)
+      if (csVerts.length >= 3) {
+        const outlinePos: number[] = []
+        for (let i = 0; i < csVerts.length; i++) {
+          const curr = csVerts[i]
+          const next = csVerts[(i + 1) % csVerts.length]
+          outlinePos.push(curr.x, curr.y, curr.z, next.x, next.y, next.z)
+        }
+        const outlineGeom = new THREE.BufferGeometry()
+        outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3))
+        const outlineMat = new THREE.LineBasicMaterial({ 
+          color: 0xff4444, linewidth: 2, depthTest: false 
+        })
+        group.add(new THREE.LineSegments(outlineGeom, outlineMat))
+      }
+    }
 
     // Edges
     const solidEdgesPos: number[] = []
+    const clippedEdgesPos: number[] = []
     const highlightEdgesPos: number[] = []
     const edges = geometryData.edges || []
 
@@ -452,9 +565,21 @@ export function Canvas3D() {
 
       if (highlightedEdges.includes(edgeKey)) {
         highlightEdgesPos.push(nodes[a].x, nodes[a].y, nodes[a].z, nodes[b].x, nodes[b].y, nodes[b].z)
-      } else {
-        solidEdgesPos.push(nodes[a].x, nodes[a].y, nodes[a].z, nodes[b].x, nodes[b].y, nodes[b].z)
+        return
       }
+      
+      // Check if edge is fully clipped (both endpoints on clipped side)
+      if (hasClip && geometryData.pointSides) {
+        const sideA = geometryData.pointSides[a]
+        const sideB = geometryData.pointSides[b]
+        const clipSide = clipMode === 'above' ? 'above' : 'below'
+        if (sideA === clipSide && sideB === clipSide) {
+          clippedEdgesPos.push(nodes[a].x, nodes[a].y, nodes[a].z, nodes[b].x, nodes[b].y, nodes[b].z)
+          return
+        }
+      }
+
+      solidEdgesPos.push(nodes[a].x, nodes[a].y, nodes[a].z, nodes[b].x, nodes[b].y, nodes[b].z)
     })
 
     if (highlightEdgesPos.length > 0) {
@@ -468,15 +593,29 @@ export function Canvas3D() {
       const linesGeom = new THREE.BufferGeometry()
       linesGeom.setAttribute('position', new THREE.Float32BufferAttribute(solidEdgesPos, 3))
 
-      const matSolid = new THREE.LineBasicMaterial({ color: GEO_COLORS.EDGE_SOLID, depthFunc: THREE.LessEqualDepth })
+      const matSolid = new THREE.LineBasicMaterial({ 
+        color: GEO_COLORS.EDGE_SOLID, depthFunc: THREE.LessEqualDepth,
+        clippingPlanes: hasClip ? clippingPlanes : [],
+      })
       group.add(new THREE.LineSegments(linesGeom, matSolid))
 
       const matDashed = new THREE.LineDashedMaterial({
-        color: GEO_COLORS.EDGE_DASHED, dashSize: 0.15, gapSize: 0.1, depthFunc: THREE.GreaterDepth
+        color: GEO_COLORS.EDGE_DASHED, dashSize: 0.15, gapSize: 0.1, depthFunc: THREE.GreaterDepth,
+        clippingPlanes: hasClip ? clippingPlanes : [],
       })
       const meshDashed = new THREE.LineSegments(linesGeom, matDashed)
       meshDashed.computeLineDistances()
       group.add(meshDashed)
+    }
+
+    // Clipped edges (rendered with very low opacity)
+    if (clippedEdgesPos.length > 0) {
+      const cGeom = new THREE.BufferGeometry()
+      cGeom.setAttribute('position', new THREE.Float32BufferAttribute(clippedEdgesPos, 3))
+      const cMat = new THREE.LineBasicMaterial({ 
+        color: GEO_COLORS.EDGE_DASHED, transparent: true, opacity: 0.1, depthTest: false 
+      })
+      group.add(new THREE.LineSegments(cGeom, cMat))
     }
 
     // Draw Circles
@@ -492,8 +631,6 @@ export function Canvas3D() {
       }
       group.add(circle)
     })
-
-
 
     // Draw Spheres
     geometryData.spheres?.forEach(s => {
@@ -511,7 +648,7 @@ export function Canvas3D() {
     })
 
     return () => clearGroup(group)
-  }, [geometryData, showLabels, highlightedEdges])
+  }, [geometryData, showLabels, highlightedEdges, isDarkTheme, clipMode])
 
 
   const handleZoom = (dir: number) => {
@@ -535,43 +672,60 @@ export function Canvas3D() {
   }
 
   return (
-    <div className="w-full h-full relative bg-white overflow-hidden">
+    <div className="w-full h-full relative bg-background overflow-hidden">
       {/* 3D Scene Mount Point */}
       <div className="absolute inset-0 z-0" ref={mountRef} />
       
       {/* Top Center Action Toolbar */}
       <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-50">
-        <div className="flex bg-white/95 backdrop-blur-md border border-[#ddd] rounded-2xl shadow-2xl p-1.5 items-center gap-1">
+        <div className="flex bg-card/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl p-1.5 items-center gap-1">
             <button 
                 onClick={() => setShowAxes(!showAxes)} 
-                className={`p-2.5 rounded-xl hover:bg-gray-100 transition-all flex items-center gap-2 ${showAxes ? 'text-[#6671d1] bg-[#6671d1]/5 font-semibold' : 'text-gray-400'}`}
+                className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showAxes ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
                 title="Ẩn/Hiện trục tọa độ"
             >
                 <Crosshair size={18} />
                 <span className="text-xs">Trục toạ độ</span>
             </button>
-            <div className="w-[1px] h-4 bg-gray-200 mx-1" />
+            <div className="w-[1px] h-4 bg-border mx-1" />
             <button 
                 onClick={() => setShowBasePlane(!showBasePlane)} 
-                className={`p-2.5 rounded-xl hover:bg-gray-100 transition-all flex items-center gap-2 ${showBasePlane ? 'text-[#6671d1] bg-[#6671d1]/5 font-semibold' : 'text-gray-400'}`}
+                className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showBasePlane ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
                 title="Ẩn/Hiện lưới mặt đáy"
             >
                 <Layers size={18} />
                 <span className="text-xs">Lưới đáy</span>
             </button>
-            <div className="w-[1px] h-4 bg-gray-200 mx-1" />
+            <div className="w-[1px] h-4 bg-border mx-1" />
             <button 
                 onClick={() => setShowLabels(!showLabels)} 
-                className={`p-2.5 rounded-xl hover:bg-gray-100 transition-all flex items-center gap-2 ${showLabels ? 'text-[#6671d1] bg-[#6671d1]/5 font-semibold' : 'text-gray-400'}`}
+                className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showLabels ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
                 title="Ẩn/Hiện nhãn điểm"
             >
                 <Eye size={18} />
                 <span className="text-xs">Nhãn</span>
             </button>
-            <div className="w-[1px] h-6 bg-gray-200 mx-2" />
+            {geometryData?.clippingPlane && (
+              <>
+                <div className="w-[1px] h-4 bg-border mx-1" />
+                <button 
+                    onClick={() => setClipMode(prev => prev === 'off' ? 'above' : prev === 'above' ? 'below' : 'off')} 
+                    className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${
+                      clipMode !== 'off' ? 'text-red-500 bg-red-500/10 font-semibold' : 'text-muted-foreground'
+                    }`}
+                    title={clipMode === 'off' ? 'Hiện tất cả' : clipMode === 'above' ? 'Ẩn phía trên' : 'Ẩn phía dưới'}
+                >
+                    <Scissors size={18} />
+                    <span className="text-xs">
+                      {clipMode === 'off' ? 'Lát cắt' : clipMode === 'above' ? 'Ẩn trên' : 'Ẩn dưới'}
+                    </span>
+                </button>
+              </>
+            )}
+            <div className="w-[1px] h-6 bg-border mx-2" />
             <button 
                 onClick={handleResetCamera}
-                className="p-2.5 rounded-xl hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all flex items-center gap-2"
+                className="p-2.5 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all flex items-center gap-2"
                 title="Đặt lại Camera"
             >
                 <RefreshCcw size={18} />
@@ -582,9 +736,9 @@ export function Canvas3D() {
 
       {/* Zoom Controls */}
       <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-50">
-        <div className="flex flex-col bg-white/95 backdrop-blur-md border border-[#ddd] rounded-xl shadow-lg overflow-hidden">
-          <button onClick={() => handleZoom(1)} className="p-3 hover:bg-[#6671d1] hover:text-white border-b border-[#eee] text-gray-600 transition-colors"><ZoomIn size={20} /></button>
-          <button onClick={() => handleZoom(-1)} className="p-3 hover:bg-[#6671d1] hover:text-white text-gray-600 transition-colors"><ZoomOut size={20} /></button>
+        <div className="flex flex-col bg-card/95 backdrop-blur-md border border-border rounded-xl shadow-lg overflow-hidden">
+          <button onClick={() => handleZoom(1)} className="p-3 hover:bg-primary hover:text-primary-foreground border-b border-border text-muted-foreground transition-colors"><ZoomIn size={20} /></button>
+          <button onClick={() => handleZoom(-1)} className="p-3 hover:bg-primary hover:text-primary-foreground text-muted-foreground transition-colors"><ZoomOut size={20} /></button>
         </div>
       </div>
     </div>

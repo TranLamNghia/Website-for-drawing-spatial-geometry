@@ -78,7 +78,9 @@ export function LeftSidebar() {
           })),
           circles: result.circles || result.data?.entities?.circles || [],
           planes: result.planes || result.data?.entities?.planes || [],
-          spheres: result.spheres || result.data?.entities?.spheres || []
+          spheres: result.spheres || result.data?.entities?.spheres || [],
+          clippingPlane: result.clippingPlane || undefined,
+          pointSides: result.pointSides || undefined,
         }
       }
 
@@ -126,13 +128,13 @@ export function LeftSidebar() {
   }
 
   return (
-    <div className="h-full flex flex-col p-6 gap-4 bg-white">
+    <div className="h-full flex flex-col p-6 gap-4 bg-card text-card-foreground">
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
-        <Sparkles className="w-5 h-5 text-[#6671d1]" />
-        <h1 className="text-lg font-bold text-gray-800">Geometry Lab AI</h1>
+        <Sparkles className="w-5 h-5 text-primary" />
+        <h1 className="text-lg font-bold text-foreground">Geometry Lab AI</h1>
       </div>
-      <p className="text-xs text-gray-500">Trợ lý hình học không gian</p>
+      <p className="text-xs text-muted-foreground">Trợ lý hình học không gian</p>
 
       {/* Input & Data Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
@@ -143,21 +145,21 @@ export function LeftSidebar() {
 
         <TabsContent value="input" className="flex-1 flex flex-col gap-4">
           <div className="flex-1">
-            <label className="text-sm font-semibold text-gray-700 block mb-2">
+            <label className="text-sm font-semibold text-foreground block mb-2">
               Nhập đề bài
             </label>
             <Textarea
               value={problem}
               onChange={(e) => setProblem(e.target.value)}
               placeholder="Nhập đề bài hình học..."
-              className="flex-1 min-h-40 bg-gray-50 border-gray-200 resize-none text-gray-800"
+              className="flex-1 min-h-40 bg-background border-border resize-none text-foreground"
             />
           </div>
 
           <Button
             onClick={handleSolveNow}
             disabled={isLoading}
-            className="w-full bg-[#6671d1] text-white hover:bg-[#555eb9]"
+            className="w-full"
           >
             {isLoading ? "Đang xử lý..." : "Giải toán ngay"}
           </Button>
@@ -165,20 +167,20 @@ export function LeftSidebar() {
 
         <TabsContent value="data" className="flex-1 flex flex-col gap-4 overflow-hidden">
           <div className="flex-1 flex flex-col min-h-0">
-            <label className="text-sm font-semibold text-gray-700 block mb-2">
+            <label className="text-sm font-semibold text-foreground block mb-2">
               Chỉnh sửa / Dán JSON phản hồi
             </label>
             <Textarea
               value={jsonInput}
               onChange={(e) => setJsonInput(e.target.value)}
               placeholder='Dán JSON vào đây (vd: { "points": { "A": {"x":0, "y":0, "z":0} }, ... })'
-              className="flex-1 font-mono text-[10px] bg-gray-50 border-gray-200 resize-none text-gray-800"
+              className="flex-1 font-mono text-[10px] bg-background border-border resize-none text-foreground"
             />
           </div>
           <Button
             onClick={() => handleApplyJson(jsonInput)}
             variant="outline"
-            className="w-full border-[#6671d1] text-[#6671d1] hover:bg-[#6671d1]/5"
+            className="w-full border-primary text-primary hover:bg-primary/10"
           >
             <Play className="w-4 h-4 mr-2" />
             Áp dụng JSON
@@ -187,7 +189,7 @@ export function LeftSidebar() {
       </Tabs>
 
       {/* Entities List */}
-      <Card className="bg-gray-50 border-gray-200">
+      <Card className="bg-muted/30 border-border">
         <CardHeader className="pb-3 px-4">
           <CardTitle className="text-sm">Bóc tách thực thể</CardTitle>
         </CardHeader>
@@ -195,20 +197,20 @@ export function LeftSidebar() {
            {geometryData ? (
              <>
                <div>
-                 <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Điểm</p>
+                 <p className="text-[10px] font-bold text-muted-foreground uppercase mb-2">Điểm</p>
                  <div className="flex flex-wrap gap-2">
                    {Object.keys(geometryData.points).map(p => (
-                     <Badge key={p} variant="secondary" className="bg-[#6671d1]/10 text-[#6671d1] border-none">{p}</Badge>
+                     <Badge key={p} variant="secondary" className="bg-primary/10 text-primary border-none">{p}</Badge>
                    ))}
                  </div>
                </div>
                <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Hình khối</p>
-                  <Badge variant="outline" className="border-gray-300 text-gray-600">Hình chóp</Badge>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase mb-2">Hình khối</p>
+                  <Badge variant="outline" className="border-border text-muted-foreground">Hình chóp</Badge>
                </div>
              </>
            ) : (
-             <p className="text-xs text-gray-400">Chưa bóc tách dữ liệu</p>
+             <p className="text-xs text-muted-foreground">Chưa bóc tách dữ liệu</p>
            )}
         </CardContent>
       </Card>
