@@ -25,6 +25,9 @@
         "volume",
         "perimeter",
         "equality",
-        "perpendicular_bisector"
+        "perpendicular_bisector",
+        "ray",
+        "perpendicular_ray",
+        "angle_bisector"
     ]
 }

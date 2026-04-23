@@ -388,7 +388,7 @@
     }
   },
   {
-    "input": "Hình chiếu vuông góc của đỉnh S lên mặt phẳng (ABCD) là trọng tâm của tam giác BCD.",
+    "input": "Hình chiếu vuông góc của đỉnh S lên mặt phẳng (ABCD) là trọng tâm H của tam giác BCD.",
     "output": {
       "metadata": {
         "problem_id": "shot_05",
@@ -413,7 +413,7 @@
             "point": "H",
             "objects": ["BCD"]
           },
-          "raw_text": "trọng tâm của tam giác BCD"
+          "raw_text": "trọng tâm H của tam giác BCD"
         },
         {
           "id": "F2",
@@ -423,13 +423,66 @@
             "from": "S",
             "onto": "ABCD"
           },
-          "raw_text": "Hình chiếu vuông góc của đỉnh S lên mặt phẳng (ABCD) là trọng tâm của tam giác BCD"
+          "raw_text": "Hình chiếu vuông góc của đỉnh S ... là trọng tâm H"
         }
       ],
       "queries": [],
       "extraction_meta": {
         "confidence": 1.0,
-        "notes": "Quan trọng: Tách câu 'hình chiếu là trọng tâm' thành 2 fact (centroid sinh ra điểm H, và projection dùng điểm H đó)."
+        "notes": "Sử dụng ngay tên điểm H đã được đặt tên trong đề bài cho cả trọng tâm và hình chiếu."
+      }
+    }
+  },
+  {
+    "input": "Cho lăng trụ ABC.A'B'C' có đáy ABC là tam giác đều. Gọi G là trọng tâm tam giác ABC. Đỉnh A' cách đều A, B, C.",
+    "output": {
+      "metadata": {
+        "problem_id": "shot_06",
+        "topic": "geometry_3D",
+        "language": "vi"
+      },
+      "entities": {
+        "points": ["A", "B", "C", "A'", "B'", "C'", "G"],
+        "segments": ["AB", "BC", "CA", "AA'", "BB'", "CC'"],
+        "rays": [],
+        "vectors": [],
+        "planes": ["ABC"],
+        "circles": [],
+        "spheres": [],
+        "solids": ["ABC.A'B'C'"]
+      },
+      "facts": [
+        {
+          "id": "F1",
+          "type": "centroid",
+          "data": {
+            "point": "G",
+            "objects": ["ABC"]
+          },
+          "raw_text": "G là trọng tâm tam giác ABC"
+        },
+        {
+          "id": "F2",
+          "type": "equality",
+          "data": {
+            "objects": ["A'A", "A'B", "A'C"]
+          },
+          "raw_text": "Đỉnh A' cách đều A, B, C"
+        },
+        {
+          "id": "F3",
+          "type": "circumcenter",
+          "data": {
+            "point": "G",
+            "shape": "ABC"
+          },
+          "raw_text": "Đỉnh A' cách đều A, B, C (G là trọng tâm tam giác ABC, và do ABC là tam giác đều, G cũng là tâm ngoại tiếp)"
+        }
+      ],
+      "queries": [],
+      "extraction_meta": {
+        "confidence": 1.0,
+        "notes": "LUẬT VÀNG: Trích xuất trực tiếp equality và circumcenter, tuyệt đối không tự suy luận fact 'projection' khi đề bài không cho."
       }
     }
   }

@@ -142,9 +142,14 @@ CRITICAL RULES FOR ENTITIES:
 2. OVER-INFERENCE: Tuyệt đối KHÔNG tự ý thêm các thực thể như 'spheres' (mặt cầu) hay 'circles' (đường tròn) nếu văn bản không nhắc đến, ngay cả khi các tính chất hình học (như SA=SB=SC=SD) gợi ý về sự tồn tại của chúng.
 3. PLANE NAMES: Trích xuất tên mặt phẳng KHÔNG bao gồm dấu ngoặc đơn (ví dụ: "SBD" thay vì "(SBD)").
 4. MATH EXPRESSIONS: Định dạng mọi biểu thức toán học và độ dài dưới dạng biểu thức code (ví dụ: "a * sqrt(3) / 2").
-5. EQUIDISTANT APEX: Nếu "Đỉnh cách đều các đỉnh của đáy" (ví dụ: A' cách đều A, B, C), hãy trích xuất thêm một Fact 'projection' với target là hình chiếu của đỉnh đó lên tâm đường tròn ngoại tiếp (Circumcenter) của mặt đáy.
+5. EQUIDISTANT APEX & PROJECTION: 
+   - Nếu "Đỉnh cách đều các đỉnh của đáy" (ví dụ: A' cách đều A, B, C), TRÍCH XUẤT fact 'equality' (ví dụ: A'A = A'B = A'C) và fact 'circumcenter' (nếu đề bài có sẵn điểm tương ứng).
+   - TUYỆT ĐỐI KHÔNG sáng tạo hay suy luận fact 'projection' (hình chiếu) của đỉnh lên mặt đáy, trừ khi đề bài NÊU TRỰC TIẾP (ví dụ: \"Hình chiếu vuông góc của S...\").
+   - KHÔNG ĐƯỢC suy diễn thêm fact 'projection' như là một hệ quả toán học.
+   - TUYỆT ĐỐI KHÔNG sinh thêm điểm mới (O, H, I...) nếu đã có một điểm trong đề bài có thể đảm nhiệm vai trò hình học tương đương.
 6. EQUALITY: Sử dụng Fact type 'equality' cho các biểu thức bằng nhau như "AA' = BB' = CC'". 
-7. ENTITIES: Nhớ liệt kê các điểm đặc biệt như tâm đường tròn (O, I, G, H...) vào 'entities.points'. Nếu có mặt cầu hay đường tròn, hãy trích xuất vào 'entities.spheres' hoặc 'entities.circles'.
+7. ENTITIES: Nhớ liệt kê các điểm đặc biệt (O, I, G, H...) vào 'entities.points'.
+8. NO NOISE: Hãy giữ JSON sạch nhất có thể bằng cách bám sát các thực thể có tên trong văn bản.
 """.strip()
 
     user_prompt = f"""
