@@ -172,12 +172,12 @@ export function Canvas3D() {
     const axesGroup = new THREE.Group()
     axesGroup.renderOrder = 99
     const ticksList: TickData[] = []
-    const AXIS_LEN = 200
+    const AXIS_LEN = 150
 
     const createAxis = (colorHex: number, dir: THREE.Vector3, labelStr: string) => {
       const opacity = 0.5
       const lineProps = { color: colorHex, linewidth: 2, transparent: true, opacity, depthTest: false }
-      
+
       if (labelStr === 'z') {
         // Positive Z
         const pPts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, AXIS_LEN)]
@@ -281,7 +281,8 @@ export function Canvas3D() {
 
     // Dynamic Context for Grid
     let lastGridStep = -1
-    let lastGridEdge = -1
+    let lastGridCenterX = -1
+    let lastGridCenterY = -1
     let lastGridShow = true
     let dynamicGrid: THREE.LineSegments | null = null
 
@@ -309,14 +310,10 @@ export function Canvas3D() {
 
       // Grid extent is not limited by a fixed "number of cells".
       // It extends from world origin to (camera target + 10), then mirrored.
-      const extentX = Math.abs(centerX) + 10
-      const extentY = Math.abs(centerY) + 10
-      const extentZ = Math.abs(centerZ) + 10
-
-      const edgePosX = Math.ceil(extentX / step) * step
-      const edgePosY = Math.ceil(extentY / step) * step
-      const edgePosZ = Math.ceil(extentZ / step) * step
-      const edgePos = Math.max(edgePosX, edgePosY)
+      const edgePosX = AXIS_LEN
+      const edgePosY = AXIS_LEN
+      const edgePosZ = AXIS_LEN
+      const edgePos = AXIS_LEN
 
       // Keep axis labels anchored to the world axes (origin-based),
       // otherwise they appear to "jump" when controls.target changes.
@@ -324,9 +321,18 @@ export function Canvas3D() {
       if (axisLabels['y']) axisLabels['y'].position.set(0, edgePosY, 0)
       if (axisLabels['z']) axisLabels['z'].position.set(0, 0, edgePosZ)
 
+      const labelShowRange = step * 15 // Increased by 14 total (7 each side) to show more labels per axis
       ticksList.forEach(t => {
         const axisExtent = t.axis === 'x' ? edgePosX : t.axis === 'y' ? edgePosY : edgePosZ
-        const isVis = Math.abs(t.val) <= axisExtent && t.val % step === 0
+        const centerVal = t.axis === 'x' ? centerX : t.axis === 'y' ? centerY : centerZ
+
+        // Only show ticks/labels that are:
+        // 1. Within axis length
+        // 2. Match current step increment
+        // 3. Within a "window" around the camera target to improve performance (FPS)
+        const isVis = Math.abs(t.val) <= axisExtent &&
+          t.val % step === 0 &&
+          Math.abs(t.val - centerVal) < labelShowRange
 
         if (t.mesh.visible !== isVis) {
           t.mesh.visible = isVis
@@ -337,11 +343,18 @@ export function Canvas3D() {
         }
       })
 
-      // Update Dynamic Grid if bounds change
+      // Update Dynamic Grid if bounds or step change
       const showGrid = stateRefs.current.showBasePlane
-      if (lastGridStep !== step || lastGridEdge !== edgePos || lastGridShow !== showGrid) {
+      const gridRadius = 40 // Total size 80x80
+      const snapX = Math.round(centerX / step) * step
+      const snapY = Math.round(centerY / step) * step
+
+      const hasMoved = Math.abs(lastGridCenterX - snapX) > 0.001 || Math.abs(lastGridCenterY - snapY) > 0.001
+
+      if (lastGridStep !== step || hasMoved || lastGridShow !== showGrid) {
         lastGridStep = step
-        lastGridEdge = edgePos
+        lastGridCenterX = snapX
+        lastGridCenterY = snapY
         lastGridShow = showGrid
 
         if (dynamicGrid) {
@@ -352,13 +365,19 @@ export function Canvas3D() {
         }
         if (showGrid) {
           const gPts: THREE.Vector3[] = []
-          for (let i = -edgePos; i <= edgePos; i += step) {
-            if (i === 0) continue
-            // Align grid to the same Z plane as the faded base plane
-            const gridZ = basePlane.position.z - 0.001
-            gPts.push(new THREE.Vector3(i, -edgePos, gridZ), new THREE.Vector3(i, edgePos, gridZ))
-            gPts.push(new THREE.Vector3(-edgePos, i, gridZ), new THREE.Vector3(edgePos, i, gridZ))
+          const gridZ = -0.001
+
+          // Vertical lines (X constant)
+          for (let x = snapX - gridRadius; x <= snapX + gridRadius; x += step) {
+            if (x === 0 || Math.abs(x) > AXIS_LEN) continue
+            gPts.push(new THREE.Vector3(x, snapY - gridRadius, gridZ), new THREE.Vector3(x, snapY + gridRadius, gridZ))
           }
+          // Horizontal lines (Y constant)
+          for (let y = snapY - gridRadius; y <= snapY + gridRadius; y += step) {
+            if (y === 0 || Math.abs(y) > AXIS_LEN) continue
+            gPts.push(new THREE.Vector3(snapX - gridRadius, y, gridZ), new THREE.Vector3(snapX + gridRadius, y, gridZ))
+          }
+
           const gMat = new THREE.LineBasicMaterial({ color: GEO_COLORS.GRID, transparent: true, opacity: 0.8, depthWrite: false })
           dynamicGrid = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(gPts), gMat)
           envGroup.add(dynamicGrid)
@@ -366,9 +385,9 @@ export function Canvas3D() {
       }
 
       basePlane.visible = stateRefs.current.showBasePlane
-      // Keep the faded base plane roughly matching the grid extent.
-      // basePlane plane geometry is 240x240 => half-size ~ 120.
-      basePlane.scale.set(edgePos / 120, edgePos / 120, 1)
+      // Move base plane with camera focus
+      basePlane.position.set(centerX, centerY, 0)
+      basePlane.scale.set(gridRadius / 120, gridRadius / 120, 1)
       axesGroup.visible = stateRefs.current.showAxes
 
       renderer.render(scene, camera)
@@ -489,7 +508,7 @@ export function Canvas3D() {
       if (pNodes.length < 3) return
 
       const color = p.color || '#6671d1'
-      const isCrossSection = cpData?.crossSectionVertices && 
+      const isCrossSection = cpData?.crossSectionVertices &&
         p.points.length === cpData.crossSectionVertices.length &&
         p.points.every(pt => cpData.crossSectionVertices!.includes(pt))
 
@@ -505,10 +524,10 @@ export function Canvas3D() {
       sliceGeom.computeVertexNormals()
 
       // Visual Plane (Solid shading)
-      const planeMaterial = new THREE.MeshBasicMaterial({ 
-        color: isCrossSection ? '#ff6b6b' : color, 
-        transparent: true, 
-        opacity: isCrossSection ? 0.3 : (p.opacity || 0.15), 
+      const planeMaterial = new THREE.MeshBasicMaterial({
+        color: isCrossSection ? '#ff6b6b' : color,
+        transparent: true,
+        opacity: isCrossSection ? 0.3 : (p.opacity || 0.15),
         side: THREE.DoubleSide,
         polygonOffset: true,
         polygonOffsetFactor: 1,
@@ -519,8 +538,8 @@ export function Canvas3D() {
 
       // Depth Blocker
       const blockerMat = new THREE.MeshBasicMaterial({
-        colorWrite: false, 
-        depthWrite: true, 
+        colorWrite: false,
+        depthWrite: true,
         side: THREE.DoubleSide,
         polygonOffset: true,
         polygonOffsetFactor: 1,
@@ -544,8 +563,8 @@ export function Canvas3D() {
         }
         const outlineGeom = new THREE.BufferGeometry()
         outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3))
-        const outlineMat = new THREE.LineBasicMaterial({ 
-          color: 0xff4444, linewidth: 2, depthTest: false 
+        const outlineMat = new THREE.LineBasicMaterial({
+          color: 0xff4444, linewidth: 2, depthTest: false
         })
         group.add(new THREE.LineSegments(outlineGeom, outlineMat))
       }
@@ -567,7 +586,7 @@ export function Canvas3D() {
         highlightEdgesPos.push(nodes[a].x, nodes[a].y, nodes[a].z, nodes[b].x, nodes[b].y, nodes[b].z)
         return
       }
-      
+
       // Check if edge is fully clipped (both endpoints on clipped side)
       if (hasClip && geometryData.pointSides) {
         const sideA = geometryData.pointSides[a]
@@ -593,7 +612,7 @@ export function Canvas3D() {
       const linesGeom = new THREE.BufferGeometry()
       linesGeom.setAttribute('position', new THREE.Float32BufferAttribute(solidEdgesPos, 3))
 
-      const matSolid = new THREE.LineBasicMaterial({ 
+      const matSolid = new THREE.LineBasicMaterial({
         color: GEO_COLORS.EDGE_SOLID, depthFunc: THREE.LessEqualDepth,
         clippingPlanes: hasClip ? clippingPlanes : [],
       })
@@ -612,8 +631,8 @@ export function Canvas3D() {
     if (clippedEdgesPos.length > 0) {
       const cGeom = new THREE.BufferGeometry()
       cGeom.setAttribute('position', new THREE.Float32BufferAttribute(clippedEdgesPos, 3))
-      const cMat = new THREE.LineBasicMaterial({ 
-        color: GEO_COLORS.EDGE_DASHED, transparent: true, opacity: 0.1, depthTest: false 
+      const cMat = new THREE.LineBasicMaterial({
+        color: GEO_COLORS.EDGE_DASHED, transparent: true, opacity: 0.1, depthTest: false
       })
       group.add(new THREE.LineSegments(cGeom, cMat))
     }
@@ -636,11 +655,11 @@ export function Canvas3D() {
     geometryData.spheres?.forEach(s => {
       if (!nodes[s.center]) return
       const sGeo = new THREE.SphereGeometry(s.radius, 32, 32)
-      const sMat = new THREE.MeshBasicMaterial({ 
-        color: s.color || '#aaa', 
-        transparent: true, 
+      const sMat = new THREE.MeshBasicMaterial({
+        color: s.color || '#aaa',
+        transparent: true,
         opacity: 0.1,
-        wireframe: true 
+        wireframe: true
       })
       const sphere = new THREE.Mesh(sGeo, sMat)
       sphere.position.copy(nodes[s.center])
@@ -661,13 +680,13 @@ export function Canvas3D() {
 
   const handleResetCamera = () => {
     if (cameraRef.current && controlsRef.current) {
-        const controls = controlsRef.current
-        const camera = cameraRef.current
-        
-        // Return to Bird's-eye default
-        camera.position.set(16, -16, 16)
-        controls.target.set(0, 0, 2.5)
-        controls.update()
+      const controls = controlsRef.current
+      const camera = cameraRef.current
+
+      // Return to Bird's-eye default
+      camera.position.set(16, -16, 16)
+      controls.target.set(0, 0, 2.5)
+      controls.update()
     }
   }
 
@@ -675,62 +694,61 @@ export function Canvas3D() {
     <div className="w-full h-full relative bg-background overflow-hidden">
       {/* 3D Scene Mount Point */}
       <div className="absolute inset-0 z-0" ref={mountRef} />
-      
+
       {/* Top Center Action Toolbar */}
       <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-50">
         <div className="flex bg-card/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl p-1.5 items-center gap-1">
-            <button 
-                onClick={() => setShowAxes(!showAxes)} 
-                className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showAxes ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-                title="Ẩn/Hiện trục tọa độ"
-            >
-                <Crosshair size={18} />
-                <span className="text-xs">Trục toạ độ</span>
-            </button>
-            <div className="w-[1px] h-4 bg-border mx-1" />
-            <button 
-                onClick={() => setShowBasePlane(!showBasePlane)} 
-                className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showBasePlane ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-                title="Ẩn/Hiện lưới mặt đáy"
-            >
-                <Layers size={18} />
-                <span className="text-xs">Lưới đáy</span>
-            </button>
-            <div className="w-[1px] h-4 bg-border mx-1" />
-            <button 
-                onClick={() => setShowLabels(!showLabels)} 
-                className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showLabels ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-                title="Ẩn/Hiện nhãn điểm"
-            >
-                <Eye size={18} />
-                <span className="text-xs">Nhãn</span>
-            </button>
-            {geometryData?.clippingPlane && (
-              <>
-                <div className="w-[1px] h-4 bg-border mx-1" />
-                <button 
-                    onClick={() => setClipMode(prev => prev === 'off' ? 'above' : prev === 'above' ? 'below' : 'off')} 
-                    className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${
-                      clipMode !== 'off' ? 'text-red-500 bg-red-500/10 font-semibold' : 'text-muted-foreground'
-                    }`}
-                    title={clipMode === 'off' ? 'Hiện tất cả' : clipMode === 'above' ? 'Ẩn phía trên' : 'Ẩn phía dưới'}
-                >
-                    <Scissors size={18} />
-                    <span className="text-xs">
-                      {clipMode === 'off' ? 'Lát cắt' : clipMode === 'above' ? 'Ẩn trên' : 'Ẩn dưới'}
-                    </span>
-                </button>
-              </>
-            )}
-            <div className="w-[1px] h-6 bg-border mx-2" />
-            <button 
-                onClick={handleResetCamera}
-                className="p-2.5 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all flex items-center gap-2"
-                title="Đặt lại Camera"
-            >
-                <RefreshCcw size={18} />
-                <span className="text-xs font-medium">Đặt lại</span>
-            </button>
+          <button
+            onClick={() => setShowAxes(!showAxes)}
+            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showAxes ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
+            title="Ẩn/Hiện trục tọa độ"
+          >
+            <Crosshair size={18} />
+            <span className="text-xs">Trục toạ độ</span>
+          </button>
+          <div className="w-[1px] h-4 bg-border mx-1" />
+          <button
+            onClick={() => setShowBasePlane(!showBasePlane)}
+            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showBasePlane ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
+            title="Ẩn/Hiện lưới mặt đáy"
+          >
+            <Layers size={18} />
+            <span className="text-xs">Lưới đáy</span>
+          </button>
+          <div className="w-[1px] h-4 bg-border mx-1" />
+          <button
+            onClick={() => setShowLabels(!showLabels)}
+            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showLabels ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
+            title="Ẩn/Hiện nhãn điểm"
+          >
+            <Eye size={18} />
+            <span className="text-xs">Nhãn</span>
+          </button>
+          {geometryData?.clippingPlane && (
+            <>
+              <div className="w-[1px] h-4 bg-border mx-1" />
+              <button
+                onClick={() => setClipMode(prev => prev === 'off' ? 'above' : prev === 'above' ? 'below' : 'off')}
+                className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${clipMode !== 'off' ? 'text-red-500 bg-red-500/10 font-semibold' : 'text-muted-foreground'
+                  }`}
+                title={clipMode === 'off' ? 'Hiện tất cả' : clipMode === 'above' ? 'Ẩn phía trên' : 'Ẩn phía dưới'}
+              >
+                <Scissors size={18} />
+                <span className="text-xs">
+                  {clipMode === 'off' ? 'Lát cắt' : clipMode === 'above' ? 'Ẩn trên' : 'Ẩn dưới'}
+                </span>
+              </button>
+            </>
+          )}
+          <div className="w-[1px] h-6 bg-border mx-2" />
+          <button
+            onClick={handleResetCamera}
+            className="p-2.5 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all flex items-center gap-2"
+            title="Đặt lại Camera"
+          >
+            <RefreshCcw size={18} />
+            <span className="text-xs font-medium">Đặt lại</span>
+          </button>
         </div>
       </div>
 
