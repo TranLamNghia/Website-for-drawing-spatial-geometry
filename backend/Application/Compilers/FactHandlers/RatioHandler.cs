@@ -26,11 +26,15 @@ public class RatioHandler : IFactHandler
         if (double.TryParse(data.Value, out double val)) k = val;
 
         // Trường hợp 1: AX = k * AB (X là điểm mới)
-        if (s1[0] == s2[0]) 
+        var v1 = System.Text.RegularExpressions.Regex.Matches(s1, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
+        var v2 = System.Text.RegularExpressions.Regex.Matches(s2, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
+
+        // Trường hợp 1: AX = k * AB (X là điểm mới)
+        if (v1.Count >= 2 && v2.Count >= 2 && v1[0] == v2[0]) 
         {
-            string start = s1[0].ToString();
-            string end = s2[1].ToString();
-            string target = s1[1].ToString();
+            string start = v1[0];
+            string end = v2[1];
+            string target = v1[1];
 
             if (!context.Points.ContainsKey(target))
             {

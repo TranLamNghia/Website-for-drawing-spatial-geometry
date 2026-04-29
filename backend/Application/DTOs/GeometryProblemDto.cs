@@ -20,4 +20,7 @@ public class GeometryProblemDto
 
     [JsonPropertyName("extraction_meta")]
     public ExtractionMetaDto? ExtractionMeta { get; set; }
+
+    [JsonPropertyName("points")]
+    public Dictionary<string, Domains.MathCore.Point3D>? Points { get; set; }
 }

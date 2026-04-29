@@ -17,16 +17,20 @@ public class MidpointHandler : IFactHandler
         string m = data.Point;
         string segment = data.Segment;
 
-        if (!context.Points.ContainsKey(m) && segment.Length >= 2)
+        if (!context.Points.ContainsKey(m))
         {
-            var p1 = context.GetPoint(segment[0].ToString());
-            var p2 = context.GetPoint(segment[1].ToString());
+            var vertices = System.Text.RegularExpressions.Regex.Matches(segment, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(match => match.Value).ToList();
+            if (vertices.Count >= 2)
+            {
+                var p1 = context.GetPoint(vertices[0]);
+                var p2 = context.GetPoint(vertices[1]);
 
-            if (p1 != null && p2 != null)
+                if (p1 != null && p2 != null)
             {
                 context.Points[m] = p1.GetMidpoint(p2);
                 Console.WriteLine($"[HANDLER] Đã dựng trung điểm {m} của {segment}");
             }
         }
     }
+}
 }

@@ -15,6 +15,7 @@ public class CompilationContext
     public double UnitLength { get; set; } = 5.0; 
 
     public HashSet<string> IdentityPoints { get; set; } = new();
+    public List<SectionDataDto> Sections { get; set; } = new();
 
     // Cross-section (Lát cắt)
     public ClippingPlaneEquation? ClippingPlane { get; set; }

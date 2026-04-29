@@ -52,7 +52,7 @@ public class GeometryExtractionService : IGeometryExtractionService
         return dto;
     }
 
-    public async Task<Dictionary<string, Point3D>?> FallbackSolveMathAsync(MathSolverRequestDto request)
+    public async Task<MathSolverResponseDto?> FallbackSolveMathAsync(MathSolverRequestDto request)
     {
         var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         var jsonContent = new StringContent(JsonSerializer.Serialize(request, options), Encoding.UTF8, "application/json");
@@ -80,19 +80,26 @@ public class GeometryExtractionService : IGeometryExtractionService
                     return null;
                 }
 
-                var result = JsonSerializer.Deserialize<Dictionary<string, Point3D>>(dataElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                return result;
+                // If result contains "sections", it's likely a MathSolverResponseDto
+                if (dataElement.TryGetProperty("sections", out _) || dataElement.TryGetProperty("points", out _))
+                {
+                     return JsonSerializer.Deserialize<MathSolverResponseDto>(dataElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                }
+
+                // Fallback for legacy format (just a dictionary of points)
+                var pointsOnly = JsonSerializer.Deserialize<Dictionary<string, Point3D>>(dataElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return new MathSolverResponseDto { Points = pointsOnly };
             }
             
-            // Final fallback check: if no "data" property, try checking the root for errors
-            string rawStr = document.RootElement.GetRawText();
-            if (rawStr.Contains("\"ERROR\"") || rawStr.Contains("\"status\":\"error\"") || rawStr.Contains("\"status\": \"error\""))
+            // Final fallback check for root level format
+            if (responseString.Contains("\"sections\"") || responseString.Contains("\"points\""))
             {
-                return null;
+                 return JsonSerializer.Deserialize<MathSolverResponseDto>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
 
             try {
-                return JsonSerializer.Deserialize<Dictionary<string, Point3D>>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var pointsOnly = JsonSerializer.Deserialize<Dictionary<string, Point3D>>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return new MathSolverResponseDto { Points = pointsOnly };
             } catch {
                 return null;
             }

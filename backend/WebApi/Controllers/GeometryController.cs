@@ -45,10 +45,10 @@ public class GeometryController : ControllerBase
                     BaseAValue = context.UnitLength
                 };
 
-                var newPoints = await _aiService.FallbackSolveMathAsync(solverRequest);
-                if (newPoints != null && newPoints.Count > 0)
+                var solverResponse = await _aiService.FallbackSolveMathAsync(solverRequest);
+                if (solverResponse != null)
                 {
-                    _compiler.RefineWithNewPoints(context, dto, newPoints);
+                    _compiler.RefineWithNewPoints(context, dto, solverResponse);
                 }
             }
 
@@ -82,10 +82,10 @@ public class GeometryController : ControllerBase
                     BaseAValue = context.UnitLength
                 };
 
-                var newPoints = await _aiService.FallbackSolveMathAsync(solverRequest);
-                if (newPoints != null && newPoints.Count > 0)
+                var solverResponse = await _aiService.FallbackSolveMathAsync(solverRequest);
+                if (solverResponse != null)
                 {
-                    _compiler.RefineWithNewPoints(context, dto, newPoints);
+                    _compiler.RefineWithNewPoints(context, dto, solverResponse);
                 }
             }
 
@@ -206,7 +206,8 @@ public class GeometryController : ControllerBase
                 totalFailed = context.ValidationReport?.TotalFailed ?? 0,
                 totalSkipped = context.ValidationReport?.TotalSkipped ?? 0,
                 failures = context.ValidationReport?.Failures.Select(f => new { f.FactId, f.FactType, f.ExpectedValue, f.ActualValue, f.Deviation, f.Message }) ?? Enumerable.Empty<object>()
-            }
+            },
+            ["sections"] = context.Sections
         };
 
         // Cross-section data (nếu có)

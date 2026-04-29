@@ -21,4 +21,7 @@ public class EntitiesDto
 
     [JsonPropertyName("solids")]
     public List<string> Solids { get; set; } = [];
+
+    [JsonPropertyName("sections")]
+    public List<SectionDataDto> Sections { get; set; } = [];
 }

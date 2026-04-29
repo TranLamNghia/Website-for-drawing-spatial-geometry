@@ -27,6 +27,16 @@ public class GeometryCompiler : IGeometryCompiler
         // Khởi tạo cuốn sổ tay trắng
         var context = new CompilationContext();
         context.IdentityPoints = new HashSet<string>(problem.Entities.Points.Select(p => p.ToUpper()));
+        context.Sections = new List<SectionDataDto>(problem.Entities.Sections);
+
+        // NẠP TỌA ĐỘ CÓ SẴN (Nếu có, vd: từ api/process1 hoặc AI Fallback)
+        if (problem.Points != null)
+        {
+            foreach (var kvp in problem.Points)
+            {
+                context.Points[kvp.Key] = new Point3D(kvp.Value.X, kvp.Value.Y, kvp.Value.Z);
+            }
+        }
 
         // Giai đoạn 1: Dựng móng nhà (Mặt đáy nằm trên mp z = 0)
         BuildBase(problem, context);
@@ -71,21 +81,30 @@ public class GeometryCompiler : IGeometryCompiler
         return context;
     }
 
-    public void RefineWithNewPoints(CompilationContext context, GeometryProblemDto problem, Dictionary<string, Point3D> newPoints)
+    public void RefineWithNewPoints(CompilationContext context, GeometryProblemDto problem, MathSolverResponseDto response)
     {
-        Console.WriteLine($"[COMPILER] Mở khóa sức mạnh AI Fallback! Đang sáp nhập {newPoints.Count} điểm mới vào hệ thống...");
-        
-        // Ghi đè tọa độ
-        foreach (var kvp in newPoints)
+        if (response.Points != null && response.Points.Count > 0)
         {
-            if (context.Points.ContainsKey(kvp.Key))
+            Console.WriteLine($"[COMPILER] Mở khóa sức mạnh AI Fallback! Đang sáp nhập {response.Points.Count} điểm mới vào hệ thống...");
+            
+            // Ghi đè tọa độ
+            foreach (var kvp in response.Points)
             {
-                context.Points[kvp.Key] = kvp.Value;
+                if (context.Points.ContainsKey(kvp.Key))
+                {
+                    context.Points[kvp.Key] = kvp.Value;
+                }
+                else
+                {
+                    context.Points.Add(kvp.Key, kvp.Value);
+                }
             }
-            else
-            {
-                context.Points.Add(kvp.Key, kvp.Value);
-            }
+        }
+
+        if (response.Sections != null && response.Sections.Count > 0)
+        {
+            Console.WriteLine($"[COMPILER] Nhận được {response.Sections.Count} thiết diện từ AI. Đang sáp nhập...");
+            context.Sections.AddRange(response.Sections);
         }
 
         // Chạy lại hàm dựng điểm phụ (trung điểm, trọng tâm...) để các đỉnh AI sinh ra tạo ra trung điểm / giao điểm chuẩn
@@ -1019,6 +1038,33 @@ public class GeometryCompiler : IGeometryCompiler
             }
             catch { continue; }
 
+            if (!target.StartsWith("cross_section", StringComparison.OrdinalIgnoreCase))
+            {
+                if (query.Type == Application.DTOs.Enums.QueryType.shape)
+                {
+                    var sSolid = query.Data.TryGetProperty("solid", out var top) ? top.GetString() : "";
+                    var sPlane = query.Data.TryGetProperty("plane", out var pl) ? pl.GetString() : "";
+                    var sSurface = query.Data.TryGetProperty("surface", out var sf) ? sf.GetString() : "";
+                    
+                    if (string.IsNullOrEmpty(sSolid) && query.Data.TryGetProperty("target", out var tg)) sSolid = tg.GetString();
+                    if (string.IsNullOrEmpty(sSolid) && problem.Entities.Solids.Count > 0) sSolid = problem.Entities.Solids[0];
+                    
+                    if (string.IsNullOrEmpty(sPlane)) sPlane = sSurface;
+                    if (string.IsNullOrEmpty(sPlane) && query.Data.TryGetProperty("cuttingPlane", out var cp))
+                    {
+                        if (cp.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            sPlane = string.Join("", cp.EnumerateArray().Select(x => x.GetString()));
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(sSolid) && !string.IsNullOrEmpty(sPlane))
+                    {
+                        target = $"cross_section_{sSolid}_{sPlane}";
+                    }
+                }
+            }
+
             if (!target.StartsWith("cross_section", StringComparison.OrdinalIgnoreCase)) continue;
 
             Console.WriteLine($"[COMPILER] Phát hiện Cross-Section Query: {target}");
@@ -1028,28 +1074,41 @@ public class GeometryCompiler : IGeometryCompiler
             
             string solidStr = "";
             string planeStr = "";
+            
+            // Tìm vị trí phân tách thông minh hơn
+            int firstSep = afterPrefix.IndexOf('_');
+            int lastSep = afterPrefix.LastIndexOf('_');
 
-            // Tìm vị trí phân tách: Khối chứa '.', phần còn lại là tên mp
-            if (afterPrefix.Contains("."))
+            if (firstSep > 0)
             {
-                // Tìm '_' cuối cùng sau dấu '.' để tách solid và plane
-                int dotIdx = afterPrefix.IndexOf('.');
-                int sepIdx = afterPrefix.IndexOf('_', dotIdx);
-                if (sepIdx > 0)
+                string part1 = afterPrefix.Substring(0, firstSep);
+                string part2 = afterPrefix.Substring(firstSep + 1);
+
+                // Ưu tiên phần có dấu '.' làm solid, hoặc phần dài hơn/chứa tên khối trong entities
+                if (part1.Contains(".") || (problem.Entities.Solids.Contains(part1) && !part2.Contains(".")))
                 {
-                    solidStr = afterPrefix.Substring(0, sepIdx);
-                    planeStr = afterPrefix.Substring(sepIdx + 1);
+                    solidStr = part1;
+                    planeStr = part2;
+                }
+                else if (part2.Contains(".") || problem.Entities.Solids.Contains(part2))
+                {
+                    solidStr = part2;
+                    planeStr = part1;
+                }
+                else
+                {
+                    // Fallback: Giả định SOLID_PLANE
+                    solidStr = part1;
+                    planeStr = part2;
                 }
             }
             else
             {
-                // Không có '.', ví dụ "cross_section_ABCD_MNP" (Tetrahedron)
-                // Tìm '_' cuối cùng
-                int lastSep = afterPrefix.LastIndexOf('_');
-                if (lastSep > 0)
+                // Trường hợp target chỉ có mặt cắt hoặc không có dấu gạch dưới, vd: "cross_section_DMN"
+                planeStr = afterPrefix;
+                if (problem.Entities.Solids.Count > 0)
                 {
-                    solidStr = afterPrefix.Substring(0, lastSep);
-                    planeStr = afterPrefix.Substring(lastSep + 1);
+                    solidStr = problem.Entities.Solids[0];
                 }
             }
 
@@ -1160,6 +1219,14 @@ public class GeometryCompiler : IGeometryCompiler
                     CrossSectionVertices = orderedPoints.ToArray()
                 };
                 context.CrossSectionPoints = orderedPoints;
+
+                // Đồng bộ thiết diện với định dạng chuẩn của sections
+                context.Sections.Add(new Application.DTOs.SectionDataDto
+                {
+                    Id = $"SEC_{System.Guid.NewGuid().ToString().Substring(0,4)}",
+                    CuttingPlane = planeVertices,
+                    Polygon = orderedPoints
+                });
 
                 Console.WriteLine($"[COMPILER] ✅ Thiết diện thành công: {string.Join("-", orderedPoints)}");
             }
