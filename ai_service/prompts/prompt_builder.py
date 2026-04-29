@@ -148,7 +148,7 @@ CRITICAL RULES FOR ENTITIES:
    - KHÔNG ĐƯỢC suy diễn thêm fact 'projection' như là một hệ quả toán học.
    - TUYỆT ĐỐI KHÔNG sinh thêm điểm mới (O, H, I...) nếu đã có một điểm trong đề bài có thể đảm nhiệm vai trò hình học tương đương.
 6. EQUALITY: Sử dụng Fact type 'equality' cho các biểu thức bằng nhau như "AA' = BB' = CC'". 
-7. ENTITIES: Nhớ liệt kê các điểm đặc biệt (O, I, G, H...) vào 'entities.points'.
+7. ENTITIES: Nhớ liệt kê TẤT CẢ các điểm có tên (A, B, C, S, M, N, P, K, H, G, O, I...) được nhắc đến trong đề bài vào danh sách 'entities.points'. Tuyệt đối không được bỏ sót các trung điểm hay điểm giao.
 8. NO NOISE: Hãy giữ JSON sạch nhất có thể bằng cách bám sát các thực thể có tên trong văn bản.
 """.strip()
 

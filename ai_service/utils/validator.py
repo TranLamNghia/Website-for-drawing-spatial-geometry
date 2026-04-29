@@ -16,7 +16,7 @@ def clean_markdown_json(raw_text: str) -> str:
 
 def _save_debug_json(raw_data, prefix="schema_error"):
     try:
-        bin_dir = Path(r"c:\Users\admin\Desktop\SpatialGeometry\jsonBin")
+        bin_dir = Path(r"c:\Users\Tln.Ganyu\Desktop\SpatialGeometry\jsonBin")
         bin_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         file_path = bin_dir / f"{timestamp}_{prefix}.json"

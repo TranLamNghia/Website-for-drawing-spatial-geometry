@@ -55,6 +55,14 @@ Your goal is to calculate ALL coordinates (A, B, C, D, S, etc.) from scratch.
   + sp.Eq(sp.Matrix(H)[1], (Y coordinate of point in plane))
   + sp.Eq((sp.Matrix(P) - sp.Matrix(H)).dot(sp.Matrix(B) - sp.Matrix(A)), 0)
   + sp.Eq((sp.Matrix(P) - sp.Matrix(H)).dot(sp.Matrix(C) - sp.Matrix(A)), 0)
+8. SOLID SPLITTING (CROSS-SECTIONS):
+- If the problem asks for a cross-section (query type 'shape'), you MUST calculate the intersection of the cutting plane with the solid's edges.
+- Use `sp.Plane(D, M, N)` and `sp.Line3D(A, B)` or `sp.Segment3D(A, B)`.
+- If an intersection exists AND is on the segment, add it to `generatedPoints`.
+- Order the intersection points counter-clockwise to form the `polygon`.
+- Output: The final JSON MUST include a `"sections": [...]` array.
+  + Section schema: `{"id": "SEC_1", "cuttingPlane": ["D","M","N"], "polygon": ["D","M","_P1","N"], "generatedPoints": {"_P1": {"x":...,"y":...,"z":...}}}`.
+  + Use IDs starting with underscore (e.g. `_P1`) for implicit intersection points.
 --- REQUIRED CODE STRUCTURE ---
 ```
 import sympy as sp
@@ -98,14 +106,25 @@ def solve_from_scratch():
     try:
         solutions = sp.nsolve(equations, vars, guesses, tol=1e-6, maxsteps=100)
         # 5. MAPPING & OUTPUT
-        res = {
+        res_coords = {
             "A": {"x": 0.0, "y": 0.0, "z": 0.0},
             "B": {"x": float(solutions[0]), "y": 0.0, "z": 0.0},
             "C": {"x": float(solutions[1]), "y": float(solutions[2]), "z": 0.0},
             "D": {"x": float(solutions[3]), "y": float(solutions[4]), "z": 0.0},
             "S": {"x": float(solutions[5]), "y": float(solutions[6]), "z": float(solutions[7])}
         }
-        print(json.dumps(res))
+        
+        # 6. CROSS-SECTION LOGIC (Example for Plane DMN)
+        # Identify plane from symbols, find intersections with edges (SA, SB, SC, etc.)
+        # Order vertices for 'polygon', save implicit points to 'generatedPoints'
+        
+        output = {
+            "points": res_coords,
+            "sections": [
+                 # { "id": "SEC_1", "cuttingPlane": ["D","M","N"], "polygon": [...], "generatedPoints": {...} }
+            ]
+        }
+        print(json.dumps(output))
     except Exception as e:
         print(json.dumps({"STATUS": "ERROR", "ERROR_MESSAGE": str(e)}))
 
