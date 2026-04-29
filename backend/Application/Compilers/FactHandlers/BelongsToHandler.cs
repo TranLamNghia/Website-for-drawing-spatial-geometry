@@ -20,11 +20,13 @@ public class BelongsToHandler : IFactHandler
 
         if (!context.Points.ContainsKey(m))
         {
+            var vertices = System.Text.RegularExpressions.Regex.Matches(lineOrPlane, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(match => match.Value).ToList();
+
             // Case A: M thuộc AB (Đường thẳng)
-            if (lineOrPlane.Length == 2)
+            if (vertices.Count == 2)
             {
-                var p1 = context.GetPoint(lineOrPlane[0].ToString());
-                var p2 = context.GetPoint(lineOrPlane[1].ToString());
+                var p1 = context.GetPoint(vertices[0]);
+                var p2 = context.GetPoint(vertices[1]);
 
                 if (p1 != null && p2 != null)
                 {
@@ -34,7 +36,7 @@ public class BelongsToHandler : IFactHandler
                 }
             }
             // Case B: M thuộc (ABC) (Mặt phẳng)
-            else if (lineOrPlane.Length >= 3)
+            else if (vertices.Count >= 3)
             {
                 var points = context.GetPointsFromPlane(lineOrPlane);
                 if (points.Count >= 3)

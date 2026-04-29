@@ -22,5 +22,6 @@ public enum QueryType
     equation_sphere,
     coordinates,
     proof_equal,
-    length
+    length,
+    shape
 }
