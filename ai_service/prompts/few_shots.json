@@ -485,5 +485,70 @@
         "notes": "LUẬT VÀNG: Trích xuất trực tiếp equality và circumcenter, tuyệt đối không tự suy luận fact 'projection' khi đề bài không cho."
       }
     }
+  },
+  {
+    "input": "Cho lăng trụ đứng ABC.A'B'C' có đáy ABC là tam giác vuông tại A, AB=a, AC=a, AA'=a. Gọi M là trung điểm BC, N là trung điểm A'C'. Xác định thiết diện cắt bởi (AMN).",
+    "output": {
+      "metadata": {
+        "problem_id": "shot_07",
+        "topic": "geometry_3D",
+        "language": "vi"
+      },
+      "entities": {
+        "points": ["A", "B", "C", "A'", "B'", "C'", "M", "N"],
+        "segments": ["AB", "BC", "CA", "AA'", "BB'", "CC'", "A'B'", "B'C'", "C'A'"],
+        "planes": ["ABC", "A'B'C'", "AMN"],
+        "solids": ["ABC.A'B'C'"]
+      },
+      "facts": [
+        {
+          "id": "F1",
+          "type": "shape",
+          "data": { "target": "ABC.A'B'C'", "shape": "prism" },
+          "raw_text": "lăng trụ đứng ABC.A'B'C'"
+        },
+        {
+          "id": "F2",
+          "type": "perpendicular",
+          "data": { "objects": ["AA'", "ABC"] },
+          "raw_text": "lăng trụ đứng (AA' vuông góc đáy)"
+        },
+        {
+          "id": "F3",
+          "type": "shape",
+          "data": { "target": "ABC", "shape": "right_triangle" },
+          "raw_text": "đáy ABC là tam giác vuông tại A"
+        },
+        {
+          "id": "F4", "type": "length", "data": { "target": "AB", "value": "a" }, "raw_text": "AB=a"
+        },
+        {
+          "id": "F5", "type": "length", "data": { "target": "AC", "value": "a" }, "raw_text": "AC=a"
+        },
+        {
+          "id": "F6", "type": "length", "data": { "target": "AA'", "value": "a" }, "raw_text": "AA'=a"
+        },
+        {
+          "id": "F7",
+          "type": "midpoint",
+          "data": { "point": "M", "segment": "BC" },
+          "raw_text": "Gọi M là trung điểm BC"
+        },
+        {
+          "id": "F8",
+          "type": "midpoint",
+          "data": { "point": "N", "segment": "A'C'" },
+          "raw_text": "N là trung điểm A'C'"
+        }
+      ],
+      "queries": [
+        {
+          "id": "Q1",
+          "type": "shape",
+          "data": { "target": "cross_section_ABC.A'B'C'_AMN", "plane": "AMN" },
+          "raw_text": "Xác định thiết diện tạo thành"
+        }
+      ]
+    }
   }
 ]

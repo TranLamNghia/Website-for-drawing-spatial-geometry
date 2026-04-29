@@ -95,6 +95,59 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string"
+                            },
+                            "cuttingPlane": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "minItems": 3,
+                                "maxItems": 3
+                            },
+                            "polygon": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "generatedPoints": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "properties": {
+                                        "x": {
+                                            "type": "number"
+                                        },
+                                        "y": {
+                                            "type": "number"
+                                        },
+                                        "z": {
+                                            "type": "number"
+                                        }
+                                    },
+                                    "required": [
+                                        "x",
+                                        "y",
+                                        "z"
+                                    ]
+                                }
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "cuttingPlane",
+                            "polygon"
+                        ],
+                        "additionalProperties": false
+                    }
                 }
             }
         },
@@ -956,7 +1009,8 @@
                         "equation_sphere",
                         "coordinates",
                         "proof_existence",
-                        "length"
+                        "length",
+                        "shape"
                     ]
                 },
                 "data": {
@@ -1023,8 +1077,28 @@
                 },
                 {
                     "$ref": "#/definitions/query_length"
+                },
+                {
+                    "$ref": "#/definitions/query_shape"
                 }
             ]
+        },
+        "query_shape": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "shape"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                }
+            }
         },
         "query_volume": {
             "if": {
@@ -1745,102 +1819,102 @@
                     }
                 }
             }
-        }
-    },
-    "fact_ray": {
-        "if": {
-            "properties": {
-                "type": {
-                    "const": "ray"
-                }
-            }
         },
-        "then": {
-            "properties": {
-                "data": {
-                    "required": [
-                        "point",
-                        "origin",
-                        "ray_point"
-                    ],
-                    "additionalProperties": false,
-                    "properties": {
-                        "point": {
-                            "type": "string"
-                        },
-                        "origin": {
-                            "type": "string"
-                        },
-                        "ray_point": {
-                            "type": "string"
+        "fact_ray": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "ray"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "point",
+                            "origin",
+                            "ray_point"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "point": {
+                                "type": "string"
+                            },
+                            "origin": {
+                                "type": "string"
+                            },
+                            "ray_point": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
-        }
-    },
-    "fact_perpendicular_ray": {
-        "if": {
-            "properties": {
-                "type": {
-                    "const": "perpendicular_ray"
-                }
-            }
         },
-        "then": {
-            "properties": {
-                "data": {
-                    "required": [
-                        "point",
-                        "origin",
-                        "perpendicular_to"
-                    ],
-                    "additionalProperties": false,
-                    "properties": {
-                        "point": {
-                            "type": "string"
-                        },
-                        "origin": {
-                            "type": "string"
-                        },
-                        "perpendicular_to": {
-                            "type": "string"
+        "fact_perpendicular_ray": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "perpendicular_ray"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "point",
+                            "origin",
+                            "perpendicular_to"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "point": {
+                                "type": "string"
+                            },
+                            "origin": {
+                                "type": "string"
+                            },
+                            "perpendicular_to": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
             }
-        }
-    },
-    "fact_angle_bisector": {
-        "if": {
-            "properties": {
-                "type": {
-                    "const": "angle_bisector"
-                }
-            }
         },
-        "then": {
-            "properties": {
-                "data": {
-                    "required": [
-                        "point",
-                        "vertex",
-                        "ray_1",
-                        "ray_2"
-                    ],
-                    "additionalProperties": false,
-                    "properties": {
-                        "point": {
-                            "type": "string"
-                        },
-                        "vertex": {
-                            "type": "string"
-                        },
-                        "ray_1": {
-                            "type": "string"
-                        },
-                        "ray_2": {
-                            "type": "string"
+        "fact_angle_bisector": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "angle_bisector"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "required": [
+                            "point",
+                            "vertex",
+                            "ray_1",
+                            "ray_2"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                            "point": {
+                                "type": "string"
+                            },
+                            "vertex": {
+                                "type": "string"
+                            },
+                            "ray_1": {
+                                "type": "string"
+                            },
+                            "ray_2": {
+                                "type": "string"
+                            }
                         }
                     }
                 }

@@ -31,6 +31,7 @@
         "regular_cylinder",
         "regular_cone",
         "regular_sphere",
-        "regular_torus"
+        "regular_torus",
+        "cross_section"
     ]
 }
