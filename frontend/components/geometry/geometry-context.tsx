@@ -44,6 +44,13 @@ export interface ClippingPlaneData {
   crossSectionVertices?: string[]
 }
 
+export interface SectionData {
+  id: string
+  cuttingPlane: string[]   // 3 points defining the cutting plane (e.g. ["D", "M", "N"])
+  polygon: string[]        // ordered vertices of the cross-section polygon
+  generatedPoints?: Record<string, { x: number, y: number, z: number }>
+}
+
 export interface GeometryData {
   points: Record<string, [number, number, number]>
   is_consistent: boolean
@@ -55,12 +62,16 @@ export interface GeometryData {
   spheres?: SphereData[]
   clippingPlane?: ClippingPlaneData
   pointSides?: Record<string, 'above' | 'below' | 'onplane'>
+  sections?: SectionData[]
 }
 
 export interface ValidationResult {
   isConsistent: boolean
   issues: string[]
 }
+
+// Visibility state for each bitmask group (e.g. "00" -> true)
+export type BitmaskVisibility = Record<string, boolean>
 
 interface GeometryContextType {
   geometryData: GeometryData | null
@@ -88,6 +99,11 @@ interface GeometryContextType {
   setQueries: (queries: Query[]) => void
   selectedQueryId: string | null
   setSelectedQueryId: (id: string | null) => void
+  // Cross-section splitting state (Bitmask)
+  bitmaskVisibility: BitmaskVisibility
+  setBitmaskVisibility: (vis: BitmaskVisibility) => void
+  explodeAmount: number
+  setExplodeAmount: (amount: number) => void
 }
 
 const GeometryContext = createContext<GeometryContextType | undefined>(undefined)
@@ -111,6 +127,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const [errorMessage, setErrorMessage] = useState('')
   const [queries, setQueries] = useState<Query[]>([])
   const [selectedQueryId, setSelectedQueryId] = useState<string | null>(null)
+  const [bitmaskVisibility, setBitmaskVisibility] = useState<BitmaskVisibility>({})
+  const [explodeAmount, setExplodeAmount] = useState(0)
 
   const contextValue = React.useMemo(() => ({
     geometryData,
@@ -131,6 +149,10 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     setQueries,
     selectedQueryId,
     setSelectedQueryId,
+    bitmaskVisibility,
+    setBitmaskVisibility,
+    explodeAmount,
+    setExplodeAmount,
   }), [
     geometryData,
     selectedEntity,
@@ -140,7 +162,9 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     isConsistent,
     errorMessage,
     queries,
-    selectedQueryId
+    selectedQueryId,
+    bitmaskVisibility,
+    explodeAmount,
   ])
 
   return (
