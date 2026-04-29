@@ -81,6 +81,7 @@ export function LeftSidebar() {
           spheres: result.spheres || result.data?.entities?.spheres || [],
           clippingPlane: result.clippingPlane || undefined,
           pointSides: result.pointSides || undefined,
+          sections: result.sections || undefined,
         }
       }
 

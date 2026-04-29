@@ -6,7 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { useTheme } from 'next-themes'
 import { useGeometry } from './geometry-context'
-import { ZoomIn, ZoomOut, Layers, Crosshair, Eye, RefreshCcw, Scissors } from 'lucide-react'
+import { ZoomIn, ZoomOut, Layers, Crosshair, Eye, RefreshCcw, Scissors, Expand } from 'lucide-react'
 
 function getGeoColors(isDarkTheme: boolean) {
   if (isDarkTheme) {
@@ -68,8 +68,11 @@ export function Canvas3D() {
   const [showLabels, setShowLabels] = useState(true)
   const [showAxes, setShowAxes] = useState(true)
   const [showBasePlane, setShowBasePlane] = useState(true)
-  const [clipMode, setClipMode] = useState<'off' | 'above' | 'below'>('off')
-  const { geometryData, highlightedEdges } = useGeometry()
+  const {
+    geometryData, highlightedEdges,
+    bitmaskVisibility, setBitmaskVisibility,
+    explodeAmount, setExplodeAmount,
+  } = useGeometry()
 
   // Refs for persistent Three.js objects to ensure cleanup
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -83,8 +86,8 @@ export function Canvas3D() {
     stateRefs.current = { showAxes, showBasePlane }
   }, [showAxes, showBasePlane])
 
-  const clipModeRef = useRef(clipMode)
-  useEffect(() => { clipModeRef.current = clipMode }, [clipMode])
+  // Detect if cross-section splitting is available
+  const hasSectionData = !!(geometryData?.sections?.length || geometryData?.clippingPlane)
 
   // Initialization (Run once)
   useEffect(() => {
@@ -425,7 +428,7 @@ export function Canvas3D() {
     }
   }, [isDarkTheme])
 
-  // Dynamic Geometry (Pyramid, Queries)
+  // Dynamic Geometry (Pyramid, Queries) — with Cross-Section Splitting
   useEffect(() => {
     const scene = sceneRef.current
     const group = dynamicGroupRef.current
@@ -436,6 +439,7 @@ export function Canvas3D() {
       while (g.children.length > 0) {
         const obj = g.children[0]
         g.remove(obj)
+        if (obj instanceof THREE.Group) clearGroup(obj)
         if (obj instanceof THREE.Mesh || obj instanceof THREE.Line || obj instanceof THREE.LineSegments) {
           obj.geometry?.dispose()
           if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose())
@@ -449,70 +453,160 @@ export function Canvas3D() {
     if (!geometryData) return
 
     const nodes: Record<string, THREE.Vector3> = {}
-    Object.entries(geometryData.points).forEach(([name, coords]) => {
-      nodes[name] = new THREE.Vector3(coords[0], coords[1], coords[2])
+    Object.entries(geometryData.points).forEach(([name, coords]: [string, any]) => {
+      const x = coords.x !== undefined ? coords.x : coords[0];
+      const y = coords.y !== undefined ? coords.y : coords[1];
+      const z = coords.z !== undefined ? coords.z : coords[2];
+      nodes[name] = new THREE.Vector3(x, y, z)
     })
 
-    // === CLIPPING PLANE SETUP ===
-    const clippingPlanes: THREE.Plane[] = []
-    const cpData = geometryData.clippingPlane
-    if (cpData && clipMode !== 'off') {
+    // === MULTI-PLANE SPLITTING (CSG BITMASK) ===
+    const cuttingPlanes: THREE.Plane[] = []
+    const planesNormals: THREE.Vector3[] = []
+
+    // Parse all sections from backend
+    if (geometryData.sections && geometryData.sections.length > 0) {
+      geometryData.sections.forEach(sec => {
+        if (sec.cuttingPlane && sec.cuttingPlane.length >= 3) {
+          const p0 = nodes[sec.cuttingPlane[0]]
+          const p1 = nodes[sec.cuttingPlane[1]]
+          const p2 = nodes[sec.cuttingPlane[2]]
+          if (p0 && p1 && p2) {
+            const v1 = new THREE.Vector3().subVectors(p1, p0)
+            const v2 = new THREE.Vector3().subVectors(p2, p0)
+            const normal = new THREE.Vector3().crossVectors(v1, v2).normalize()
+            cuttingPlanes.push(new THREE.Plane().setFromNormalAndCoplanarPoint(normal, p0))
+            planesNormals.push(normal)
+          }
+        }
+      })
+    }
+    // Fallback to legacy clippingPlane if no sections
+    else if (geometryData.clippingPlane) {
+      const cpData = geometryData.clippingPlane
       const normal = new THREE.Vector3(cpData.a, cpData.b, cpData.c).normalize()
       const constant = cpData.d / new THREE.Vector3(cpData.a, cpData.b, cpData.c).length()
-      if (clipMode === 'above') {
-        clippingPlanes.push(new THREE.Plane(normal.clone().negate(), constant))
-      } else {
-        clippingPlanes.push(new THREE.Plane(normal, -constant))
-      }
+      cuttingPlanes.push(new THREE.Plane(normal, constant))
+      planesNormals.push(normal)
     }
-    const hasClip = clippingPlanes.length > 0
+
+    const N = cuttingPlanes.length
+    const numGroups = 1 << N // 2^N
+
+    const bitmaskGroups: Record<string, THREE.Group> = {}
+
+    // Initialize 2^N groups
+    for (let i = 0; i < numGroups; i++) {
+      const bitStr = i.toString(2).padStart(N || 1, '0')
+      const bg = new THREE.Group()
+      bg.name = `solid-${bitStr}`
+
+      // Visibility from Context
+      bg.visible = bitmaskVisibility[bitStr] !== false // Default true
+
+      // Exploded View Offset
+      const offsetVec = new THREE.Vector3()
+      if (explodeAmount > 0 && N > 0) {
+        const maxDist = 8
+        const dist = (explodeAmount / 100) * maxDist
+        for (let b = 0; b < N; b++) {
+          const isPositive = bitStr[b] === '1'
+          const normal = planesNormals[b]
+          offsetVec.add(normal.clone().multiplyScalar(isPositive ? dist : -dist))
+        }
+      }
+      bg.position.copy(offsetVec)
+
+      group.add(bg)
+      bitmaskGroups[bitStr] = bg
+    }
+
+    // Generate clipping planes tailored for each bitmask subgroup
+    const getClipPlanesForBitmask = (bitStr: string): THREE.Plane[] => {
+      const clips: THREE.Plane[] = []
+
+      // Calculate the offset so we can translate the clipping plane
+      const groupOffset = new THREE.Vector3()
+      if (explodeAmount > 0 && N > 0) {
+        const maxDist = 8
+        const dist = (explodeAmount / 100) * maxDist
+        for (let b = 0; b < N; b++) {
+          const isPositive = bitStr[b] === '1'
+          const normal = planesNormals[b]
+          groupOffset.add(normal.clone().multiplyScalar(isPositive ? dist : -dist))
+        }
+      }
+
+      for (let b = 0; b < N; b++) {
+        const isPositive = bitStr[b] === '1'
+        const originalPlane = cuttingPlanes[b]
+        // If bit is 1 (Positive), it keeps the positive side
+        const p = isPositive ? originalPlane.clone() : originalPlane.clone().negate()
+        p.translate(groupOffset)
+        clips.push(p)
+      }
+      return clips
+    }
 
     // Reusable point geometry
     const dotGeo = new THREE.SphereGeometry(0.06, 16, 16)
-    // Depth test để điểm "ăn khớp" với lưới/mặt phẳng khi zoom và xoay.
     const dotMat = new THREE.MeshBasicMaterial({ color: GEO_COLORS.POINT, depthTest: true })
 
     // Draw Points
     Object.entries(nodes).forEach(([name, vec]) => {
-      const side = geometryData.pointSides?.[name]
-      const isClipped = hasClip && side && (
-        (clipMode === 'above' && side === 'above') ||
-        (clipMode === 'below' && side === 'below')
-      )
+      // Determine strictly which regions contain this point. 
+      const belongingBits: string[] = []
 
-      const pointMat = isClipped
-        ? new THREE.MeshBasicMaterial({ color: GEO_COLORS.POINT, depthTest: true, transparent: true, opacity: 0.1 })
-        : dotMat
-
-      const dot = new THREE.Mesh(dotGeo, pointMat)
-      dot.position.copy(vec)
-      group.add(dot)
-
-      if (showLabels) {
-        const el = document.createElement('div')
-        el.className = 'text-sm font-bold italic font-serif pointer-events-none select-none drop-shadow-md'
-        el.style.color = GEO_COLORS.LABEL
-        el.style.textShadow = `1px 1px 0 ${GEO_COLORS.LABEL_SHADOW}, -1px -1px 0 ${GEO_COLORS.LABEL_SHADOW}`
-        if (isClipped) el.style.opacity = '0.15'
-        el.textContent = name
-        const lbl = new CSS2DObject(el)
-        lbl.position.copy(vec).add(new THREE.Vector3(0.2, 0.2, 0.2))
-        group.add(lbl)
+      if (N === 0) {
+        belongingBits.push('0')
+      } else {
+        // Find which bitmask regions the point is compatible with
+        for (let i = 0; i < numGroups; i++) {
+          let compatible = true
+          const bitStr = i.toString(2).padStart(N || 1, '0')
+          for (let b = 0; b < N; b++) {
+            const isPositive = bitStr[b] === '1'
+            const dist = cuttingPlanes[b].distanceToPoint(vec)
+            // If distance is near 0, it belongs to both positive and negative
+            if (Math.abs(dist) > 0.001) {
+              if ((isPositive && dist < 0) || (!isPositive && dist > 0)) {
+                compatible = false
+                break
+              }
+            }
+          }
+          if (compatible) belongingBits.push(bitStr)
+        }
       }
+
+      belongingBits.forEach(bitStr => {
+        const targetGroup = bitmaskGroups[bitStr]
+        const dot = new THREE.Mesh(dotGeo, dotMat)
+        dot.position.copy(vec)
+        targetGroup.add(dot)
+
+        if (showLabels) {
+          const el = document.createElement('div')
+          el.className = 'text-sm font-bold italic font-serif pointer-events-none select-none drop-shadow-md'
+          el.style.color = GEO_COLORS.LABEL
+          el.style.textShadow = `1px 1px 0 ${GEO_COLORS.LABEL_SHADOW}, -1px -1px 0 ${GEO_COLORS.LABEL_SHADOW}`
+          el.textContent = name
+          const lbl = new CSS2DObject(el)
+          lbl.position.copy(vec).add(new THREE.Vector3(0.2, 0.2, 0.2))
+          targetGroup.add(lbl)
+        }
+      })
     })
 
-    // Draw Planes
+    // Draw Planes (faces)
     geometryData.planes?.forEach(p => {
       if (!p.points) return
       const pNodes = p.points.map(name => nodes[name]).filter(Boolean)
       if (pNodes.length < 3) return
 
       const color = p.color || '#6671d1'
-      const isCrossSection = cpData?.crossSectionVertices &&
-        p.points.length === cpData.crossSectionVertices.length &&
-        p.points.every(pt => cpData.crossSectionVertices!.includes(pt))
 
-      // Slice Polygon
+      // Slice Polygon triangulation (fan from first vertex)
       const sliceGeom = new THREE.BufferGeometry()
       const slicePos: number[] = []
       for (let i = 1; i < pNodes.length - 1; i++) {
@@ -523,132 +617,186 @@ export function Canvas3D() {
       sliceGeom.setAttribute('position', new THREE.Float32BufferAttribute(slicePos, 3))
       sliceGeom.computeVertexNormals()
 
-      // Visual Plane (Solid shading)
-      const planeMaterial = new THREE.MeshBasicMaterial({
-        color: isCrossSection ? '#ff6b6b' : color,
-        transparent: true,
-        opacity: isCrossSection ? 0.3 : (p.opacity || 0.15),
-        side: THREE.DoubleSide,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1,
-        clippingPlanes: (hasClip && !isCrossSection) ? clippingPlanes : [],
-      })
-      group.add(new THREE.Mesh(sliceGeom, planeMaterial))
+      // Add face to ALL bitmask groups! Hardware clipping trims them.
+      Object.keys(bitmaskGroups).forEach(bitStr => {
+        const bgClipPlanes = getClipPlanesForBitmask(bitStr)
+        const planeMaterial = new THREE.MeshBasicMaterial({
+          color: color,
+          transparent: true,
+          opacity: p.opacity || 0.15,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1,
+          clippingPlanes: bgClipPlanes,
+        })
+        const faceMesh = new THREE.Mesh(sliceGeom.clone(), planeMaterial)
+        bitmaskGroups[bitStr].add(faceMesh)
 
-      // Depth Blocker
-      const blockerMat = new THREE.MeshBasicMaterial({
-        colorWrite: false,
-        depthWrite: true,
-        side: THREE.DoubleSide,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1,
-        clippingPlanes: (hasClip && !isCrossSection) ? clippingPlanes : [],
+        // Depth Blocker
+        const blockerMat = new THREE.MeshBasicMaterial({
+          colorWrite: false,
+          depthWrite: true,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1,
+          clippingPlanes: bgClipPlanes,
+        })
+        bitmaskGroups[bitStr].add(new THREE.Mesh(sliceGeom.clone(), blockerMat))
       })
-      group.add(new THREE.Mesh(sliceGeom, blockerMat))
     })
 
-    // === CROSS-SECTION OUTLINE ===
-    if (cpData?.crossSectionVertices && cpData.crossSectionVertices.length >= 3) {
-      const csVerts = cpData.crossSectionVertices
-        .map(n => nodes[n])
-        .filter(Boolean)
-      if (csVerts.length >= 3) {
-        const outlinePos: number[] = []
-        for (let i = 0; i < csVerts.length; i++) {
-          const curr = csVerts[i]
-          const next = csVerts[(i + 1) % csVerts.length]
-          outlinePos.push(curr.x, curr.y, curr.z, next.x, next.y, next.z)
+    // === CROSS-SECTION CAPPING & OUTLINES ===
+    // For each section, draw the cap in all groups so it seals the solid
+    if (geometryData.sections) {
+      geometryData.sections.forEach((sec) => {
+        const capNodesCoords: THREE.Vector3[] = []
+
+        if (sec.polygon && sec.polygon.length >= 3) {
+          sec.polygon.forEach(ptName => {
+            if (nodes[ptName]) {
+              capNodesCoords.push(nodes[ptName])
+            } else if (sec.generatedPoints && sec.generatedPoints[ptName]) {
+              const gp = sec.generatedPoints[ptName]
+              capNodesCoords.push(new THREE.Vector3(gp.x, gp.y, gp.z))
+            }
+          })
+
+          if (capNodesCoords.length >= 3) {
+            // Triangulate cap
+            const capGeom = new THREE.BufferGeometry()
+            const capPos: number[] = []
+            for (let i = 1; i < capNodesCoords.length - 1; i++) {
+              capPos.push(
+                capNodesCoords[0].x, capNodesCoords[0].y, capNodesCoords[0].z,
+                capNodesCoords[i].x, capNodesCoords[i].y, capNodesCoords[i].z,
+                capNodesCoords[i + 1].x, capNodesCoords[i + 1].y, capNodesCoords[i + 1].z
+              )
+            }
+            capGeom.setAttribute('position', new THREE.Float32BufferAttribute(capPos, 3))
+            capGeom.computeVertexNormals()
+
+            // Outline Cap
+            const outlinePos: number[] = []
+            for (let i = 0; i < capNodesCoords.length; i++) {
+              const curr = capNodesCoords[i]
+              const next = capNodesCoords[(i + 1) % capNodesCoords.length]
+              outlinePos.push(curr.x, curr.y, curr.z, next.x, next.y, next.z)
+            }
+            const outlineGeom = new THREE.BufferGeometry()
+            outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3))
+            const outlineMat = new THREE.LineBasicMaterial({
+              color: 0xff4444, linewidth: 2, depthTest: false
+            })
+
+            // Distribute to all groups, using their clippers
+            Object.keys(bitmaskGroups).forEach(bitStr => {
+              const bgClipPlanes = getClipPlanesForBitmask(bitStr)
+
+              // Cap Face
+              const capMat = new THREE.MeshBasicMaterial({
+                color: '#ff6b6b',
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide,
+                polygonOffset: true,
+                polygonOffsetFactor: -1, // Pull it slightly forward to avoid z-fighting with edges
+                polygonOffsetUnits: -1,
+                clippingPlanes: bgClipPlanes,
+              })
+              bitmaskGroups[bitStr].add(new THREE.Mesh(capGeom.clone(), capMat))
+
+              // Block depth
+              const blockerMat = new THREE.MeshBasicMaterial({
+                colorWrite: false, depthWrite: true, side: THREE.DoubleSide,
+                polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+                clippingPlanes: bgClipPlanes,
+              })
+              bitmaskGroups[bitStr].add(new THREE.Mesh(capGeom.clone(), blockerMat))
+
+              // Outline
+              const lineMesh = new THREE.LineSegments(outlineGeom.clone(), outlineMat.clone())
+              // Don't clip outlines strictly so they draw everywhere
+              bitmaskGroups[bitStr].add(lineMesh)
+            })
+          }
         }
-        const outlineGeom = new THREE.BufferGeometry()
-        outlineGeom.setAttribute('position', new THREE.Float32BufferAttribute(outlinePos, 3))
-        const outlineMat = new THREE.LineBasicMaterial({
-          color: 0xff4444, linewidth: 2, depthTest: false
-        })
-        group.add(new THREE.LineSegments(outlineGeom, outlineMat))
-      }
+      })
     }
 
     // Edges
-    const solidEdgesPos: number[] = []
-    const clippedEdgesPos: number[] = []
-    const highlightEdgesPos: number[] = []
-    const edges = geometryData.edges || []
+    const edgesData = geometryData.edges || []
 
-    edges.forEach((edgeKey) => {
+    // We parse and build one big BufferGeometry for all edges and another for highlighted edges
+    const solidPos: number[] = []
+    const highlightPos: number[] = []
+
+    edgesData.forEach((edgeKey) => {
       const parsed = parseEdgeKey(edgeKey)
       if (!parsed) return
       const [a, b] = parsed
       if (!nodes[a] || !nodes[b]) return
 
-      if (highlightedEdges.includes(edgeKey)) {
-        highlightEdgesPos.push(nodes[a].x, nodes[a].y, nodes[a].z, nodes[b].x, nodes[b].y, nodes[b].z)
-        return
-      }
+      const posArr = [nodes[a].x, nodes[a].y, nodes[a].z, nodes[b].x, nodes[b].y, nodes[b].z]
 
-      // Check if edge is fully clipped (both endpoints on clipped side)
-      if (hasClip && geometryData.pointSides) {
-        const sideA = geometryData.pointSides[a]
-        const sideB = geometryData.pointSides[b]
-        const clipSide = clipMode === 'above' ? 'above' : 'below'
-        if (sideA === clipSide && sideB === clipSide) {
-          clippedEdgesPos.push(nodes[a].x, nodes[a].y, nodes[a].z, nodes[b].x, nodes[b].y, nodes[b].z)
-          return
-        }
-      }
-
-      solidEdgesPos.push(nodes[a].x, nodes[a].y, nodes[a].z, nodes[b].x, nodes[b].y, nodes[b].z)
+      if (highlightedEdges.includes(edgeKey)) highlightPos.push(...posArr)
+      else solidPos.push(...posArr)
     })
 
-    if (highlightEdgesPos.length > 0) {
-      const hGeom = new THREE.BufferGeometry()
-      hGeom.setAttribute('position', new THREE.Float32BufferAttribute(highlightEdgesPos, 3))
-      const hMat = new THREE.LineBasicMaterial({ color: GEO_COLORS.HIGHLIGHT, linewidth: 3, depthTest: false })
-      group.add(new THREE.LineSegments(hGeom, hMat))
-    }
+    const hGeom = new THREE.BufferGeometry()
+    if (highlightPos.length > 0) hGeom.setAttribute('position', new THREE.Float32BufferAttribute(highlightPos, 3))
+    const sGeom = new THREE.BufferGeometry()
+    if (solidPos.length > 0) sGeom.setAttribute('position', new THREE.Float32BufferAttribute(solidPos, 3))
 
-    if (solidEdgesPos.length > 0) {
-      const linesGeom = new THREE.BufferGeometry()
-      linesGeom.setAttribute('position', new THREE.Float32BufferAttribute(solidEdgesPos, 3))
+    Object.keys(bitmaskGroups).forEach(bitStr => {
+      const bgClipPlanes = getClipPlanesForBitmask(bitStr)
+      const tg = bitmaskGroups[bitStr]
 
-      const matSolid = new THREE.LineBasicMaterial({
-        color: GEO_COLORS.EDGE_SOLID, depthFunc: THREE.LessEqualDepth,
-        clippingPlanes: hasClip ? clippingPlanes : [],
-      })
-      group.add(new THREE.LineSegments(linesGeom, matSolid))
+      if (highlightPos.length > 0) {
+        const hMat = new THREE.LineBasicMaterial({
+          color: GEO_COLORS.HIGHLIGHT, linewidth: 3, depthTest: false,
+          clippingPlanes: bgClipPlanes
+        })
+        tg.add(new THREE.LineSegments(hGeom.clone(), hMat))
+      }
 
-      const matDashed = new THREE.LineDashedMaterial({
-        color: GEO_COLORS.EDGE_DASHED, dashSize: 0.15, gapSize: 0.1, depthFunc: THREE.GreaterDepth,
-        clippingPlanes: hasClip ? clippingPlanes : [],
-      })
-      const meshDashed = new THREE.LineSegments(linesGeom, matDashed)
-      meshDashed.computeLineDistances()
-      group.add(meshDashed)
-    }
+      if (solidPos.length > 0) {
+        const matSolid = new THREE.LineBasicMaterial({
+          color: GEO_COLORS.EDGE_SOLID, depthFunc: THREE.LessEqualDepth,
+          clippingPlanes: bgClipPlanes,
+        })
+        tg.add(new THREE.LineSegments(sGeom.clone(), matSolid))
 
-    // Clipped edges (rendered with very low opacity)
-    if (clippedEdgesPos.length > 0) {
-      const cGeom = new THREE.BufferGeometry()
-      cGeom.setAttribute('position', new THREE.Float32BufferAttribute(clippedEdgesPos, 3))
-      const cMat = new THREE.LineBasicMaterial({
-        color: GEO_COLORS.EDGE_DASHED, transparent: true, opacity: 0.1, depthTest: false
-      })
-      group.add(new THREE.LineSegments(cGeom, cMat))
-    }
+        const matDashed = new THREE.LineDashedMaterial({
+          color: GEO_COLORS.EDGE_DASHED, dashSize: 0.15, gapSize: 0.1, depthFunc: THREE.GreaterDepth,
+          clippingPlanes: bgClipPlanes,
+        })
+        const meshDashed = new THREE.LineSegments(sGeom.clone(), matDashed)
+        meshDashed.computeLineDistances()
+        tg.add(meshDashed)
+      }
+    })
 
     // Draw Circles
     geometryData.circles?.forEach(c => {
       if (!nodes[c.center]) return
       const circleGeo = new THREE.RingGeometry(c.radius - 0.02, c.radius + 0.02, 64)
       const circleMat = new THREE.MeshBasicMaterial({ color: c.color || '#000', side: THREE.DoubleSide, depthTest: false })
-      const circle = new THREE.Mesh(circleGeo, circleMat)
-      circle.position.copy(nodes[c.center])
-      if (c.normal) {
-        const norm = new THREE.Vector3(...c.normal).normalize()
-        circle.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), norm)
-      }
-      group.add(circle)
+
+      const normVec = c.normal ? new THREE.Vector3(...c.normal).normalize() : null
+      const quat = normVec ? new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normVec) : new THREE.Quaternion()
+
+      Object.keys(bitmaskGroups).forEach(bitStr => {
+        const bgClipPlanes = getClipPlanesForBitmask(bitStr)
+        const mat = circleMat.clone()
+        mat.clippingPlanes = bgClipPlanes
+
+        const circle = new THREE.Mesh(circleGeo, mat)
+        circle.position.copy(nodes[c.center])
+        circle.quaternion.copy(quat)
+        bitmaskGroups[bitStr].add(circle)
+      })
     })
 
     // Draw Spheres
@@ -661,14 +809,20 @@ export function Canvas3D() {
         opacity: 0.1,
         wireframe: true
       })
-      const sphere = new THREE.Mesh(sGeo, sMat)
-      sphere.position.copy(nodes[s.center])
-      group.add(sphere)
+
+      Object.keys(bitmaskGroups).forEach(bitStr => {
+        const bgClipPlanes = getClipPlanesForBitmask(bitStr)
+        const mat = sMat.clone()
+        mat.clippingPlanes = bgClipPlanes
+
+        const sphere = new THREE.Mesh(sGeo, mat)
+        sphere.position.copy(nodes[s.center])
+        bitmaskGroups[bitStr].add(sphere)
+      })
     })
 
     return () => clearGroup(group)
-  }, [geometryData, showLabels, highlightedEdges, isDarkTheme, clipMode])
-
+  }, [geometryData, showLabels, highlightedEdges, isDarkTheme, bitmaskVisibility, explodeAmount])
 
   const handleZoom = (dir: number) => {
     if (cameraRef.current && controlsRef.current) {
@@ -724,20 +878,39 @@ export function Canvas3D() {
             <Eye size={18} />
             <span className="text-xs">Nhãn</span>
           </button>
-          {geometryData?.clippingPlane && (
+          {hasSectionData && (
             <>
               <div className="w-[1px] h-4 bg-border mx-1" />
-              <button
-                onClick={() => setClipMode(prev => prev === 'off' ? 'above' : prev === 'above' ? 'below' : 'off')}
-                className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${clipMode !== 'off' ? 'text-red-500 bg-red-500/10 font-semibold' : 'text-muted-foreground'
-                  }`}
-                title={clipMode === 'off' ? 'Hiện tất cả' : clipMode === 'above' ? 'Ẩn phía trên' : 'Ẩn phía dưới'}
-              >
-                <Scissors size={18} />
-                <span className="text-xs">
-                  {clipMode === 'off' ? 'Lát cắt' : clipMode === 'above' ? 'Ẩn trên' : 'Ẩn dưới'}
-                </span>
-              </button>
+              <div className="flex gap-1 items-center bg-background/50 rounded-lg p-0.5 border border-border/50">
+                {Array.from({ length: 1 << (geometryData?.sections?.length || (geometryData?.clippingPlane ? 1 : 0)) }).map((_, i) => {
+                  const N = geometryData?.sections?.length || (geometryData?.clippingPlane ? 1 : 0)
+                  const bitStr = i.toString(2).padStart(N || 1, '0')
+                  const isVisible = bitmaskVisibility[bitStr] !== false
+                  return (
+                    <button
+                      key={bitStr}
+                      onClick={() => setBitmaskVisibility({ ...bitmaskVisibility, [bitStr]: !isVisible })}
+                      className={`px-2 py-1.5 rounded-md transition-all flex items-center gap-1 ${!isVisible ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'hover:bg-muted text-muted-foreground'}`}
+                      title={isVisible ? `Ẩn phần ${bitStr}` : `Hiện phần ${bitStr}`}
+                    >
+                      <Scissors size={14} className={!isVisible ? 'scale-x-[-1]' : ''} />
+                      <span className="text-[10px] font-mono font-bold leading-none">{bitStr}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="w-[1px] h-4 bg-border mx-1" />
+              <div className="flex items-center gap-2 px-2" title="Tách khối">
+                <Expand size={16} className="text-muted-foreground" />
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={explodeAmount}
+                  onChange={(e) => setExplodeAmount(Number(e.target.value))}
+                  className="w-20 h-1.5 accent-primary cursor-pointer"
+                />
+              </div>
             </>
           )}
           <div className="w-[1px] h-6 bg-border mx-2" />
