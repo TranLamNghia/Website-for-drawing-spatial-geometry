@@ -140,7 +140,7 @@ CRITICAL RULES FOR ENTITIES:
    - KHÔNG trích xuất các mặt bên hoặc mặt đáy của hình khối (như "ABCD", "SBC") vào danh sách 'entities.planes' nếu chúng đã là một phần của khối đa diện (như "S.ABCD").
    - Các mặt phẳng liên quan đến câu hỏi tính toán (như "khoảng cách đến (SBC)") sẽ được ghi nhận trực tiếp trong phần 'queries' mà không cần liệt kê trong 'entities.planes'.
 2. OVER-INFERENCE: Tuyệt đối KHÔNG tự ý thêm các thực thể như 'spheres' (mặt cầu) hay 'circles' (đường tròn) nếu văn bản không nhắc đến, ngay cả khi các tính chất hình học (như SA=SB=SC=SD) gợi ý về sự tồn tại của chúng.
-3. PLANE NAMES: Trích xuất tên mặt phẳng KHÔNG bao gồm dấu ngoặc đơn (ví dụ: "SBD" thay vì "(SBD)").
+3. PLANE NAMES: Trích xuất tên mặt phẳng KHÔNG bao gồm dấu ngoặc đơn (ví dụ: "SBD" thay vì "(SBD)", "P" thay vì "(P)", "Q" thay vì "(Q)", "ALPHA" thay vì "(alpha)").
 4. MATH EXPRESSIONS: Định dạng mọi biểu thức toán học và độ dài dưới dạng biểu thức code (ví dụ: "a * sqrt(3) / 2").
 5. EQUIDISTANT APEX & PROJECTION: 
    - Nếu "Đỉnh cách đều các đỉnh của đáy" (ví dụ: A' cách đều A, B, C), TRÍCH XUẤT fact 'equality' (ví dụ: A'A = A'B = A'C) và fact 'circumcenter' (nếu đề bài có sẵn điểm tương ứng).
@@ -150,6 +150,9 @@ CRITICAL RULES FOR ENTITIES:
 6. EQUALITY: Sử dụng Fact type 'equality' cho các biểu thức bằng nhau như "AA' = BB' = CC'". 
 7. ENTITIES: Nhớ liệt kê TẤT CẢ các điểm có tên (A, B, C, S, M, N, P, K, H, G, O, I...) được nhắc đến trong đề bài vào danh sách 'entities.points'. Tuyệt đối không được bỏ sót các trung điểm hay điểm giao.
 8. NO NOISE: Hãy giữ JSON sạch nhất có thể bằng cách bám sát các thực thể có tên trong văn bản.
+9. CIRCLES & SPHERES: Khi đề cập mặt cầu (sphere) hoặc đường tròn (circle), dùng fact type là 'shape' (với shape là 'sphere' hoặc 'circle'), và đưa 'center', 'radius' vào trong 'data'. Tuyệt đối không tạo fact type 'center' hay 'radius'.
+10. CONE & CYLINDER: Khi đề cập hình nón (cone) hoặc hình trụ (cylinder), dùng fact type 'shape' với shape tương ứng ('cone' hoặc 'cylinder'). Đưa 'center' (tâm đáy), 'radius' (bán kính đáy), 'apex' (đỉnh, chỉ cho nón), và 'height' (chiều cao) vào 'data'. 
+11. POLYGON SHAPES: Hỗ trợ các hình: 'pentagonal_pyramid', 'hexagonal_pyramid', 'pentagonal_prism', 'hexagonal_prism', 'frustum'. Với hình chóp cụt (frustum), trích xuất cả đáy lớn và đáy nhỏ như target "ABCD.A'B'C'D'".
 """.strip()
 
     user_prompt = f"""
