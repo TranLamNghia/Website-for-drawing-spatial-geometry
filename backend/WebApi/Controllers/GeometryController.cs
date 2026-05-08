@@ -197,6 +197,20 @@ public class GeometryController : ControllerBase
 
                 return new { center = displayCenter, radius = Math.Round(s.Radius, 4) };
             }).GroupBy(s => new { s.center, s.radius }).Select(g => g.First()),
+            ["cones"] = context.Cones.Select(c => {
+                var displayCenter = c.Center;
+                var displayApex = c.Apex;
+                if (context.PointAliases.TryGetValue(c.Center, out var cn)) displayCenter = cn;
+                if (context.PointAliases.TryGetValue(c.Apex, out var an)) displayApex = an;
+                return new { center = displayCenter, apex = displayApex, radius = Math.Round(c.Radius, 4), color = c.Color, opacity = c.Opacity };
+            }),
+            ["cylinders"] = context.Cylinders.Select(c => {
+                var displayBottom = c.CenterBottom;
+                var displayTop = c.CenterTop;
+                if (context.PointAliases.TryGetValue(c.CenterBottom, out var bn)) displayBottom = bn;
+                if (context.PointAliases.TryGetValue(c.CenterTop, out var tn)) displayTop = tn;
+                return new { centerBottom = displayBottom, centerTop = displayTop, radius = Math.Round(c.Radius, 4), color = c.Color, opacity = c.Opacity };
+            }),
             ["queries"] = cleanedQueries,
             ["validation"] = new 
             {

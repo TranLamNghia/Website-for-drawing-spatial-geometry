@@ -19,4 +19,10 @@ public class ShapeData
 
     [JsonPropertyName("points")]
     public List<string>? Points { get; set; }
+
+    [JsonPropertyName("apex")]
+    public string? Apex { get; set; }
+
+    [JsonPropertyName("height")]
+    public string? Height { get; set; }
 }

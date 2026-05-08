@@ -64,6 +64,8 @@ public class CompilationContext
 
     public List<CircleData> Circles { get; set; } = new();
     public List<SphereData> Spheres { get; set; } = new();
+    public List<ConeData> Cones { get; set; } = new();
+    public List<CylinderData> Cylinders { get; set; } = new();
     public HashSet<string> GeneratedSegments { get; set; } = new();
     public List<PlaneData> GeneratedPlanes { get; set; } = new();
 
@@ -120,6 +122,8 @@ public class CompilationContext
 public class PlaneData { public string[] Points { get; set; } = Array.Empty<string>(); public string Color { get; set; } = "#6671d1"; public int Density { get; set; } = 15; public double Opacity { get; set; } = 0.2; }
 public class CircleData { public string Center { get; set; } = ""; public double Radius { get; set; } public double[] Normal { get; set; } = { 0, 0, 1 }; public string Color { get; set; } = "#22B14C"; }
 public class SphereData { public string Center { get; set; } = ""; public double Radius { get; set; } public string Color { get; set; } = "#6671d1"; public double Opacity { get; set; } = 0.1; }
+public class ConeData { public string Center { get; set; } = ""; public string Apex { get; set; } = ""; public double Radius { get; set; } public string Color { get; set; } = "#FF8C00"; public double Opacity { get; set; } = 0.15; }
+public class CylinderData { public string CenterBottom { get; set; } = ""; public string CenterTop { get; set; } = ""; public double Radius { get; set; } public string Color { get; set; } = "#4169E1"; public double Opacity { get; set; } = 0.15; }
 
 public class ClippingPlaneEquation
 {
