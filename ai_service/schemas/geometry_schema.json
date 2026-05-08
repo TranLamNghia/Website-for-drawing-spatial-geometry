@@ -75,7 +75,7 @@
                     "type": "array",
                     "items": {
                         "type": "string",
-                        "pattern": "^([A-Z][0-9]*'*)+$"
+                        "pattern": "^\\(?([A-Z][0-9]*'*)+\\)?$"
                     }
                 },
                 "solids": {
@@ -375,8 +375,34 @@
                                     "regular_cylinder",
                                     "regular_cone",
                                     "regular_sphere",
-                                    "regular_torus"
+                                    "regular_sphere",
+                                    "regular_torus",
+                                    "frustum",
+                                    "pentagon",
+                                    "hexagon",
+                                    "pentagonal_pyramid",
+                                    "hexagonal_pyramid",
+                                    "pentagonal_prism",
+                                    "hexagonal_prism"
                                 ]
+                            },
+                            "center": {
+                                "type": "string"
+                            },
+                            "radius": {
+                                "type": "string"
+                            },
+                            "apex": {
+                                "type": "string"
+                            },
+                            "height": {
+                                "type": "string"
+                            },
+                            "points": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
                             }
                         }
                     }

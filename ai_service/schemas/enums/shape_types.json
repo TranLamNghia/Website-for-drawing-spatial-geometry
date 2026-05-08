@@ -32,6 +32,13 @@
         "regular_cone",
         "regular_sphere",
         "regular_torus",
+        "frustum",
+        "pentagon",
+        "hexagon",
+        "pentagonal_pyramid",
+        "hexagonal_pyramid",
+        "pentagonal_prism",
+        "hexagonal_prism",
         "cross_section"
     ]
 }
