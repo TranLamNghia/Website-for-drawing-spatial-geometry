@@ -36,6 +36,22 @@ export interface SphereData {
   opacity?: number
 }
 
+export interface ConeData {
+  center: string
+  apex: string
+  radius: number
+  color?: string
+  opacity?: number
+}
+
+export interface CylinderData {
+  centerBottom: string
+  centerTop: string
+  radius: number
+  color?: string
+  opacity?: number
+}
+
 export interface ClippingPlaneData {
   a: number
   b: number
@@ -49,6 +65,11 @@ export interface SectionData {
   cuttingPlane: string[]   // 3 points defining the cutting plane (e.g. ["D", "M", "N"])
   polygon: string[]        // ordered vertices of the cross-section polygon
   generatedPoints?: Record<string, { x: number, y: number, z: number }>
+  // Thiết diện tròn (cho mặt cầu, mặt nón, mặt trụ)
+  isCircle?: boolean
+  circleCenter?: { x: number, y: number, z: number }
+  circleRadius?: number
+  normal?: [number, number, number]
 }
 
 export interface GeometryData {
@@ -60,6 +81,8 @@ export interface GeometryData {
   circles?: CircleData[]
   planes?: PlaneData[]
   spheres?: SphereData[]
+  cones?: ConeData[]
+  cylinders?: CylinderData[]
   clippingPlane?: ClippingPlaneData
   pointSides?: Record<string, 'above' | 'below' | 'onplane'>
   sections?: SectionData[]

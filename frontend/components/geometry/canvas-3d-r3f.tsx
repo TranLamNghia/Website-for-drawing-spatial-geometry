@@ -651,6 +651,72 @@ export function Canvas3D() {
     // For each section, draw the cap in all groups so it seals the solid
     if (geometryData.sections) {
       geometryData.sections.forEach((sec) => {
+
+        // === THIẾT DIỆN TRÒN (Mặt cầu, Mặt nón, Mặt trụ) ===
+        if (sec.isCircle && sec.circleCenter && sec.circleRadius && sec.normal) {
+          const center = new THREE.Vector3(sec.circleCenter.x, sec.circleCenter.y, sec.circleCenter.z)
+          const radius = sec.circleRadius
+          const normalVec = new THREE.Vector3(sec.normal[0], sec.normal[1], sec.normal[2]).normalize()
+
+          // Tạo hình tròn nắp (cap)
+          const circleGeom = new THREE.CircleGeometry(radius, 64)
+          // Xoay CircleGeometry (mặc định nằm trên XY) theo vector pháp tuyến
+          const defaultNormal = new THREE.Vector3(0, 0, 1)
+          const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultNormal, normalVec)
+
+          // Tạo đường viền tròn
+          const ringPoints: THREE.Vector3[] = []
+          for (let i = 0; i <= 128; i++) {
+            const angle = (i / 128) * Math.PI * 2
+            const px = Math.cos(angle) * radius
+            const py = Math.sin(angle) * radius
+            const pt = new THREE.Vector3(px, py, 0).applyQuaternion(quaternion).add(center)
+            ringPoints.push(pt)
+          }
+          const ringGeom = new THREE.BufferGeometry().setFromPoints(ringPoints)
+          const ringMat = new THREE.LineBasicMaterial({
+            color: 0xff4444, linewidth: 2, depthTest: true
+          })
+
+          // Phân phối vào tất cả bitmask groups
+          Object.keys(bitmaskGroups).forEach(bitStr => {
+            const bgClipPlanes = getClipPlanesForBitmask(bitStr)
+
+            // Cap Face (mặt nắp đĩa tròn)
+            const capMat = new THREE.MeshBasicMaterial({
+              color: '#ff6b6b',
+              transparent: true,
+              opacity: 0.3,
+              side: THREE.DoubleSide,
+              polygonOffset: true,
+              polygonOffsetFactor: -1,
+              polygonOffsetUnits: -1,
+              clippingPlanes: bgClipPlanes,
+            })
+            const capMesh = new THREE.Mesh(circleGeom.clone(), capMat)
+            capMesh.position.copy(center)
+            capMesh.quaternion.copy(quaternion)
+            bitmaskGroups[bitStr].add(capMesh)
+
+            // Depth blocker
+            const blockerMat = new THREE.MeshBasicMaterial({
+              colorWrite: false, depthWrite: true, side: THREE.DoubleSide,
+              polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+              clippingPlanes: bgClipPlanes,
+            })
+            const blockerMesh = new THREE.Mesh(circleGeom.clone(), blockerMat)
+            blockerMesh.position.copy(center)
+            blockerMesh.quaternion.copy(quaternion)
+            bitmaskGroups[bitStr].add(blockerMesh)
+
+            // Đường viền tròn
+            const ring = new THREE.Line(ringGeom.clone(), ringMat.clone())
+            bitmaskGroups[bitStr].add(ring)
+          })
+          return // Bỏ qua logic polygon bên dưới
+        }
+
+        // === THIẾT DIỆN ĐA GIÁC (Khối đa diện) ===
         const capNodesCoords: THREE.Vector3[] = []
 
         if (sec.polygon && sec.polygon.length >= 3) {
@@ -701,7 +767,7 @@ export function Canvas3D() {
                 opacity: 0.3,
                 side: THREE.DoubleSide,
                 polygonOffset: true,
-                polygonOffsetFactor: -1, // Pull it slightly forward to avoid z-fighting with edges
+                polygonOffsetFactor: -1,
                 polygonOffsetUnits: -1,
                 clippingPlanes: bgClipPlanes,
               })
@@ -717,7 +783,6 @@ export function Canvas3D() {
 
               // Outline
               const lineMesh = new THREE.LineSegments(outlineGeom.clone(), outlineMat.clone())
-              // Don't clip outlines strictly so they draw everywhere
               bitmaskGroups[bitStr].add(lineMesh)
             })
           }
@@ -818,6 +883,100 @@ export function Canvas3D() {
         const sphere = new THREE.Mesh(sGeo, mat)
         sphere.position.copy(nodes[s.center])
         bitmaskGroups[bitStr].add(sphere)
+      })
+    })
+
+    // Draw Cones
+    geometryData.cones?.forEach(c => {
+      if (!nodes[c.center] || !nodes[c.apex]) return
+      const centerPos = nodes[c.center]
+      const apexPos = nodes[c.apex]
+      const height = centerPos.distanceTo(apexPos)
+      if (height < 0.001) return
+
+      const coneGeo = new THREE.ConeGeometry(c.radius, height, 32)
+      const coneMat = new THREE.MeshBasicMaterial({
+        color: c.color || '#FF8C00',
+        transparent: true,
+        opacity: c.opacity ?? 0.15,
+        wireframe: false,
+        side: THREE.DoubleSide
+      })
+      const coneWireMat = new THREE.MeshBasicMaterial({
+        color: c.color || '#FF8C00',
+        transparent: true,
+        opacity: 0.4,
+        wireframe: true
+      })
+
+      // Orient cone from center to apex
+      const midPoint = new THREE.Vector3().addVectors(centerPos, apexPos).multiplyScalar(0.5)
+      const direction = new THREE.Vector3().subVectors(apexPos, centerPos).normalize()
+      const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction)
+
+      Object.keys(bitmaskGroups).forEach(bitStr => {
+        const bgClipPlanes = getClipPlanesForBitmask(bitStr)
+        const mat1 = coneMat.clone()
+        mat1.clippingPlanes = bgClipPlanes
+        const mat2 = coneWireMat.clone()
+        mat2.clippingPlanes = bgClipPlanes
+
+        const cone = new THREE.Mesh(coneGeo, mat1)
+        cone.position.copy(midPoint)
+        cone.quaternion.copy(quaternion)
+        bitmaskGroups[bitStr].add(cone)
+
+        const coneWire = new THREE.Mesh(coneGeo, mat2)
+        coneWire.position.copy(midPoint)
+        coneWire.quaternion.copy(quaternion)
+        bitmaskGroups[bitStr].add(coneWire)
+      })
+    })
+
+    // Draw Cylinders
+    geometryData.cylinders?.forEach(c => {
+      if (!nodes[c.centerBottom] || !nodes[c.centerTop]) return
+      const bottomPos = nodes[c.centerBottom]
+      const topPos = nodes[c.centerTop]
+      const height = bottomPos.distanceTo(topPos)
+      if (height < 0.001) return
+
+      const cylGeo = new THREE.CylinderGeometry(c.radius, c.radius, height, 32, 1, true)
+      const cylMat = new THREE.MeshBasicMaterial({
+        color: c.color || '#4169E1',
+        transparent: true,
+        opacity: c.opacity ?? 0.15,
+        wireframe: false,
+        side: THREE.DoubleSide
+      })
+      const cylWireMat = new THREE.MeshBasicMaterial({
+        color: c.color || '#4169E1',
+        transparent: true,
+        opacity: 0.4,
+        wireframe: true
+      })
+
+      // Orient cylinder from bottom to top
+      const midPoint = new THREE.Vector3().addVectors(bottomPos, topPos).multiplyScalar(0.5)
+      const direction = new THREE.Vector3().subVectors(topPos, bottomPos).normalize()
+      const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction)
+
+      Object.keys(bitmaskGroups).forEach(bitStr => {
+        const bgClipPlanes = getClipPlanesForBitmask(bitStr)
+        const mat1 = cylMat.clone()
+        mat1.clippingPlanes = bgClipPlanes
+        const mat2 = cylWireMat.clone()
+        mat2.clippingPlanes = bgClipPlanes
+
+        const cyl = new THREE.Mesh(cylGeo, mat1)
+        cyl.position.copy(midPoint)
+        cyl.quaternion.copy(quaternion)
+        bitmaskGroups[bitStr].add(cyl)
+
+        const cylWire = new THREE.Mesh(cylGeo, mat2)
+        cylWire.position.copy(midPoint)
+        cylWire.quaternion.copy(quaternion)
+        bitmaskGroups[bitStr].add(cylWire)
       })
     })
 

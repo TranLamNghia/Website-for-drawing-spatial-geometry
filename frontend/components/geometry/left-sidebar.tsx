@@ -79,6 +79,8 @@ export function LeftSidebar() {
           circles: result.circles || result.data?.entities?.circles || [],
           planes: result.planes || result.data?.entities?.planes || [],
           spheres: result.spheres || result.data?.entities?.spheres || [],
+          cones: result.cones || [],
+          cylinders: result.cylinders || [],
           clippingPlane: result.clippingPlane || undefined,
           pointSides: result.pointSides || undefined,
           sections: result.sections || undefined,
