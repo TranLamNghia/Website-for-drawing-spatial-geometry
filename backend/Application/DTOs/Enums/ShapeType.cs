@@ -35,5 +35,12 @@ public enum ShapeType
     Regular_cylinder,
     Regular_cone,
     Regular_sphere,
-    Regular_torus
+    Regular_torus,
+    Frustum,
+    Pentagon,
+    Hexagon,
+    Pentagonal_pyramid,
+    Hexagonal_pyramid,
+    Pentagonal_prism,
+    Hexagonal_prism
 }

@@ -16,6 +16,19 @@ public class SectionDataDto
 
     [JsonPropertyName("generatedPoints")]
     public Dictionary<string, GeneratedPointDto>? GeneratedPoints { get; set; }
+
+    // Thiết diện tròn (cho mặt cầu, mặt nón, mặt trụ)
+    [JsonPropertyName("isCircle")]
+    public bool IsCircle { get; set; } = false;
+
+    [JsonPropertyName("circleCenter")]
+    public GeneratedPointDto? CircleCenter { get; set; }
+
+    [JsonPropertyName("circleRadius")]
+    public double? CircleRadius { get; set; }
+
+    [JsonPropertyName("normal")]
+    public double[]? Normal { get; set; }
 }
 
 public class GeneratedPointDto

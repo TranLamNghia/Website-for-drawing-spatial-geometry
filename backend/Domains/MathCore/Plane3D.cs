@@ -19,6 +19,14 @@ public class Plane3D
         D = -(A * point.X + B * point.Y + C * point.Z);
     }
 
+    public Plane3D(double a, double b, double c, double d)
+    {
+        A = a;
+        B = b;
+        C = c;
+        D = d;
+    }
+
     public Plane3D(Point3D p1, Point3D p2, Point3D p3)
     {
         var v1 = new Vector3D(p1, p2);
