@@ -165,12 +165,14 @@ public class GeometryController : ControllerBase
                     points = pts,
                     color = "#6671d1",
                     density = 15,
-                    opacity = 0.1
+                    opacity = 0.1,
+                    isSolidFace = false
                 }).Concat(context.GeneratedPlanes.Select(p => new {
                     points = p.Points,
-                    color = p.Color,
+                    color = p.Color ?? "#ffffff",
                     density = p.Density,
-                    opacity = p.Opacity
+                    opacity = 0.15,
+                    isSolidFace = true
                 })),
             ["circles"] = context.Circles.Select(c => {
                 var displayCenter = c.Center;

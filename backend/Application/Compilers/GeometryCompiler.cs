@@ -1372,7 +1372,7 @@ public class GeometryCompiler : IGeometryCompiler
                     double d2 = ep2.DistanceToPoint(intersection);
                     if (d1 > segLen + 1e-6 || d2 > segLen + 1e-6) continue;
 
-                    string ptName = $"CS{autoIdx++}";
+                    string ptName = "";
                     bool merged = false;
                     foreach (var kvp in context.Points)
                     {
@@ -1383,7 +1383,16 @@ public class GeometryCompiler : IGeometryCompiler
                             break;
                         }
                     }
-                    if (!merged) context.Points[ptName] = intersection;
+                    if (!merged)
+                    {
+                        int csIndex = 1;
+                        while (context.Points.ContainsKey($"CS{csIndex}"))
+                        {
+                            csIndex++;
+                        }
+                        ptName = $"CS{csIndex}";
+                        context.Points[ptName] = intersection;
+                    }
                     if (!crossSectionPoints.Contains(ptName)) crossSectionPoints.Add(ptName);
 
                     Console.WriteLine($"   -> Giao cạnh {v1}{v2}: {ptName} = ({intersection.X:F2}, {intersection.Y:F2}, {intersection.Z:F2})");
