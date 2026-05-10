@@ -127,6 +127,8 @@ interface GeometryContextType {
   setBitmaskVisibility: (vis: BitmaskVisibility) => void
   explodeAmount: number
   setExplodeAmount: (amount: number) => void
+  orderedSectionIds: string[]
+  setOrderedSectionIds: (ids: string[]) => void
 }
 
 const GeometryContext = createContext<GeometryContextType | undefined>(undefined)
@@ -152,6 +154,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const [selectedQueryId, setSelectedQueryId] = useState<string | null>(null)
   const [bitmaskVisibility, setBitmaskVisibility] = useState<BitmaskVisibility>({})
   const [explodeAmount, setExplodeAmount] = useState(0)
+  const [orderedSectionIds, setOrderedSectionIds] = useState<string[]>([])
 
   const contextValue = React.useMemo(() => ({
     geometryData,
@@ -176,6 +179,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     setBitmaskVisibility,
     explodeAmount,
     setExplodeAmount,
+    orderedSectionIds,
+    setOrderedSectionIds,
   }), [
     geometryData,
     selectedEntity,
@@ -188,6 +193,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     selectedQueryId,
     bitmaskVisibility,
     explodeAmount,
+    orderedSectionIds,
   ])
 
   return (
