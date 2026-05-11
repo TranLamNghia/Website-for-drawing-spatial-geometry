@@ -1156,7 +1156,11 @@ public class GeometryCompiler : IGeometryCompiler
         {
             foreach (var pStr in problem.Entities.Planes)
             {
-                targetsToProcess.Add((defaultSolid, pStr));
+                // Chỉ thêm nếu không phải là một mặt của khối đa diện (vùng biên)
+                if (!IsFaceOfSolid(pStr, context))
+                {
+                    targetsToProcess.Add((defaultSolid, pStr));
+                }
             }
         }
 
@@ -1572,6 +1576,23 @@ public class GeometryCompiler : IGeometryCompiler
         int below = context.PointSides.Values.Count(s => s == PointSide.Below);
         int onPlane = context.PointSides.Values.Count(s => s == PointSide.OnPlane);
         Console.WriteLine($"[COMPILER] Cross-Section Sides: Above={above}, Below={below}, OnPlane={onPlane}");
+    }
+
+    private bool IsFaceOfSolid(string planeStr, CompilationContext context)
+    {
+        var vertices = ParseVertices(planeStr).Select(v => v.ToUpper()).ToList();
+        if (vertices.Count < 3) return false;
+
+        foreach (var face in context.GeneratedPlanes)
+        {
+            var facePoints = face.Points.Select(p => p.ToUpper()).ToList();
+            // Nếu tất cả các điểm của mặt phẳng này nằm trong cùng một mặt diện tích đã dựng của khối
+            if (vertices.All(v => facePoints.Contains(v)))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<string> ParseVertices(string input)
