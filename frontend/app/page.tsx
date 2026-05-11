@@ -1,5 +1,5 @@
 'use client'
- 
+
 import { useState } from 'react'
 import { LeftSidebar } from '@/components/geometry/left-sidebar'
 import { Canvas3D } from '@/components/geometry/canvas-3d-r3f'
@@ -7,7 +7,7 @@ import { RightSidebar } from '@/components/geometry/right-sidebar'
 import { GeometryProvider } from '@/components/geometry/geometry-context'
 import { ThemeSwitcher } from '@/components/geometry/theme-switcher'
 import { ChevronLeft, ChevronRight, GripVertical } from 'lucide-react'
- 
+
 export default function Home() {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
@@ -29,7 +29,8 @@ export default function Home() {
 
   const handleMouseMove = (e: MouseEvent) => {
     const newWidth = window.innerWidth - e.clientX
-    if (newWidth > 300 && newWidth < window.innerWidth * 0.5) {
+    // Enforce min-width of 400px and max-width of 50%
+    if (newWidth > 400 && newWidth < window.innerWidth * 0.5) {
       setRightWidth(newWidth)
     }
   }
@@ -47,16 +48,15 @@ export default function Home() {
         </div>
 
         {/* Left Sidebar Overlay */}
-        <div 
-          className={`absolute left-0 top-0 bottom-0 z-30 transition-all duration-500 ease-in-out bg-card/90 backdrop-blur-md shadow-2xl flex-shrink-0 ${
-            leftOpen ? 'w-96 translate-x-0 overflow-visible' : 'w-96 -translate-x-[384px] overflow-visible'
-          } border-r border-border`}
+        <div
+          className={`absolute left-0 top-0 bottom-0 z-30 transition-all duration-500 ease-in-out bg-card/90 backdrop-blur-md shadow-2xl flex-shrink-0 ${leftOpen ? 'w-96 translate-x-0 overflow-visible' : 'w-96 -translate-x-[384px] overflow-visible'
+            } border-r border-border`}
         >
           <div className="w-full h-full overflow-y-auto">
             <LeftSidebar />
           </div>
-          
-          <button 
+
+          <button
             onClick={() => setLeftOpen(!leftOpen)}
             className="absolute -right-10 top-1/2 -translate-y-1/2 z-40 bg-card/95 backdrop-blur-sm border border-l-0 border-border shadow-xl rounded-r-2xl p-3 hover:bg-primary hover:text-primary-foreground transition-all text-muted-foreground flex items-center justify-center group"
           >
@@ -65,15 +65,14 @@ export default function Home() {
         </div>
 
         {/* Right Sidebar Overlay */}
-        <div 
-          className={`absolute right-0 top-0 bottom-0 z-30 bg-card/90 backdrop-blur-md shadow-2xl flex-shrink-0 border-l border-border transition-[transform,opacity] duration-500 ease-in-out ${
-            rightOpen ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0 pointer-events-none'
-          }`}
+        <div
+          className={`absolute right-0 top-0 bottom-0 z-30 bg-card/90 backdrop-blur-md shadow-2xl flex-shrink-0 border-l border-border transition-all duration-500 ease-in-out ${rightOpen ? 'translate-x-0 opacity-100' : 'translate-x-[calc(100%)] opacity-100 pointer-events-none'
+            }`}
           style={{ width: `${rightWidth}px` }}
         >
           {/* Resize Handle */}
           {rightOpen && (
-            <div 
+            <div
               onMouseDown={startResizing}
               className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/40 transition-colors z-50 group"
             >
@@ -86,14 +85,17 @@ export default function Home() {
           <div className="w-full h-full overflow-y-auto">
             <RightSidebar />
           </div>
-
-          <button 
-            onClick={() => setRightOpen(!rightOpen)}
-            className="absolute -left-10 top-1/2 -translate-y-1/2 z-40 bg-card/95 backdrop-blur-sm border border-r-0 border-border shadow-xl rounded-l-2xl p-3 hover:bg-primary hover:text-primary-foreground transition-all text-muted-foreground flex items-center justify-center group pointer-events-auto"
-          >
-            {rightOpen ? <ChevronRight size={24} /> : <ChevronLeft size={24} />}
-          </button>
         </div>
+
+        {/* Right Toggle Button - Outside to stay visible and correctly positioned */}
+        <button
+          onClick={() => setRightOpen(!rightOpen)}
+          className={`absolute top-1/2 -translate-y-1/2 z-40 bg-card/95 backdrop-blur-sm border border-border shadow-xl rounded-l-2xl p-3 hover:bg-primary hover:text-primary-foreground transition-all duration-500 text-muted-foreground flex items-center justify-center group pointer-events-auto ${rightOpen ? 'border-r-0' : 'border-r'
+            }`}
+          style={{ right: rightOpen ? `${rightWidth}px` : '0px' }}
+        >
+          {rightOpen ? <ChevronRight size={24} /> : <ChevronLeft size={24} />}
+        </button>
       </GeometryProvider>
     </div>
   )

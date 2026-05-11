@@ -47,7 +47,7 @@ function ChunkTree({
         const childPrefix = bitPrefix + bit
         const nodeKey = childPrefix
         const isOpen = expanded[nodeKey] !== false // default open
-        
+
         const remainingLevels = activeSectionsList.length - depth - 1
         const leafCount = 1 << remainingLevels
 
@@ -69,11 +69,10 @@ function ChunkTree({
               </div>
               <button
                 onClick={() => setExpanded(prev => ({ ...prev, [nodeKey]: !isOpen }))}
-                className={`flex-1 px-2.5 py-1.5 rounded-md transition-all flex items-center gap-2 border text-left ${
-                  allHidden
+                className={`flex-1 px-2.5 py-1.5 rounded-md transition-all flex items-center gap-2 border text-left ${allHidden
                     ? 'bg-orange-500/5 border-orange-500/20 text-orange-400 opacity-60'
                     : 'bg-accent/5 border-accent/20 text-accent hover:bg-accent/10'
-                }`}
+                  }`}
               >
                 {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                 <Box size={12} />
@@ -86,6 +85,11 @@ function ChunkTree({
                     const next = { ...bitmaskVisibility }
                     leafBits.forEach(b => { next[b] = allHidden })
                     setBitmaskVisibility(next)
+
+                    // Auto-collapse when hiding
+                    if (!allHidden) {
+                      setExpanded(prev => ({ ...prev, [nodeKey]: false }))
+                    }
                   }}
                   onKeyDown={e => e.key === 'Enter' && e.currentTarget.click()}
                   className="text-[10px] px-1.5 py-0.5 rounded bg-background/60 hover:bg-muted border border-border/40 text-muted-foreground hover:text-foreground transition-colors"
@@ -106,11 +110,10 @@ function ChunkTree({
                       <div className="w-3 h-px bg-border/60" />
                     </div>
                     <div
-                      className={`flex-1 px-3 py-2 rounded-md border text-left flex items-center justify-between ${
-                        bitmaskVisibility[buildBitStr(childPrefix)] !== false
+                      className={`flex-1 px-3 py-2 rounded-md border text-left flex items-center justify-between ${bitmaskVisibility[buildBitStr(childPrefix)] !== false
                           ? 'bg-card/40 border-border/40 text-foreground'
                           : 'bg-red-500/5 text-red-500/50 border-red-500/10'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2">
                         <Cuboid size={13} className="opacity-50" />
@@ -197,7 +200,7 @@ export function RightSidebar() {
 
     for (let i = 0; i < numBits; i++) {
       const bitStr = i.toString(2).padStart(numNew, '0')
-      
+
       if (numOld === 0) {
         next[bitStr] = true
         continue
@@ -237,7 +240,7 @@ export function RightSidebar() {
     const newIds = orderedSectionIds.includes(id)
       ? orderedSectionIds.filter(x => x !== id)
       : [...orderedSectionIds, id]
-    
+
     const nextVis = migrateVisibility(newIds)
     setOrderedSectionIds(newIds)
     setBitmaskVisibility(nextVis)
@@ -248,7 +251,7 @@ export function RightSidebar() {
     const items = Array.from(orderedSectionIds)
     const [reorderedItem] = items.splice(result.source.index, 1)
     items.splice(result.destination.index, 0, reorderedItem)
-    
+
     const nextVis = migrateVisibility(items)
     setOrderedSectionIds(items)
     setBitmaskVisibility(nextVis)
@@ -285,11 +288,10 @@ export function RightSidebar() {
                         <button
                           key={`toggle-${sec.id}`}
                           onClick={() => toggleSection(sec.id)}
-                          className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-2 text-xs font-mono font-bold border ${
-                            isActive
+                          className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-2 text-xs font-mono font-bold border ${isActive
                               ? 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/20'
                               : 'bg-muted/50 text-muted-foreground border-transparent opacity-50 hover:opacity-70'
-                          }`}
+                            }`}
                         >
                           <Layers size={13} />
                           ({label})
@@ -319,9 +321,8 @@ export function RightSidebar() {
                                       <div
                                         ref={provided.innerRef}
                                         {...provided.draggableProps}
-                                        className={`flex items-center gap-2 px-2 py-1.5 rounded-md border text-xs font-mono ${
-                                          snapshot.isDragging ? 'bg-accent/20 border-accent text-accent shadow-md' : 'bg-card border-border/60 hover:bg-accent/5 hover:border-accent/30'
-                                        }`}
+                                        className={`flex items-center gap-2 px-2 py-1.5 rounded-md border text-xs font-mono ${snapshot.isDragging ? 'bg-accent/20 border-accent text-accent shadow-md' : 'bg-card border-border/60 hover:bg-accent/5 hover:border-accent/30'
+                                          }`}
                                       >
                                         <div {...provided.dragHandleProps} className="text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing p-0.5">
                                           <GripVertical size={14} />
