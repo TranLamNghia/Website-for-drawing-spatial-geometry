@@ -65,15 +65,19 @@ export function Canvas3D() {
   const { resolvedTheme } = useTheme()
   const isDarkTheme = resolvedTheme === 'dark'
   const GEO_COLORS = getGeoColors(isDarkTheme)
-  const [showLabels, setShowLabels] = useState(true)
-  const [showAxes, setShowAxes] = useState(true)
-  const [showBasePlane, setShowBasePlane] = useState(true)
   const {
     geometryData, highlightedEdges,
     bitmaskVisibility, setBitmaskVisibility,
     explodeAmount, setExplodeAmount,
     orderedSectionIds, setOrderedSectionIds,
+    showAxes, setShowAxes,
+    showGrid, setShowGrid,
+    showLabels, setShowLabels,
+    resetTrigger
   } = useGeometry()
+
+  const showBasePlane = showGrid
+  const setShowBasePlane = setShowGrid
 
   // Reset orderedSectionIds khi có dữ liệu mới (tất cả bật mặc định)
   useEffect(() => {
@@ -89,10 +93,10 @@ export function Canvas3D() {
   const controlsRef = useRef<OrbitControls | null>(null)
   const dynamicGroupRef = useRef<THREE.Group>(new THREE.Group())
 
-  const stateRefs = useRef({ showAxes, showBasePlane })
+  const stateRefs = useRef({ showAxes, showGrid })
   useEffect(() => {
-    stateRefs.current = { showAxes, showBasePlane }
-  }, [showAxes, showBasePlane])
+    stateRefs.current = { showAxes, showGrid }
+  }, [showAxes, showGrid])
 
   // Detect if cross-section splitting is available
   const hasSectionData = !!(geometryData?.sections?.length || geometryData?.clippingPlane)
@@ -355,7 +359,7 @@ export function Canvas3D() {
       })
 
       // Update Dynamic Grid if bounds or step change
-      const showGrid = stateRefs.current.showBasePlane
+      const showGrid = stateRefs.current.showGrid
       const gridRadius = 40 // Total size 80x80
       const snapX = Math.round(centerX / step) * step
       const snapY = Math.round(centerY / step) * step
@@ -395,7 +399,7 @@ export function Canvas3D() {
         }
       }
 
-      basePlane.visible = stateRefs.current.showBasePlane
+      basePlane.visible = stateRefs.current.showGrid
       // Move base plane with camera focus
       basePlane.position.set(centerX, centerY, 0)
       basePlane.scale.set(gridRadius / 120, gridRadius / 120, 1)
@@ -435,6 +439,15 @@ export function Canvas3D() {
       labelRenderer.setSize(0, 0) // Force some internal cleanup
     }
   }, [isDarkTheme])
+
+  // Reset Camera Logic
+  useEffect(() => {
+    if (resetTrigger > 0 && cameraRef.current && controlsRef.current) {
+      cameraRef.current.position.set(25, -20, 15)
+      controlsRef.current.target.set(0, 0, 0)
+      controlsRef.current.update()
+    }
+  }, [resetTrigger])
 
   // Dynamic Geometry (Pyramid, Queries) — with Cross-Section Splitting
   useEffect(() => {

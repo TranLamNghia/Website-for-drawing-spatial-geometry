@@ -28,20 +28,20 @@ export function ThemeSwitcher() {
   return (
     <Select value={theme} onValueChange={setTheme}>
       <SelectTrigger className="h-9 w-[140px] bg-card/95 backdrop-blur-sm border-border text-foreground">
-        <SelectValue placeholder="Theme" />
+        <SelectValue placeholder="Giao diện" />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="light">
           <Sun className="h-4 w-4" />
-          Light
+          Sáng
         </SelectItem>
         <SelectItem value="dark">
           <Moon className="h-4 w-4" />
-          Dark
+          Tối
         </SelectItem>
         <SelectItem value="system">
           <Monitor className="h-4 w-4" />
-          System
+          Hệ thống
         </SelectItem>
       </SelectContent>
     </Select>
