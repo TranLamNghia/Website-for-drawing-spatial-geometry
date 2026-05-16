@@ -99,8 +99,16 @@ export function ManualCanvas3D() {
   const pointMeshesRef = useRef<Array<{ id: string; mesh: THREE.Mesh }>>([])
   const interactionRef = useRef<{
     draggingPointId: string | null
-    dragOffset: Vec3 | null
-  }>({ draggingPointId: null, dragOffset: null })
+    dragPlane: THREE.Plane | null
+    pointerDown:
+      | {
+          x: number
+          y: number
+          didDrag: boolean
+          hit: InteractiveHit | null
+        }
+      | null
+  }>({ draggingPointId: null, dragPlane: null, pointerDown: null })
 
   const { resolvedTheme } = useTheme()
   const colors = useMemo(() => getColors(resolvedTheme === 'dark'), [resolvedTheme])
@@ -135,7 +143,13 @@ export function ManualCanvas3D() {
     setShowGrid,
     showLabels,
     setShowLabels,
+    resetTrigger,
   } = useGeometry()
+
+  const stateRefs = useRef({ showAxes, showGrid })
+  useEffect(() => {
+    stateRefs.current = { showAxes, showGrid }
+  }, [showAxes, showGrid])
 
   const raycasterRef = useRef(new THREE.Raycaster())
   raycasterRef.current.params.Line = { threshold: 0.18 }
@@ -152,7 +166,10 @@ export function ManualCanvas3D() {
     }
   }
 
-  const getPlaneIntersection = (event: PointerEvent | MouseEvent) => {
+  const getPlaneIntersection = (
+    event: PointerEvent | MouseEvent,
+    plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
+  ) => {
     const camera = cameraRef.current
     const container = mountRef.current
     if (!camera || !container) return null
@@ -161,16 +178,13 @@ export function ManualCanvas3D() {
       ((event.clientX - rect.left) / rect.width) * 2 - 1,
       -((event.clientY - rect.top) / rect.height) * 2 + 1,
     )
-    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
     raycasterRef.current.setFromCamera(mouse, camera)
     const target = new THREE.Vector3()
     if (!raycasterRef.current.ray.intersectPlane(plane, target)) return null
-    return [target.x, target.y, 0] as Vec3
+    return [target.x, target.y, target.z] as Vec3
   }
 
   const getSnapTarget = (event: PointerEvent | MouseEvent, planePoint: Vec3 | null) => {
-    if (!planePoint) return null
-
     const pointCandidates = manualDocument.points
       .filter((point) => point.visible)
       .map((point) => {
@@ -204,7 +218,7 @@ export function ManualCanvas3D() {
         distance: evaluateTarget(candidate.position),
         target: {
           kind: 'point' as const,
-          label: `Điểm ${candidate.label}`,
+          label: `\u0110i\u1ec3m ${candidate.label}`,
           pointId: candidate.pointId,
           position: candidate.position,
         },
@@ -226,7 +240,7 @@ export function ManualCanvas3D() {
           distance: evaluateTarget(midpoint),
           target: {
             kind: 'midpoint' as const,
-            label: `Trung điểm ${candidate.label}`,
+            label: `Trung \u0111i\u1ec3m ${candidate.label}`,
             segmentId: candidate.segmentId,
             position: midpoint,
             t: 0.5,
@@ -239,6 +253,8 @@ export function ManualCanvas3D() {
       return bestMidpoint.target
     }
 
+    if (!planePoint) return null
+
     const bestSegment = segmentCandidates
       .map((candidate) => {
         const projection = lineClosestPoint(planePoint, candidate.start, candidate.end)
@@ -246,7 +262,7 @@ export function ManualCanvas3D() {
           distance: evaluateTarget(projection.position),
           target: {
             kind: 'segment' as const,
-            label: `Điểm thuộc ${candidate.label}`,
+            label: `\u0110i\u1ec3m thu\u1ed9c ${candidate.label}`,
             segmentId: candidate.segmentId,
             position: projection.position,
             t: projection.t,
@@ -261,7 +277,7 @@ export function ManualCanvas3D() {
 
     return {
       kind: 'workplane' as const,
-      label: 'Mặt phẳng đáy z = 0',
+      label: 'M\u1eb7t ph\u1eb3ng \u0111\u00e1y z = 0',
       position: planePoint,
     }
   }
@@ -283,6 +299,14 @@ export function ManualCanvas3D() {
       if (data) return data
     }
     return null
+  }
+
+  const createDragPlane = (point: Vec3) => {
+    const camera = cameraRef.current
+    if (!camera) return null
+    const normal = new THREE.Vector3()
+    camera.getWorldDirection(normal)
+    return new THREE.Plane().setFromNormalAndCoplanarPoint(normal, new THREE.Vector3(...point))
   }
 
   useEffect(() => {
@@ -330,41 +354,122 @@ export function ManualCanvas3D() {
     environment.name = 'manual-environment'
     scene.add(environment)
 
-    const grid = new THREE.GridHelper(120, 60, colors.grid, colors.grid)
-    grid.rotation.x = Math.PI / 2
-    grid.position.z = -0.001
-    grid.name = 'grid'
-    environment.add(grid)
+    const planeCanvas = document.createElement('canvas')
+    planeCanvas.width = 512
+    planeCanvas.height = 512
+    const planeContext = planeCanvas.getContext('2d')!
+    const gradient = planeContext.createRadialGradient(256, 256, 0, 256, 256, 256)
+    gradient.addColorStop(0, 'rgba(255,255,255,0.7)')
+    gradient.addColorStop(0.4, 'rgba(255,255,255,0.5)')
+    gradient.addColorStop(1, 'rgba(255,255,255,0)')
+    planeContext.fillStyle = gradient
+    planeContext.fillRect(0, 0, 512, 512)
+    const alphaMap = new THREE.CanvasTexture(planeCanvas)
 
-    const plane = new THREE.Mesh(
-      new THREE.PlaneGeometry(160, 160),
+    const basePlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(240, 240),
       new THREE.MeshBasicMaterial({
-        color: colors.background,
+        color: resolvedTheme === 'dark' ? 0x1f2937 : 0xcccccc,
+        alphaMap,
         transparent: true,
-        opacity: resolvedTheme === 'dark' ? 0.03 : 0.02,
+        opacity: 0.35,
         side: THREE.DoubleSide,
+        depthWrite: false,
       }),
     )
-    plane.name = 'workplane'
-    environment.add(plane)
+    environment.add(basePlane)
 
-    const axes = new THREE.AxesHelper(8)
-    axes.name = 'axes'
-    environment.add(axes)
+    const axesGroup = new THREE.Group()
+    axesGroup.renderOrder = 99
+    const ticksList: Array<{ val: number; mesh: THREE.Line | THREE.Mesh; label: CSS2DObject; axis?: string }> = []
+    const axisLength = 150
 
-    ;([
-      { text: 'x', position: [8.5, 0, 0], color: colors.axes.x },
-      { text: 'y', position: [0, 8.5, 0], color: colors.axes.y },
-      { text: 'z', position: [0, 0, 8.5], color: colors.axes.z },
-    ] as Array<{ text: string; position: Vec3; color: number }>).forEach((axis) => {
-      const element = document.createElement('div')
-      element.className = 'text-sm font-bold'
-      element.textContent = axis.text
-      element.style.color = `#${axis.color.toString(16).padStart(6, '0')}`
-      const label = new CSS2DObject(element)
-      label.position.set(axis.position[0], axis.position[1], axis.position[2])
-      environment.add(label)
-    })
+    const createAxis = (colorHex: number, dir: THREE.Vector3, labelStr: string) => {
+      const lineProps = { color: colorHex, linewidth: 2, transparent: true, opacity: 0.5, depthTest: false }
+
+      if (labelStr === 'z') {
+        const positivePts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, axisLength)]
+        const positiveMat = new THREE.LineBasicMaterial(lineProps)
+        axesGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(positivePts), positiveMat))
+
+        const negativePts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -axisLength)]
+        const negativeMat = new THREE.LineDashedMaterial({ ...lineProps, dashSize: 0.4, gapSize: 0.2 })
+        const negativeLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(negativePts), negativeMat)
+        negativeLine.computeLineDistances()
+        axesGroup.add(negativeLine)
+      } else {
+        const mat = new THREE.LineBasicMaterial(lineProps)
+        const pts = [dir.clone().multiplyScalar(-axisLength), dir.clone().multiplyScalar(axisLength)]
+        axesGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat))
+      }
+
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.15, 0.6, 8),
+        new THREE.MeshBasicMaterial({ color: colorHex, depthTest: false }),
+      )
+      const conePos = dir.clone().multiplyScalar(axisLength)
+      cone.position.copy(conePos)
+      const up = new THREE.Vector3(0, 1, 0)
+      const axis = new THREE.Vector3().crossVectors(up, conePos).normalize()
+      const radians = Math.acos(up.dot(conePos.clone().normalize()))
+      if (axis.lengthSq() > 0.001) cone.quaternion.setFromAxisAngle(axis, radians)
+      else if (conePos.y < 0) cone.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI)
+      axesGroup.add(cone)
+
+      const axisLabelEl = document.createElement('div')
+      axisLabelEl.className = 'text-[15px] italic font-bold'
+      axisLabelEl.style.color = `#${colorHex.toString(16).padStart(6, '0')}`
+      axisLabelEl.textContent = labelStr
+      const axisLabel = new CSS2DObject(axisLabelEl)
+      if (labelStr === 'x') axisLabel.center.set(-0.5, 0.5)
+      if (labelStr === 'y') axisLabel.center.set(0.5, -0.5)
+      if (labelStr === 'z') axisLabel.center.set(0.5, -0.5)
+      axesGroup.add(axisLabel)
+
+      const tickLength = 0.15
+      const tickGeoPts: THREE.Vector3[] = []
+      if (labelStr === 'x') tickGeoPts.push(new THREE.Vector3(0, -tickLength, 0), new THREE.Vector3(0, tickLength, 0))
+      else tickGeoPts.push(new THREE.Vector3(-tickLength, 0, 0), new THREE.Vector3(tickLength, 0, 0))
+      const tickGeometry = new THREE.BufferGeometry().setFromPoints(tickGeoPts)
+      const tickMaterial = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.5, depthTest: false })
+
+      for (let index = -axisLength; index <= axisLength; index += 1) {
+        if (index === 0) continue
+        const tickPos = dir.clone().multiplyScalar(index)
+        const tickMesh = new THREE.Line(tickGeometry, tickMaterial)
+        tickMesh.position.copy(tickPos)
+        axesGroup.add(tickMesh)
+
+        const tickLabelEl = document.createElement('div')
+        tickLabelEl.className = 'text-[10px] font-sans font-semibold leading-none opacity-80'
+        tickLabelEl.style.color = `#${colorHex.toString(16).padStart(6, '0')}`
+        tickLabelEl.textContent = index.toString()
+        const tickLabel = new CSS2DObject(tickLabelEl)
+        if (labelStr === 'x') tickLabel.center.set(0.5, 1.5)
+        else if (labelStr === 'y') tickLabel.center.set(-0.5, 1.5)
+        else tickLabel.center.set(1.5, 0.5)
+        tickLabel.position.copy(tickPos)
+        axesGroup.add(tickLabel)
+        ticksList.push({ val: index, mesh: tickMesh, label: tickLabel, axis: labelStr })
+      }
+    }
+
+    createAxis(colors.axes.x, new THREE.Vector3(1, 0, 0), 'x')
+    createAxis(colors.axes.y, new THREE.Vector3(0, 1, 0), 'y')
+    createAxis(colors.axes.z, new THREE.Vector3(0, 0, 1), 'z')
+    environment.add(axesGroup)
+
+    const axisLabels = {
+      x: axesGroup.children.find((child) => child instanceof CSS2DObject && child.element.textContent === 'x') as CSS2DObject,
+      y: axesGroup.children.find((child) => child instanceof CSS2DObject && child.element.textContent === 'y') as CSS2DObject,
+      z: axesGroup.children.find((child) => child instanceof CSS2DObject && child.element.textContent === 'z') as CSS2DObject,
+    }
+
+    let lastGridStep = -1
+    let lastGridCenterX = -1
+    let lastGridCenterY = -1
+    let lastGridShow = true
+    let dynamicGrid: THREE.LineSegments | null = null
 
     const dynamicGroup = new THREE.Group()
     dynamicGroup.name = 'manual-dynamic'
@@ -375,9 +480,85 @@ export function ManualCanvas3D() {
     const animate = () => {
       frameId = requestAnimationFrame(animate)
       controls.update()
-      axes.visible = showAxes
-      grid.visible = showGrid
-      plane.visible = showGrid
+      const dist = camera.position.distanceTo(controls.target)
+      const fovRad = THREE.MathUtils.degToRad(camera.fov)
+      const worldSpan = 2 * dist * Math.tan(fovRad / 2)
+      const targetCells = 18
+      const stepEstimate = worldSpan / targetCells
+      const stepOptions = [1, 2, 5, 10, 20, 50]
+      const step = stepOptions.find((candidate) => candidate >= stepEstimate) ?? stepOptions[stepOptions.length - 1]
+
+      const center = controls.target
+      const centerX = center.x
+      const centerY = center.y
+      const centerZ = center.z
+      const edgePos = axisLength
+
+      if (axisLabels.x) axisLabels.x.position.set(edgePos, 0, 0)
+      if (axisLabels.y) axisLabels.y.position.set(0, edgePos, 0)
+      if (axisLabels.z) axisLabels.z.position.set(0, 0, edgePos)
+
+      const labelShowRange = step * 15
+      ticksList.forEach((tick) => {
+        const axisExtent = edgePos
+        const centerVal = tick.axis === 'x' ? centerX : tick.axis === 'y' ? centerY : centerZ
+        const isVisible =
+          Math.abs(tick.val) <= axisExtent &&
+          tick.val % step === 0 &&
+          Math.abs(tick.val - centerVal) < labelShowRange
+
+        if (tick.mesh.visible !== isVisible) {
+          tick.mesh.visible = isVisible
+          tick.label.visible = isVisible
+        }
+        if (isVisible) tick.mesh.scale.setScalar(dist * 0.05)
+      })
+
+      const showGridState = stateRefs.current.showGrid
+      const gridRadius = 40
+      const snapX = Math.round(centerX / step) * step
+      const snapY = Math.round(centerY / step) * step
+      const hasMoved = Math.abs(lastGridCenterX - snapX) > 0.001 || Math.abs(lastGridCenterY - snapY) > 0.001
+
+      if (lastGridStep !== step || hasMoved || lastGridShow !== showGridState) {
+        lastGridStep = step
+        lastGridCenterX = snapX
+        lastGridCenterY = snapY
+        lastGridShow = showGridState
+
+        if (dynamicGrid) {
+          environment.remove(dynamicGrid)
+          dynamicGrid.geometry.dispose()
+          ;(dynamicGrid.material as THREE.Material).dispose()
+          dynamicGrid = null
+        }
+
+        if (showGridState) {
+          const gridPoints: THREE.Vector3[] = []
+          const gridZ = -0.001
+
+          for (let x = snapX - gridRadius; x <= snapX + gridRadius; x += step) {
+            if (x === 0 || Math.abs(x) > axisLength) continue
+            gridPoints.push(new THREE.Vector3(x, snapY - gridRadius, gridZ), new THREE.Vector3(x, snapY + gridRadius, gridZ))
+          }
+
+          for (let y = snapY - gridRadius; y <= snapY + gridRadius; y += step) {
+            if (y === 0 || Math.abs(y) > axisLength) continue
+            gridPoints.push(new THREE.Vector3(snapX - gridRadius, y, gridZ), new THREE.Vector3(snapX + gridRadius, y, gridZ))
+          }
+
+          dynamicGrid = new THREE.LineSegments(
+            new THREE.BufferGeometry().setFromPoints(gridPoints),
+            new THREE.LineBasicMaterial({ color: colors.grid, transparent: true, opacity: 0.8, depthWrite: false }),
+          )
+          environment.add(dynamicGrid)
+        }
+      }
+
+      axesGroup.visible = stateRefs.current.showAxes
+      basePlane.visible = stateRefs.current.showGrid
+      basePlane.position.set(centerX, centerY, 0)
+      basePlane.scale.set(gridRadius / 120, gridRadius / 120, 1)
       renderer.render(scene, camera)
       labelRenderer.render(scene, camera)
     }
@@ -402,7 +583,7 @@ export function ManualCanvas3D() {
       if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement)
       if (labelRenderer.domElement.parentNode) labelRenderer.domElement.parentNode.removeChild(labelRenderer.domElement)
     }
-  }, [colors, resolvedTheme, showAxes, showGrid])
+  }, [colors, resolvedTheme])
 
   useEffect(() => {
     const group = dynamicGroupRef.current
@@ -627,69 +808,27 @@ export function ManualCanvas3D() {
     const controls = controlsRef.current
     if (!renderer || !controls) return
 
-    const handlePointerMove = (event: PointerEvent) => {
-      const planePoint = getPlaneIntersection(event)
-      const snapTarget = getSnapTarget(event, planePoint)
+    const dragThreshold = 5
 
-      if (interactionRef.current.draggingPointId) {
-        updatePointPosition(
-          interactionRef.current.draggingPointId,
-          snapTarget?.position ?? planePoint ?? [0, 0, 0],
-          snapTarget,
-        )
-        setHoveredSnapTarget(snapTarget)
-        return
-      }
-
-      setHoveredSnapTarget(snapTarget)
-      if (!draftOperation) return
-      if (draftOperation.tool === 'segment' || draftOperation.tool === 'polygon') {
-        setDraftOperation({
-          ...draftOperation,
-          previewPosition: snapTarget?.position ?? planePoint ?? null,
-          snapTarget,
-        })
-      }
-    }
-
-    const handlePointerUp = () => {
-      interactionRef.current.draggingPointId = null
-      controls.enabled = true
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
+    const handleCanvasClick = (event: PointerEvent) => {
       const hit = findIntersectionEntity(event)
       const planePoint = getPlaneIntersection(event)
       const snapTarget = getSnapTarget(event, planePoint)
-      const pointId =
-        snapTarget?.kind === 'point'
-          ? snapTarget.pointId ?? null
-          : null
+      const fallbackPosition = planePoint ?? snapTarget?.position ?? null
 
       if (activeTool === 'select') {
-        if (hit) {
-          setManualSelection(hit)
-          if (hit.kind === 'point') {
-            const point = manualDocument.points.find((candidate) => candidate.id === hit.id)
-            if (point && !point.locked) {
-              interactionRef.current.draggingPointId = point.id
-              controls.enabled = false
-            }
-          }
-        } else {
-          setManualSelection(null)
-        }
+        setManualSelection(hit ?? null)
         return
       }
 
-      if (activeTool === 'point' && planePoint) {
-        const createdPointId = createPointFromTarget(snapTarget, planePoint)
+      if (activeTool === 'point' && fallbackPosition) {
+        const createdPointId = createPointFromTarget(snapTarget, fallbackPosition)
         if (createdPointId) setManualSelection({ kind: 'point', id: createdPointId })
         return
       }
 
-      if (activeTool === 'segment' && planePoint) {
-        const materializedPointId = createPointFromTarget(snapTarget, planePoint)
+      if (activeTool === 'segment' && fallbackPosition) {
+        const materializedPointId = createPointFromTarget(snapTarget, fallbackPosition)
         if (!materializedPointId) return
         const currentIds = draftOperation?.tool === 'segment' ? draftOperation.pointIds ?? [] : []
         if (currentIds.length === 0) {
@@ -703,8 +842,8 @@ export function ManualCanvas3D() {
         return
       }
 
-      if (activeTool === 'polygon' && planePoint) {
-        const materializedPointId = createPointFromTarget(snapTarget, planePoint)
+      if (activeTool === 'polygon' && fallbackPosition) {
+        const materializedPointId = createPointFromTarget(snapTarget, fallbackPosition)
         if (!materializedPointId) return
         const currentIds = draftOperation?.tool === 'polygon' ? [...(draftOperation.pointIds ?? [])] : []
         if (currentIds.length >= 3 && currentIds[0] === materializedPointId) {
@@ -719,8 +858,8 @@ export function ManualCanvas3D() {
         return
       }
 
-      if (activeTool === 'box' && planePoint) {
-        const materializedPointId = createPointFromTarget(snapTarget, planePoint)
+      if (activeTool === 'box' && fallbackPosition) {
+        const materializedPointId = createPointFromTarget(snapTarget, fallbackPosition)
         if (!materializedPointId) return
         const currentIds = draftOperation?.tool === 'box' ? [...(draftOperation.pointIds ?? [])] : []
         if (currentIds.length < 2) currentIds.push(materializedPointId)
@@ -742,6 +881,86 @@ export function ManualCanvas3D() {
               ? draftOperation.height ?? 4
               : 4,
         })
+      }
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const planePoint = getPlaneIntersection(event)
+      const snapTarget = getSnapTarget(event, planePoint)
+
+      if (interactionRef.current.pointerDown && !interactionRef.current.pointerDown.didDrag) {
+        const dx = event.clientX - interactionRef.current.pointerDown.x
+        const dy = event.clientY - interactionRef.current.pointerDown.y
+        if (Math.hypot(dx, dy) > dragThreshold) {
+          interactionRef.current.pointerDown.didDrag = true
+
+          const pointerHit = interactionRef.current.pointerDown.hit
+          if (
+            activeTool === 'select' &&
+            pointerHit?.kind === 'point' &&
+            manualSelection?.kind === 'point' &&
+            manualSelection.id === pointerHit.id
+          ) {
+            const pointPosition = manualDerived.pointPositions[pointerHit.id]
+            const point = manualDocument.points.find((candidate) => candidate.id === pointerHit.id)
+            if (pointPosition && point && !point.locked) {
+              interactionRef.current.draggingPointId = pointerHit.id
+              interactionRef.current.dragPlane = createDragPlane(pointPosition)
+              controls.enabled = false
+            }
+          }
+        }
+      }
+
+      if (interactionRef.current.draggingPointId) {
+        const dragPlanePoint = interactionRef.current.dragPlane
+          ? getPlaneIntersection(event, interactionRef.current.dragPlane)
+          : planePoint
+        updatePointPosition(
+          interactionRef.current.draggingPointId,
+          snapTarget?.position ?? dragPlanePoint ?? planePoint ?? [0, 0, 0],
+          snapTarget,
+        )
+        setHoveredSnapTarget(snapTarget)
+        return
+      }
+
+      setHoveredSnapTarget(snapTarget)
+      if (!draftOperation) return
+      if (draftOperation.tool === 'segment' || draftOperation.tool === 'polygon') {
+        setDraftOperation({
+          ...draftOperation,
+          previewPosition: snapTarget?.position ?? planePoint ?? null,
+          snapTarget,
+        })
+      }
+    }
+
+    const handlePointerUp = (event: PointerEvent) => {
+      const pointerDown = interactionRef.current.pointerDown
+      const draggingPointId = interactionRef.current.draggingPointId
+
+      interactionRef.current.draggingPointId = null
+      interactionRef.current.dragPlane = null
+      interactionRef.current.pointerDown = null
+      controls.enabled = true
+
+      if (!pointerDown) return
+      if (draggingPointId || pointerDown.didDrag) return
+
+      const dx = event.clientX - pointerDown.x
+      const dy = event.clientY - pointerDown.y
+      if (Math.hypot(dx, dy) > dragThreshold) return
+
+      handleCanvasClick(event)
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      interactionRef.current.pointerDown = {
+        x: event.clientX,
+        y: event.clientY,
+        didDrag: false,
+        hit: findIntersectionEntity(event),
       }
     }
 
@@ -815,6 +1034,13 @@ export function ManualCanvas3D() {
     updatePointPosition,
   ])
 
+  useEffect(() => {
+    if (!resetTrigger || !cameraRef.current || !controlsRef.current) return
+    cameraRef.current.position.set(25, -20, 15)
+    controlsRef.current.target.set(0, 0, 0)
+    controlsRef.current.update()
+  }, [resetTrigger])
+
   const handleZoom = (factor: number) => {
     const camera = cameraRef.current
     const controls = controlsRef.current
@@ -841,61 +1067,61 @@ export function ManualCanvas3D() {
           <button
             onClick={() => setShowAxes(!showAxes)}
             className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showAxes ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title="Ẩn/Hiện trục tọa độ"
+            title={'\u1ea8n/Hi\u1ec7n tr\u1ee5c t\u1ecda \u0111\u1ed9'}
           >
             <Crosshair size={18} />
-            <span className="text-xs">Trục tọa độ</span>
+            <span className="text-xs">{'Tr\u1ee5c t\u1ecda \u0111\u1ed9'}</span>
           </button>
           <div className="w-px h-4 bg-border mx-1" />
           <button
             onClick={() => setShowGrid(!showGrid)}
             className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showGrid ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title="Ẩn/Hiện lưới đáy"
+            title={'\u1ea8n/Hi\u1ec7n l\u01b0\u1edbi \u0111\u00e1y'}
           >
             <Layers size={18} />
-            <span className="text-xs">Lưới đáy</span>
+            <span className="text-xs">{'L\u01b0\u1edbi \u0111\u00e1y'}</span>
           </button>
           <div className="w-px h-4 bg-border mx-1" />
           <button
             onClick={() => setShowLabels(!showLabels)}
             className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showLabels ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title="Ẩn/Hiện nhãn điểm"
+            title={'\u1ea8n/Hi\u1ec7n nh\u00e3n \u0111i\u1ec3m'}
           >
             <Eye size={18} />
-            <span className="text-xs">Nhãn</span>
+            <span className="text-xs">{'Nh\u00e3n'}</span>
           </button>
           <div className="w-px h-6 bg-border mx-2" />
           <button
             onClick={handleResetCamera}
             className="p-2.5 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all flex items-center gap-2"
-            title="Đặt lại góc nhìn"
+            title={'\u0110\u1eb7t l\u1ea1i g\u00f3c nh\u00ecn'}
           >
             <RefreshCcw size={18} />
-            <span className="text-xs font-medium">Đặt lại</span>
+            <span className="text-xs font-medium">{'\u0110\u1eb7t l\u1ea1i'}</span>
           </button>
         </div>
       </div>
 
       <div className="absolute bottom-6 left-6 z-30 rounded-xl border border-border bg-card/95 backdrop-blur-md px-3 py-2 shadow-lg">
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span className="font-semibold text-foreground">Tool:</span>
+          <span className="font-semibold text-foreground">{'C\u00f4ng c\u1ee5:'}</span>
           <span>
             {activeTool === 'select'
-              ? 'Chọn'
+              ? 'Ch\u1ecdn'
               : activeTool === 'point'
-                ? 'Điểm'
+                ? '\u0110i\u1ec3m'
                 : activeTool === 'segment'
-                  ? 'Đoạn'
+                  ? '\u0110o\u1ea1n'
                   : activeTool === 'polygon'
-                    ? 'Đa giác'
+                    ? '\u0110a gi\u00e1c'
                     : activeTool === 'box'
-                      ? 'Hình hộp'
+                      ? 'H\u00ecnh h\u1ed9p'
                       : activeTool === 'pyramid'
-                        ? 'Hình chóp'
-                        : 'Lăng trụ'}
+                        ? 'H\u00ecnh ch\u00f3p'
+                        : 'L\u0103ng tr\u1ee5'}
           </span>
-          <span className="text-border">•</span>
-          <span>{hoveredSnapTarget?.label ?? 'Không bám'}</span>
+          <span className="text-border">{'\u2022'}</span>
+          <span>{hoveredSnapTarget?.label ?? 'Kh\u00f4ng b\u00e1m'}</span>
         </div>
       </div>
 
@@ -912,4 +1138,3 @@ export function ManualCanvas3D() {
     </div>
   )
 }
-
