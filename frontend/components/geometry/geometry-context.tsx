@@ -168,10 +168,6 @@ interface GeometryContextType {
   setDraftOperation: (draft: ManualDraft | null) => void
   hoveredSnapTarget: ManualSnapTarget | null
   setHoveredSnapTarget: (target: ManualSnapTarget | null) => void
-  snapEnabled: boolean
-  setSnapEnabled: (value: boolean) => void
-  snapThreshold: number
-  setSnapThreshold: (value: number) => void
   canUndo: boolean
   canRedo: boolean
   undoManual: () => void
@@ -184,6 +180,9 @@ interface GeometryContextType {
   createBox: (cornerPointIds: [string, string], height: number) => string | null
   createPyramid: (basePolygonId: string, height: number) => string | null
   createPrism: (basePolygonId: string, height: number) => string | null
+  createSphere: (centerPointId: string, radius: number, radiusPointId?: string) => string | null
+  createCone: (centerPointId: string, radius: number, height: number) => string | null
+  createCylinder: (centerPointId: string, radius: number, height: number) => string | null
   renameManualEntity: (
     kind: 'point' | 'segment' | 'polygon' | 'solid',
     id: string,
@@ -347,8 +346,6 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const [activeTool, setActiveTool] = useState<ManualTool>('select')
   const [draftOperation, setDraftOperation] = useState<ManualDraft | null>(null)
   const [hoveredSnapTarget, setHoveredSnapTarget] = useState<ManualSnapTarget | null>(null)
-  const [snapEnabled, setSnapEnabled] = useState(true)
-  const [snapThreshold, setSnapThreshold] = useState(18)
   const [undoStack, setUndoStack] = useState<ManualDocument[]>([])
   const [redoStack, setRedoStack] = useState<ManualDocument[]>([])
 
@@ -601,6 +598,90 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     [commitManualDocument, manualDocument.solids.length],
   )
 
+  const createSphere = useCallback(
+    (centerPointId: string, radius: number, radiusPointId?: string) => {
+      if (radius <= 0) return null
+      const solidId = createEntityId('solid')
+      const solid: ManualSolid = {
+        id: solidId,
+        label: `Cầu ${manualDocument.solids.length + 1}`,
+        entityType: 'solid',
+        solidType: 'sphere',
+        radius,
+        centerPointId,
+        radiusPointId,
+        createdByTool: 'sphere',
+        dependsOn: [centerPointId, ...(radiusPointId ? [radiusPointId] : [])],
+        locked: false,
+        visible: true,
+        selectable: true,
+      }
+      commitManualDocument((current) => ({
+        ...current,
+        solids: [...current.solids, solid],
+      }))
+      setManualSelection({ kind: 'solid', id: solidId })
+      return solidId
+    },
+    [commitManualDocument, manualDocument.solids.length],
+  )
+
+  const createCone = useCallback(
+    (centerPointId: string, radius: number, height: number) => {
+      if (radius <= 0 || height <= 0) return null
+      const solidId = createEntityId('solid')
+      const solid: ManualSolid = {
+        id: solidId,
+        label: `Nón ${manualDocument.solids.length + 1}`,
+        entityType: 'solid',
+        solidType: 'cone',
+        radius,
+        height,
+        centerPointId,
+        createdByTool: 'cone',
+        dependsOn: [centerPointId],
+        locked: false,
+        visible: true,
+        selectable: true,
+      }
+      commitManualDocument((current) => ({
+        ...current,
+        solids: [...current.solids, solid],
+      }))
+      setManualSelection({ kind: 'solid', id: solidId })
+      return solidId
+    },
+    [commitManualDocument, manualDocument.solids.length],
+  )
+
+  const createCylinder = useCallback(
+    (centerPointId: string, radius: number, height: number) => {
+      if (radius <= 0 || height <= 0) return null
+      const solidId = createEntityId('solid')
+      const solid: ManualSolid = {
+        id: solidId,
+        label: `Trụ ${manualDocument.solids.length + 1}`,
+        entityType: 'solid',
+        solidType: 'cylinder',
+        radius,
+        height,
+        centerPointId,
+        createdByTool: 'cylinder',
+        dependsOn: [centerPointId],
+        locked: false,
+        visible: true,
+        selectable: true,
+      }
+      commitManualDocument((current) => ({
+        ...current,
+        solids: [...current.solids, solid],
+      }))
+      setManualSelection({ kind: 'solid', id: solidId })
+      return solidId
+    },
+    [commitManualDocument, manualDocument.solids.length],
+  )
+
   const renameManualEntity = useCallback(
     (kind: 'point' | 'segment' | 'polygon' | 'solid', id: string, label: string) => {
       const nextLabel = label.trim()
@@ -737,10 +818,6 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       setDraftOperation,
       hoveredSnapTarget,
       setHoveredSnapTarget,
-      snapEnabled,
-      setSnapEnabled,
-      snapThreshold,
-      setSnapThreshold,
       canUndo: undoStack.length > 0,
       canRedo: redoStack.length > 0,
       undoManual,
@@ -753,6 +830,9 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       createBox,
       createPyramid,
       createPrism,
+      createSphere,
+      createCone,
+      createCylinder,
       renameManualEntity,
       toggleManualVisibility,
       toggleManualLocked,
@@ -769,6 +849,9 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       createPrism,
       createPyramid,
       createSegment,
+      createSphere,
+      createCone,
+      createCylinder,
       draftOperation,
       errorMessage,
       explodeAmount,
@@ -796,8 +879,6 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       showAxes,
       showGrid,
       showLabels,
-      snapEnabled,
-      snapThreshold,
       toggleManualLocked,
       toggleManualVisibility,
       undoManual,

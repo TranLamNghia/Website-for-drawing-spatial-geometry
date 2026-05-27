@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowLeft, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ManualCanvas3D } from './manual-canvas-3d'
 import { ManualLeftPanel } from './manual-left-panel'
@@ -22,21 +22,7 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
         <ManualCanvas3D />
       </div>
 
-      <div className="pointer-events-auto absolute top-4 left-4 z-50 flex items-center gap-3">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onBack}
-          className="flex items-center gap-2 rounded-xl bg-card/95 shadow-lg backdrop-blur-md"
-        >
-          <ArrowLeft size={16} />
-          Dashboard
-        </Button>
-        <div className="rounded-xl border border-border bg-card/95 px-4 py-2 shadow-lg backdrop-blur-md">
-          <h1 className="text-sm font-bold tracking-tight">{"Workspace t\u1ef1 v\u1ebd 3D"}</h1>
-          <p className="text-[11px] text-muted-foreground">{"D\u1ef1ng h\u00ecnh tr\u1ef1c ti\u1ebfp tr\u00ean c\u00f9ng h\u1ec7 tr\u1ee5c v\u00e0 l\u01b0\u1edbi chu\u1ea9n."}</p>
-        </div>
-      </div>
+
 
       <div className="pointer-events-auto absolute top-4 right-4 z-50">
         <Button

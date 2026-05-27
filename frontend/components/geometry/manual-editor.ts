@@ -12,6 +12,9 @@ export type ManualTool =
   | 'box'
   | 'pyramid'
   | 'prism'
+  | 'sphere'
+  | 'cone'
+  | 'cylinder'
 
 export type ManualSelection =
   | { kind: 'point' | 'segment' | 'polygon' | 'solid'; id: string }
@@ -48,10 +51,14 @@ export interface ManualPolygon extends ManualEntityMeta {
 
 export interface ManualSolid extends ManualEntityMeta {
   entityType: 'solid'
-  solidType: 'box' | 'pyramid' | 'prism'
-  height: number
+  solidType: 'box' | 'pyramid' | 'prism' | 'sphere' | 'cone' | 'cylinder'
+  height?: number
+  radius?: number
   cornerPointIds?: [string, string]
   basePolygonId?: string
+  centerPointId?: string
+  apexPointId?: string
+  radiusPointId?: string
 }
 
 export interface ManualDocument {
@@ -75,6 +82,10 @@ export interface ManualDraft {
   pointIds?: string[]
   basePolygonId?: string | null
   height?: number
+  radius?: number
+  centerPointId?: string | null
+  apexPointId?: string | null
+  radiusPointId?: string | null
   previewPosition?: Vec3 | null
   snapTarget?: ManualSnapTarget | null
 }
@@ -483,10 +494,10 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       const baseB: Vec3 = [third[0], first[1], 0]
       const baseC: Vec3 = [third[0], third[1], 0]
       const baseD: Vec3 = [first[0], third[1], 0]
-      const topA: Vec3 = [baseA[0], baseA[1], solid.height]
-      const topB: Vec3 = [baseB[0], baseB[1], solid.height]
-      const topC: Vec3 = [baseC[0], baseC[1], solid.height]
-      const topD: Vec3 = [baseD[0], baseD[1], solid.height]
+      const topA: Vec3 = [baseA[0], baseA[1], solid.height ?? 0]
+      const topB: Vec3 = [baseB[0], baseB[1], solid.height ?? 0]
+      const topC: Vec3 = [baseC[0], baseC[1], solid.height ?? 0]
+      const topD: Vec3 = [baseD[0], baseD[1], solid.height ?? 0]
       const baseLabels = [firstPoint.label, `${solid.label}B`, thirdPoint.label, `${solid.label}D`]
       const topLabels = baseLabels.map((label) => `${label}'`)
       const allPoints = [baseA, baseB, baseC, baseD, topA, topB, topC, topD]
@@ -558,10 +569,10 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       solidInfo[solid.id] = {
         solidType: 'box',
         baseLabel: baseLabels.join(', '),
-        height: round(Math.abs(solid.height)),
+        height: round(Math.abs(solid.height ?? 0)),
         baseArea: round(baseArea),
-        volume: round(baseArea * Math.abs(solid.height)),
-        formula: `V = S_đáy * h = ${round(baseArea)} * ${round(Math.abs(solid.height))}`,
+        volume: round(baseArea * Math.abs(solid.height ?? 0)),
+        formula: `V = S_đáy * h = ${round(baseArea)} * ${round(Math.abs(solid.height ?? 0))}`,
         vertexCount: 8,
         faceCount: 6,
       }
@@ -583,7 +594,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     const center = centroid(basePoints)
 
     if (solid.solidType === 'pyramid') {
-      const apex: Vec3 = [center[0], center[1], solid.height]
+      const apex: Vec3 = [center[0], center[1], solid.height ?? 0]
       const apexLabel = `${solid.label}S`
       pushGeometryPoint(geometry, apexLabel, apex)
       displayPoints.push({
@@ -639,17 +650,17 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       solidInfo[solid.id] = {
         solidType: 'pyramid',
         baseLabel: basePolygon.label,
-        height: round(Math.abs(solid.height)),
+        height: round(Math.abs(solid.height ?? 0)),
         baseArea: round(baseArea),
-        volume: round((baseArea * Math.abs(solid.height)) / 3),
-        formula: `V = S_đáy * h / 3 = ${round(baseArea)} * ${round(Math.abs(solid.height))} / 3`,
+        volume: round((baseArea * Math.abs(solid.height ?? 0)) / 3),
+        formula: `V = S_đáy * h / 3 = ${round(baseArea)} * ${round(Math.abs(solid.height ?? 0))} / 3`,
         vertexCount: basePoints.length + 1,
         faceCount: basePoints.length + 1,
       }
       return
     }
 
-    const topPoints = basePoints.map<Vec3>((point) => [point[0], point[1], point[2] + solid.height])
+    const topPoints = basePoints.map<Vec3>((point) => [point[0], point[1], point[2] + (solid.height ?? 0)])
     const topLabels = baseLabels.map((label) => `${label}'`)
     topPoints.forEach((point, index) => {
       pushGeometryPoint(geometry, topLabels[index], point)
@@ -729,12 +740,305 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     solidInfo[solid.id] = {
       solidType: 'prism',
       baseLabel: basePolygon.label,
-      height: round(Math.abs(solid.height)),
+      height: round(Math.abs(solid.height ?? 0)),
       baseArea: round(baseArea),
-      volume: round(baseArea * Math.abs(solid.height)),
-      formula: `V = S_đáy * h = ${round(baseArea)} * ${round(Math.abs(solid.height))}`,
+      volume: round(baseArea * Math.abs(solid.height ?? 0)),
+      formula: `V = S_đáy * h = ${round(baseArea)} * ${round(Math.abs(solid.height ?? 0))}`,
       vertexCount: basePoints.length * 2,
       faceCount: basePoints.length + 2,
+    }
+  })
+
+  // ──── Sphere / Cone / Cylinder (round solids) ────
+  document.solids.forEach((solid) => {
+    if (solid.solidType === 'sphere' && solid.centerPointId && solid.radius) {
+      const center = pointPositions[solid.centerPointId]
+      const centerPoint = pointMap.get(solid.centerPointId)
+      if (!center || !centerPoint) return
+      const r = solid.radius
+
+      // Generate wireframe circle points for display (3 circles: XY, XZ, YZ)
+      const circleSegments = 32
+      const circleColors = ['#e11d48', '#2563eb', '#16a34a']
+      const circleNormals: Vec3[] = [[0, 0, 1], [0, 1, 0], [1, 0, 0]]
+
+      circleNormals.forEach((normal, circleIdx) => {
+        const circlePoints: Vec3[] = []
+        for (let i = 0; i <= circleSegments; i++) {
+          const angle = (i / circleSegments) * Math.PI * 2
+          const cos = Math.cos(angle)
+          const sin = Math.sin(angle)
+          let pt: Vec3
+          if (normal[2] === 1) pt = [center[0] + r * cos, center[1] + r * sin, center[2]]
+          else if (normal[1] === 1) pt = [center[0] + r * cos, center[1], center[2] + r * sin]
+          else pt = [center[0], center[1] + r * cos, center[2] + r * sin]
+          circlePoints.push(pt)
+        }
+        for (let i = 0; i < circlePoints.length - 1; i++) {
+          displaySegments.push({
+            id: `${solid.id}_circle${circleIdx}_${i}`,
+            label: '',
+            start: circlePoints[i],
+            end: circlePoints[i + 1],
+            sourceKind: 'solid',
+            sourceId: solid.id,
+            visible: solid.visible,
+          })
+        }
+      })
+
+      // Display center point
+      displayPoints.push({
+        id: `${solid.id}_center`,
+        label: centerPoint.label,
+        position: center,
+        sourceKind: 'solid',
+        sourceId: solid.id,
+        selectable: false,
+        generated: true,
+        visible: solid.visible,
+      })
+
+      // Radius point (if defined)
+      if (solid.radiusPointId) {
+        const rp = pointPositions[solid.radiusPointId]
+        const rpMeta = pointMap.get(solid.radiusPointId)
+        if (rp && rpMeta) {
+          displayPoints.push({
+            id: `${solid.id}_radius_pt`,
+            label: rpMeta.label,
+            position: rp,
+            sourceKind: 'solid',
+            sourceId: solid.id,
+            selectable: false,
+            generated: true,
+            visible: solid.visible,
+          })
+          displaySegments.push({
+            id: `${solid.id}_radius_line`,
+            label: `${centerPoint.label}-${rpMeta.label}`,
+            start: center,
+            end: rp,
+            sourceKind: 'solid',
+            sourceId: solid.id,
+            visible: solid.visible,
+          })
+        }
+      }
+
+      pushGeometryPoint(geometry, centerPoint.label, center)
+      solidInfo[solid.id] = {
+        solidType: 'sphere',
+        baseLabel: centerPoint.label,
+        height: round(r * 2),
+        baseArea: round(4 * Math.PI * r * r),
+        volume: round((4 / 3) * Math.PI * r * r * r),
+        formula: `V = 4/3·π·R³ = 4/3·π·${round(r)}³`,
+        vertexCount: 1,
+        faceCount: 1,
+      }
+      return
+    }
+
+    if (solid.solidType === 'cone' && solid.centerPointId && solid.radius && solid.height) {
+      const center = pointPositions[solid.centerPointId]
+      const centerPoint = pointMap.get(solid.centerPointId)
+      if (!center || !centerPoint) return
+      const r = solid.radius
+      const h = solid.height
+
+      const apex: Vec3 = [center[0], center[1], center[2] + h]
+      const apexLabel = solid.apexPointId
+        ? (pointMap.get(solid.apexPointId)?.label ?? `${solid.label}S`)
+        : `${solid.label}S`
+
+      pushGeometryPoint(geometry, centerPoint.label, center)
+      pushGeometryPoint(geometry, apexLabel, apex)
+
+      displayPoints.push({
+        id: `${solid.id}_center`,
+        label: centerPoint.label,
+        position: center,
+        sourceKind: 'solid',
+        sourceId: solid.id,
+        selectable: false,
+        generated: true,
+        visible: solid.visible,
+      })
+      displayPoints.push({
+        id: `${solid.id}_apex`,
+        label: apexLabel,
+        position: apex,
+        sourceKind: 'solid',
+        sourceId: solid.id,
+        selectable: false,
+        generated: true,
+        visible: solid.visible,
+      })
+
+      // Height line (center -> apex)
+      displaySegments.push({
+        id: `${solid.id}_height`,
+        label: `${centerPoint.label}-${apexLabel}`,
+        start: center,
+        end: apex,
+        sourceKind: 'solid',
+        sourceId: solid.id,
+        visible: solid.visible,
+      })
+
+      // Base circle wireframe
+      const circleSegments = 32
+      const circlePoints: Vec3[] = []
+      for (let i = 0; i <= circleSegments; i++) {
+        const angle = (i / circleSegments) * Math.PI * 2
+        circlePoints.push([center[0] + r * Math.cos(angle), center[1] + r * Math.sin(angle), center[2]])
+      }
+      for (let i = 0; i < circlePoints.length - 1; i++) {
+        displaySegments.push({
+          id: `${solid.id}_base_circle_${i}`,
+          label: '',
+          start: circlePoints[i],
+          end: circlePoints[i + 1],
+          sourceKind: 'solid',
+          sourceId: solid.id,
+          visible: solid.visible,
+        })
+      }
+
+      // Slant lines (4 generatrices)
+      for (let i = 0; i < 4; i++) {
+        const angle = (i / 4) * Math.PI * 2
+        const basePoint: Vec3 = [center[0] + r * Math.cos(angle), center[1] + r * Math.sin(angle), center[2]]
+        displaySegments.push({
+          id: `${solid.id}_slant_${i}`,
+          label: '',
+          start: basePoint,
+          end: apex,
+          sourceKind: 'solid',
+          sourceId: solid.id,
+          visible: solid.visible,
+        })
+      }
+
+      const slantHeight = Math.sqrt(r * r + h * h)
+      solidInfo[solid.id] = {
+        solidType: 'cone',
+        baseLabel: centerPoint.label,
+        height: round(Math.abs(h)),
+        baseArea: round(Math.PI * r * r),
+        volume: round((1 / 3) * Math.PI * r * r * Math.abs(h)),
+        formula: `V = 1/3·π·R²·h = 1/3·π·${round(r)}²·${round(Math.abs(h))}`,
+        vertexCount: 2,
+        faceCount: 2,
+      }
+      return
+    }
+
+    if (solid.solidType === 'cylinder' && solid.centerPointId && solid.radius && solid.height) {
+      const center = pointPositions[solid.centerPointId]
+      const centerPoint = pointMap.get(solid.centerPointId)
+      if (!center || !centerPoint) return
+      const r = solid.radius
+      const h = solid.height
+
+      const topCenter: Vec3 = [center[0], center[1], center[2] + h]
+      const topLabel = `${centerPoint.label}'`
+
+      pushGeometryPoint(geometry, centerPoint.label, center)
+      pushGeometryPoint(geometry, topLabel, topCenter)
+
+      displayPoints.push({
+        id: `${solid.id}_bottom_center`,
+        label: centerPoint.label,
+        position: center,
+        sourceKind: 'solid',
+        sourceId: solid.id,
+        selectable: false,
+        generated: true,
+        visible: solid.visible,
+      })
+      displayPoints.push({
+        id: `${solid.id}_top_center`,
+        label: topLabel,
+        position: topCenter,
+        sourceKind: 'solid',
+        sourceId: solid.id,
+        selectable: false,
+        generated: true,
+        visible: solid.visible,
+      })
+
+      // Axis line
+      displaySegments.push({
+        id: `${solid.id}_axis`,
+        label: `${centerPoint.label}-${topLabel}`,
+        start: center,
+        end: topCenter,
+        sourceKind: 'solid',
+        sourceId: solid.id,
+        visible: solid.visible,
+      })
+
+      // Bottom and top circles
+      const circleSegments = 32
+      const bottomPts: Vec3[] = []
+      const topPts: Vec3[] = []
+      for (let i = 0; i <= circleSegments; i++) {
+        const angle = (i / circleSegments) * Math.PI * 2
+        const cos = Math.cos(angle)
+        const sin = Math.sin(angle)
+        bottomPts.push([center[0] + r * cos, center[1] + r * sin, center[2]])
+        topPts.push([center[0] + r * cos, center[1] + r * sin, center[2] + h])
+      }
+      for (let i = 0; i < circleSegments; i++) {
+        displaySegments.push({
+          id: `${solid.id}_bottom_${i}`,
+          label: '',
+          start: bottomPts[i],
+          end: bottomPts[i + 1],
+          sourceKind: 'solid',
+          sourceId: solid.id,
+          visible: solid.visible,
+        })
+        displaySegments.push({
+          id: `${solid.id}_top_${i}`,
+          label: '',
+          start: topPts[i],
+          end: topPts[i + 1],
+          sourceKind: 'solid',
+          sourceId: solid.id,
+          visible: solid.visible,
+        })
+      }
+
+      // Vertical generatrices (4 lines)
+      for (let i = 0; i < 4; i++) {
+        const angle = (i / 4) * Math.PI * 2
+        const bPt: Vec3 = [center[0] + r * Math.cos(angle), center[1] + r * Math.sin(angle), center[2]]
+        const tPt: Vec3 = [center[0] + r * Math.cos(angle), center[1] + r * Math.sin(angle), center[2] + h]
+        displaySegments.push({
+          id: `${solid.id}_gen_${i}`,
+          label: '',
+          start: bPt,
+          end: tPt,
+          sourceKind: 'solid',
+          sourceId: solid.id,
+          visible: solid.visible,
+        })
+      }
+
+      solidInfo[solid.id] = {
+        solidType: 'cylinder',
+        baseLabel: centerPoint.label,
+        height: round(Math.abs(h)),
+        baseArea: round(Math.PI * r * r),
+        volume: round(Math.PI * r * r * Math.abs(h)),
+        formula: `V = π·R²·h = π·${round(r)}²·${round(Math.abs(h))}`,
+        vertexCount: 2,
+        faceCount: 3,
+      }
+      return
     }
   })
 

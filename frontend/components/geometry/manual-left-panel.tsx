@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
 import {
   Box,
+  Circle,
+  Cone,
+  Cylinder,
   MousePointer2,
   Move3D,
   PencilRuler,
@@ -12,89 +14,40 @@ import {
   Sparkles,
   Square,
   Undo2,
+  Home,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
 import { useGeometry } from './geometry-context'
 
 const TOOLS: Array<{
-  id: 'select' | 'point' | 'segment' | 'polygon' | 'box' | 'pyramid' | 'prism'
+  id: 'select' | 'point' | 'segment' | 'polygon' | 'box' | 'pyramid' | 'prism' | 'sphere' | 'cone' | 'cylinder'
   label: string
   icon: React.ComponentType<{ className?: string; size?: number }>
 }> = [
-  { id: 'select', label: '\u0043h\u1ecdn', icon: MousePointer2 },
-  { id: 'point', label: '\u0110i\u1ec3m', icon: Move3D },
-  { id: 'segment', label: '\u0110o\u1ea1n', icon: PencilRuler },
-  { id: 'polygon', label: '\u0110a gi\u00e1c', icon: Pentagon },
-  { id: 'box', label: 'H\u00ecnh h\u1ed9p', icon: Square },
-  { id: 'pyramid', label: 'H\u00ecnh ch\u00f3p', icon: Pyramid },
-  { id: 'prism', label: 'L\u0103ng tr\u1ee5', icon: Box },
+  { id: 'select', label: 'Chọn', icon: MousePointer2 },
+  { id: 'point', label: 'Điểm', icon: Move3D },
+  { id: 'segment', label: 'Đoạn', icon: PencilRuler },
+  { id: 'polygon', label: 'Đa giác', icon: Pentagon },
+  { id: 'box', label: 'Hình hộp', icon: Square },
+  { id: 'pyramid', label: 'Hình chóp', icon: Pyramid },
+  { id: 'prism', label: 'Lăng trụ', icon: Box },
+  { id: 'sphere', label: 'Hình cầu', icon: Circle },
+  { id: 'cone', label: 'Hình nón', icon: Cone },
+  { id: 'cylinder', label: 'Hình trụ', icon: Cylinder },
 ]
 
-function formatInstruction(
-  activeTool: ReturnType<typeof useGeometry>['activeTool'],
-  draftOperation: ReturnType<typeof useGeometry>['draftOperation'],
-  selection: ReturnType<typeof useGeometry>['manualSelection'],
-) {
-  if (activeTool === 'select') {
-    return 'Ch\u1ecdn \u0111\u1ed1i t\u01b0\u1ee3ng \u0111\u1ec3 xem th\u00f4ng tin, \u0111\u1ed5i t\u00ean, k\u00e9o th\u1ea3 ho\u1eb7c ch\u1ec9nh tham s\u1ed1.'
-  }
-
-  if (activeTool === 'point') {
-    return 'Click tr\u00ean m\u1eb7t ph\u1eb3ng \u0111\u00e1y ho\u1eb7c v\u00e0o \u0111o\u1ea1n \u0111\u1ec3 t\u1ea1o \u0111i\u1ec3m. N\u1ebfu hover \u0111i\u1ec3m hi\u1ec7n c\u00f3, \u0111i\u1ec3m s\u1ebd b\u00e1m v\u00e0o \u0111\u00f3.'
-  }
-
-  if (activeTool === 'segment') {
-    const count = draftOperation?.tool === 'segment' ? draftOperation.pointIds?.length ?? 0 : 0
-    return count === 0
-      ? 'Ch\u1ecdn \u0111i\u1ec3m \u0111\u1ea7u ti\u00ean c\u1ee7a \u0111o\u1ea1n.'
-      : 'Ch\u1ecdn \u0111i\u1ec3m th\u1ee9 hai \u0111\u1ec3 ho\u00e0n t\u1ea5t \u0111o\u1ea1n.'
-  }
-
-  if (activeTool === 'polygon') {
-    const count = draftOperation?.tool === 'polygon' ? draftOperation.pointIds?.length ?? 0 : 0
-    if (count === 0) return 'Click c\u00e1c \u0111\u1ec9nh \u0111\u1ec3 b\u1eaft \u0111\u1ea7u \u0111a gi\u00e1c.'
-    return 'Ti\u1ebfp t\u1ee5c click th\u00eam \u0111\u1ec9nh. Click l\u1ea1i \u0111\u1ec9nh \u0111\u1ea7u ho\u1eb7c nh\u1ea5n Enter \u0111\u1ec3 \u0111\u00f3ng \u0111a gi\u00e1c.'
-  }
-
-  if (activeTool === 'box') {
-    const count = draftOperation?.tool === 'box' ? draftOperation.pointIds?.length ?? 0 : 0
-    if (count < 2) return 'Click 2 g\u00f3c ch\u00e9o c\u1ee7a \u0111\u00e1y h\u00ecnh h\u1ed9p tr\u00ean m\u1eb7t ph\u1eb3ng z = 0.'
-    return 'Nh\u1eadp chi\u1ec1u cao v\u00e0 x\u00e1c nh\u1eadn \u0111\u1ec3 t\u1ea1o h\u00ecnh h\u1ed9p ch\u1eef nh\u1eadt.'
-  }
-
-  if (activeTool === 'pyramid') {
-    return selection?.kind === 'polygon'
-      ? '\u0110\u00e3 ch\u1ecdn \u0111\u00e1y. Nh\u1eadp chi\u1ec1u cao v\u00e0 x\u00e1c nh\u1eadn \u0111\u1ec3 d\u1ef1ng h\u00ecnh ch\u00f3p.'
-      : 'Ch\u1ecdn m\u1ed9t \u0111a gi\u00e1c l\u00e0m \u0111\u00e1y, sau \u0111\u00f3 nh\u1eadp chi\u1ec1u cao.'
-  }
-
-  if (activeTool === 'prism') {
-    return selection?.kind === 'polygon'
-      ? '\u0110\u00e3 ch\u1ecdn \u0111\u00e1y. Nh\u1eadp chi\u1ec1u cao v\u00e0 x\u00e1c nh\u1eadn \u0111\u1ec3 d\u1ef1ng l\u0103ng tr\u1ee5.'
-      : 'Ch\u1ecdn m\u1ed9t \u0111a gi\u00e1c l\u00e0m \u0111\u00e1y, sau \u0111\u00f3 nh\u1eadp chi\u1ec1u cao.'
-  }
-
-  return ''
-}
-
 export function ManualLeftPanel() {
+  const router = useRouter()
   const {
-    manualDocument,
-    manualDerived,
     activeTool,
     setActiveTool,
     manualSelection,
     draftOperation,
     setDraftOperation,
-    hoveredSnapTarget,
-    snapEnabled,
-    setSnapEnabled,
-    snapThreshold,
-    setSnapThreshold,
     canUndo,
     canRedo,
     undoManual,
@@ -104,55 +57,11 @@ export function ManualLeftPanel() {
     createBox,
     createPyramid,
     createPrism,
-    renameManualEntity,
-    updatePointPosition,
+    createSphere,
+    createCone,
+    createCylinder,
+    manualDocument,
   } = useGeometry()
-
-  const [renameValue, setRenameValue] = useState('')
-  const [pointInputs, setPointInputs] = useState({ x: '0', y: '0', z: '0' })
-
-  useEffect(() => {
-    if (!manualSelection) {
-      setRenameValue('')
-      return
-    }
-
-    const source =
-      manualSelection.kind === 'point'
-        ? manualDocument.points.find((item) => item.id === manualSelection.id)
-        : manualSelection.kind === 'segment'
-          ? manualDocument.segments.find((item) => item.id === manualSelection.id)
-          : manualSelection.kind === 'polygon'
-            ? manualDocument.polygons.find((item) => item.id === manualSelection.id)
-            : manualDocument.solids.find((item) => item.id === manualSelection.id)
-
-    if (source) setRenameValue(source.label)
-
-    if (manualSelection.kind === 'point') {
-      const info = manualDerived.pointInfo[manualSelection.id]
-      if (info) {
-        setPointInputs({
-          x: String(info.coords[0]),
-          y: String(info.coords[1]),
-          z: String(info.coords[2]),
-        })
-      }
-    }
-  }, [manualDerived.pointInfo, manualDocument, manualSelection])
-
-  const toolInstruction = useMemo(
-    () => formatInstruction(activeTool, draftOperation, manualSelection),
-    [activeTool, draftOperation, manualSelection],
-  )
-
-  const updateDraftHeight = (heightValue: string) => {
-    const numericHeight = Number(heightValue)
-    if (!draftOperation) return
-    setDraftOperation({
-      ...draftOperation,
-      height: Number.isFinite(numericHeight) ? numericHeight : 0,
-    })
-  }
 
   const handleToolSelect = (tool: typeof activeTool) => {
     setActiveTool(tool)
@@ -185,7 +94,45 @@ export function ManualLeftPanel() {
       return
     }
 
+    if (tool === 'sphere') {
+      setDraftOperation({
+        tool: 'sphere',
+        centerPointId: manualSelection?.kind === 'point' ? manualSelection.id : null,
+        radius: 3,
+      })
+      return
+    }
+
+    if (tool === 'cone') {
+      setDraftOperation({
+        tool: 'cone',
+        centerPointId: manualSelection?.kind === 'point' ? manualSelection.id : null,
+        radius: 3,
+        height: 5,
+      })
+      return
+    }
+
+    if (tool === 'cylinder') {
+      setDraftOperation({
+        tool: 'cylinder',
+        centerPointId: manualSelection?.kind === 'point' ? manualSelection.id : null,
+        radius: 3,
+        height: 5,
+      })
+      return
+    }
+
     setDraftOperation(null)
+  }
+
+  const updateDraftHeight = (heightValue: string) => {
+    const numericHeight = Number(heightValue)
+    if (!draftOperation) return
+    setDraftOperation({
+      ...draftOperation,
+      height: Number.isFinite(numericHeight) ? numericHeight : 0,
+    })
   }
 
   const handlePolygonFinalize = () => {
@@ -199,10 +146,7 @@ export function ManualLeftPanel() {
     if (draftOperation?.tool !== 'box') return
     if ((draftOperation.pointIds?.length ?? 0) !== 2) return
     if (!draftOperation.height || draftOperation.height <= 0) return
-    createBox(
-      [draftOperation.pointIds![0], draftOperation.pointIds![1]],
-      draftOperation.height,
-    )
+    createBox([draftOperation.pointIds![0], draftOperation.pointIds![1]], draftOperation.height)
     setDraftOperation({ tool: 'box', pointIds: [], height: draftOperation.height })
   }
 
@@ -219,35 +163,77 @@ export function ManualLeftPanel() {
     if (type === 'prism') createPrism(basePolygonId, height)
   }
 
-  const handleRename = () => {
-    if (!manualSelection) return
-    renameManualEntity(manualSelection.kind, manualSelection.id, renameValue)
+  const handleSphereCreate = () => {
+    if (draftOperation?.tool !== 'sphere') return
+    const centerPointId = draftOperation.centerPointId
+      ?? (manualSelection?.kind === 'point' ? manualSelection.id : null)
+    const radius = draftOperation.radius ?? 3
+    if (!centerPointId || radius <= 0) return
+    createSphere(centerPointId, radius)
+    setDraftOperation({ tool: 'sphere', centerPointId: null, radius })
   }
 
-  const handlePointApply = () => {
-    if (manualSelection?.kind !== 'point') return
-    const x = Number(pointInputs.x)
-    const y = Number(pointInputs.y)
-    const z = Number(pointInputs.z)
-    if ([x, y, z].some((value) => Number.isNaN(value))) return
-    updatePointPosition(manualSelection.id, [x, y, z])
+  const handleConeCreate = () => {
+    if (draftOperation?.tool !== 'cone') return
+    const centerPointId = draftOperation.centerPointId
+      ?? (manualSelection?.kind === 'point' ? manualSelection.id : null)
+    const radius = draftOperation.radius ?? 3
+    const height = draftOperation.height ?? 5
+    if (!centerPointId || radius <= 0 || height <= 0) return
+    createCone(centerPointId, radius, height)
+    setDraftOperation({ tool: 'cone', centerPointId: null, radius, height })
+  }
+
+  const handleCylinderCreate = () => {
+    if (draftOperation?.tool !== 'cylinder') return
+    const centerPointId = draftOperation.centerPointId
+      ?? (manualSelection?.kind === 'point' ? manualSelection.id : null)
+    const radius = draftOperation.radius ?? 3
+    const height = draftOperation.height ?? 5
+    if (!centerPointId || radius <= 0 || height <= 0) return
+    createCylinder(centerPointId, radius, height)
+    setDraftOperation({ tool: 'cylinder', centerPointId: null, radius, height })
+  }
+
+  const updateDraftRadius = (radiusValue: string) => {
+    const numericRadius = Number(radiusValue)
+    if (!draftOperation) return
+    setDraftOperation({
+      ...draftOperation,
+      radius: Number.isFinite(numericRadius) ? numericRadius : 0,
+    })
   }
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden border-r border-border bg-card/95 p-4 backdrop-blur-md">
+      {/* Navigation Buttons */}
+      <div className="flex pb-2 border-b border-border/60">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push('/')}
+          className="w-full flex items-center justify-center gap-1.5 rounded-xl text-xs py-1.5 h-8 font-semibold bg-background hover:bg-accent/40"
+        >
+          <Home size={14} />
+          Trang chủ
+        </Button>
+      </div>
+
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-bold tracking-tight">{'Kh\u00f4ng gian t\u1ef1 v\u1ebd'}</h2>
+            <h2 className="text-sm font-bold tracking-tight">Không gian tự vẽ</h2>
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">{'Ch\u1ecdn c\u00f4ng c\u1ee5 v\u00e0 d\u1ef1ng h\u00ecnh tr\u1ef1c ti\u1ebfp tr\u00ean canvas.'}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Chọn công cụ và dựng hình trực tiếp trên canvas.
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon-sm" disabled={!canUndo} onClick={undoManual} title={'Ho\u00e0n t\u00e1c'}>
+          <Button variant="outline" size="icon-sm" disabled={!canUndo} onClick={undoManual} title="Hoàn tác">
             <Undo2 size={14} />
           </Button>
-          <Button variant="outline" size="icon-sm" disabled={!canRedo} onClick={redoManual} title={'L\u00e0m l\u1ea1i'}>
+          <Button variant="outline" size="icon-sm" disabled={!canRedo} onClick={redoManual} title="Làm lại">
             <Redo2 size={14} />
           </Button>
         </div>
@@ -255,8 +241,8 @@ export function ManualLeftPanel() {
 
       <Card className="gap-4 py-4">
         <CardHeader className="px-4 pb-0">
-          <CardTitle className="text-sm">{'C\u00f4ng c\u1ee5 d\u1ef1ng h\u00ecnh'}</CardTitle>
-          <CardDescription className="text-xs">{'Canvas \u1edf gi\u1eefa l\u00e0 v\u00f9ng thao t\u00e1c ch\u00ednh.'}</CardDescription>
+          <CardTitle className="text-sm">Công cụ dựng hình</CardTitle>
+          <CardDescription className="text-xs">Canvas ở giữa là vùng thao tác chính.</CardDescription>
         </CardHeader>
         <CardContent className="px-4">
           <div className="grid grid-cols-2 gap-2">
@@ -282,149 +268,234 @@ export function ManualLeftPanel() {
         </CardContent>
       </Card>
 
-      <Card className="gap-3 py-4">
-        <CardHeader className="px-4 pb-0">
-          <CardTitle className="text-sm">{'Tr\u1ea1ng th\u00e1i thao t\u00e1c'}</CardTitle>
-          <CardDescription className="text-xs">{toolInstruction}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 px-4">
-          <div className="flex items-center justify-between rounded-lg border border-border/70 bg-background px-3 py-2">
-            <div>
-              <p className="text-xs font-semibold">{'B\u00e1m \u0111\u1ed1i t\u01b0\u1ee3ng'}</p>
-              <p className="text-[11px] text-muted-foreground">{'\u0110i\u1ec3m, trung \u0111i\u1ec3m, \u0111o\u1ea1n, m\u1eb7t ph\u1eb3ng \u0111\u00e1y.'}</p>
-            </div>
-            <Switch checked={snapEnabled} onCheckedChange={setSnapEnabled} />
-          </div>
-
-          <div>
-            <div className="mb-1 flex items-center justify-between">
-              <p className="text-xs font-semibold">{'Ng\u01b0\u1ee1ng b\u00e1m'}</p>
-              <Badge variant="outline">{snapThreshold}px</Badge>
-            </div>
-            <input
-              type="range"
-              min={8}
-              max={36}
-              value={snapThreshold}
-              onChange={(event) => setSnapThreshold(Number(event.target.value))}
-              className="w-full accent-primary"
-            />
-          </div>
-
-          <div className="rounded-lg border border-dashed border-border/70 bg-background px-3 py-2">
-            <p className="text-xs font-semibold">{'\u0110i\u1ec3m b\u00e1m hi\u1ec7n t\u1ea1i'}</p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {hoveredSnapTarget
-                ? `${hoveredSnapTarget.label} t\u1ea1i (${hoveredSnapTarget.position
-                    .map((value) => value.toFixed(2))
-                    .join(', ')})`
-                : 'Ch\u01b0a c\u00f3 m\u1ee5c ti\u00eau b\u00e1m n\u00e0o \u0111\u01b0\u1ee3c b\u1eaft.'}
-            </p>
-          </div>
-
-          {draftOperation?.tool === 'polygon' && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold">{'\u0110a gi\u00e1c nh\u00e1p'}</p>
-              <div className="flex flex-wrap gap-2">
-                {(draftOperation.pointIds ?? []).map((pointId) => {
-                  const point = manualDocument.points.find((item) => item.id === pointId)
-                  return (
-                    <Badge key={pointId} variant="secondary">
-                      {point?.label ?? '\u0110i\u1ec3m'}
-                    </Badge>
-                  )
-                })}
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={cancelManualDraft}>{'H\u1ee7y'}</Button>
-                <Button size="sm" onClick={handlePolygonFinalize} disabled={(draftOperation.pointIds?.length ?? 0) < 3}>
-                  {'Ho\u00e0n t\u1ea5t \u0111a gi\u00e1c'}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {draftOperation?.tool === 'box' && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold">{'Th\u00f4ng s\u1ed1 h\u00ecnh h\u1ed9p'}</p>
-              <Input
-                type="number"
-                min={0.1}
-                step={0.1}
-                value={draftOperation.height ?? 4}
-                onChange={(event) => updateDraftHeight(event.target.value)}
-                placeholder={'Chi\u1ec1u cao'}
-              />
-              <Button
-                size="sm"
-                className="w-full"
-                onClick={handleBoxCreate}
-                disabled={(draftOperation.pointIds?.length ?? 0) !== 2 || !draftOperation.height || draftOperation.height <= 0}
-              >
-                {'T\u1ea1o h\u00ecnh h\u1ed9p'}
-              </Button>
-            </div>
-          )}
-
-          {(activeTool === 'pyramid' || activeTool === 'prism') && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold">{'Th\u00f4ng s\u1ed1 kh\u1ed1i'}</p>
-              <Input
-                type="number"
-                min={0.1}
-                step={0.1}
-                value={draftOperation?.tool === activeTool ? draftOperation.height ?? 4 : 4}
-                onChange={(event) =>
-                  setDraftOperation({
-                    tool: activeTool,
-                    basePolygonId:
-                      manualSelection?.kind === 'polygon'
-                        ? manualSelection.id
-                        : draftOperation?.tool === activeTool
-                          ? draftOperation.basePolygonId ?? null
-                          : null,
-                    height: Number(event.target.value),
-                  })
-                }
-                placeholder={'Chi\u1ec1u cao'}
-              />
-              <Button
-                size="sm"
-                className="w-full"
-                onClick={() => handleSolidCreate(activeTool)}
-                disabled={manualSelection?.kind !== 'polygon' && !(draftOperation?.tool === activeTool && draftOperation.basePolygonId)}
-              >
-                {activeTool === 'pyramid' ? 'T\u1ea1o h\u00ecnh ch\u00f3p' : 'T\u1ea1o l\u0103ng tr\u1ee5'}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {manualSelection && (
-        <Card className="gap-3 overflow-y-auto py-4">
+      {(draftOperation?.tool === 'polygon' ||
+        draftOperation?.tool === 'box' ||
+        activeTool === 'pyramid' ||
+        activeTool === 'prism' ||
+        activeTool === 'sphere' ||
+        activeTool === 'cone' ||
+        activeTool === 'cylinder') && (
+        <Card className="gap-3 py-4">
           <CardHeader className="px-4 pb-0">
-            <CardTitle className="text-sm">{'Ch\u1ec9nh s\u1eeda nhanh'}</CardTitle>
-            <CardDescription className="text-xs">{'\u00c1p d\u1ee5ng cho \u0111\u1ed1i t\u01b0\u1ee3ng \u0111ang ch\u1ecdn.'}</CardDescription>
+            <CardTitle className="text-sm">Thiết lập công cụ</CardTitle>
+            <CardDescription className="text-xs">
+              Bám đối tượng luôn bật ở mức 10px.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 px-4">
-            <div className="space-y-2">
-              <label className="text-xs font-semibold">{'T\u00ean hi\u1ec3n th\u1ecb'}</label>
-              <div className="flex gap-2">
-                <Input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
-                <Button size="sm" onClick={handleRename}>{'L\u01b0u'}</Button>
-              </div>
-            </div>
-
-            {manualSelection.kind === 'point' && (
+            {draftOperation?.tool === 'polygon' && (
               <div className="space-y-2">
-                <label className="text-xs font-semibold">{'T\u1ecda \u0111\u1ed9 ch\u00ednh x\u00e1c'}</label>
-                <div className="grid grid-cols-3 gap-2">
-                  <Input value={pointInputs.x} onChange={(event) => setPointInputs((current) => ({ ...current, x: event.target.value }))} />
-                  <Input value={pointInputs.y} onChange={(event) => setPointInputs((current) => ({ ...current, y: event.target.value }))} />
-                  <Input value={pointInputs.z} onChange={(event) => setPointInputs((current) => ({ ...current, z: event.target.value }))} />
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold">Đa giác nháp</p>
+                  <Badge variant="outline">{draftOperation.pointIds?.length ?? 0} đỉnh</Badge>
                 </div>
-                <Button size="sm" className="w-full" onClick={handlePointApply}>{'C\u1eadp nh\u1eadt t\u1ecda \u0111\u1ed9'}</Button>
+                <div className="flex flex-wrap gap-2">
+                  {(draftOperation.pointIds ?? []).map((pointId) => {
+                    const point = manualDocument.points.find((item) => item.id === pointId)
+                    return (
+                      <Badge key={pointId} variant="secondary">
+                        {point?.label ?? 'Điểm'}
+                      </Badge>
+                    )
+                  })}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={cancelManualDraft}>
+                    Hủy
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handlePolygonFinalize}
+                    disabled={(draftOperation.pointIds?.length ?? 0) < 3}
+                  >
+                    Hoàn tất đa giác
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {draftOperation?.tool === 'box' && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold">Thông số hình hộp</p>
+                <Input
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  value={draftOperation.height ?? 4}
+                  onChange={(event) => updateDraftHeight(event.target.value)}
+                  placeholder="Chiều cao"
+                />
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={handleBoxCreate}
+                  disabled={(draftOperation.pointIds?.length ?? 0) !== 2 || !draftOperation.height || draftOperation.height <= 0}
+                >
+                  Tạo hình hộp
+                </Button>
+              </div>
+            )}
+
+            {(activeTool === 'pyramid' || activeTool === 'prism') && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold">Thông số khối</p>
+                <Input
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  value={draftOperation?.tool === activeTool ? draftOperation.height ?? 4 : 4}
+                  onChange={(event) =>
+                    setDraftOperation({
+                      tool: activeTool,
+                      basePolygonId:
+                        manualSelection?.kind === 'polygon'
+                          ? manualSelection.id
+                          : draftOperation?.tool === activeTool
+                            ? draftOperation.basePolygonId ?? null
+                            : null,
+                      height: Number(event.target.value),
+                    })
+                  }
+                  placeholder="Chiều cao"
+                />
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={() => handleSolidCreate(activeTool)}
+                  disabled={manualSelection?.kind !== 'polygon' && !(draftOperation?.tool === activeTool && draftOperation.basePolygonId)}
+                >
+                  {activeTool === 'pyramid' ? 'Tạo hình chóp' : 'Tạo lăng trụ'}
+                </Button>
+              </div>
+            )}
+
+            {draftOperation?.tool === 'sphere' && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold">Thông số hình cầu</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Chọn 1 điểm làm tâm, rồi nhập bán kính.
+                </p>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Tâm</label>
+                  <Badge variant={draftOperation.centerPointId ? 'default' : 'outline'}>
+                    {draftOperation.centerPointId
+                      ? manualDocument.points.find((p) => p.id === draftOperation.centerPointId)?.label ?? 'Đã chọn'
+                      : 'Chưa chọn (click điểm trên canvas)'}
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Bán kính R</label>
+                  <Input
+                    type="number"
+                    min={0.1}
+                    step={0.5}
+                    value={draftOperation.radius ?? 3}
+                    onChange={(event) => updateDraftRadius(event.target.value)}
+                    placeholder="Bán kính"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={handleSphereCreate}
+                  disabled={!draftOperation.centerPointId || !draftOperation.radius || draftOperation.radius <= 0}
+                >
+                  Tạo hình cầu
+                </Button>
+              </div>
+            )}
+
+            {draftOperation?.tool === 'cone' && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold">Thông số hình nón</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Chọn tâm đáy, nhập bán kính và chiều cao.
+                </p>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Tâm đáy</label>
+                  <Badge variant={draftOperation.centerPointId ? 'default' : 'outline'}>
+                    {draftOperation.centerPointId
+                      ? manualDocument.points.find((p) => p.id === draftOperation.centerPointId)?.label ?? 'Đã chọn'
+                      : 'Chưa chọn (click điểm trên canvas)'}
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Bán kính đáy R</label>
+                  <Input
+                    type="number"
+                    min={0.1}
+                    step={0.5}
+                    value={draftOperation.radius ?? 3}
+                    onChange={(event) => updateDraftRadius(event.target.value)}
+                    placeholder="Bán kính"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Chiều cao h</label>
+                  <Input
+                    type="number"
+                    min={0.1}
+                    step={0.5}
+                    value={draftOperation.height ?? 5}
+                    onChange={(event) => updateDraftHeight(event.target.value)}
+                    placeholder="Chiều cao"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={handleConeCreate}
+                  disabled={!draftOperation.centerPointId || !draftOperation.radius || draftOperation.radius <= 0 || !draftOperation.height || draftOperation.height <= 0}
+                >
+                  Tạo hình nón
+                </Button>
+              </div>
+            )}
+
+            {draftOperation?.tool === 'cylinder' && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold">Thông số hình trụ</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Chọn tâm đáy, nhập bán kính và chiều cao.
+                </p>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Tâm đáy</label>
+                  <Badge variant={draftOperation.centerPointId ? 'default' : 'outline'}>
+                    {draftOperation.centerPointId
+                      ? manualDocument.points.find((p) => p.id === draftOperation.centerPointId)?.label ?? 'Đã chọn'
+                      : 'Chưa chọn (click điểm trên canvas)'}
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Bán kính đáy R</label>
+                  <Input
+                    type="number"
+                    min={0.1}
+                    step={0.5}
+                    value={draftOperation.radius ?? 3}
+                    onChange={(event) => updateDraftRadius(event.target.value)}
+                    placeholder="Bán kính"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Chiều cao h</label>
+                  <Input
+                    type="number"
+                    min={0.1}
+                    step={0.5}
+                    value={draftOperation.height ?? 5}
+                    onChange={(event) => updateDraftHeight(event.target.value)}
+                    placeholder="Chiều cao"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  onClick={handleCylinderCreate}
+                  disabled={!draftOperation.centerPointId || !draftOperation.radius || draftOperation.radius <= 0 || !draftOperation.height || draftOperation.height <= 0}
+                >
+                  Tạo hình trụ
+                </Button>
               </div>
             )}
           </CardContent>

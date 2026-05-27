@@ -1,10 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { AlertCircle, CheckCircle2, MessageSquareWarning, Play, Sparkles } from 'lucide-react'
+import { AlertCircle, CheckCircle2, MessageSquareWarning, Play, Sparkles, ArrowLeft } from 'lucide-react'
 import { useGeometry } from '@/components/geometry/geometry-context'
 import { applyBackendResultToState, applyRawJsonToGeometry, solveProblemText } from './solve-logic'
 
@@ -32,6 +33,9 @@ function pushReport(item: ReportItem) {
 }
 
 export function SolveLeftPanel() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const projectId = searchParams.get('id')
   const {
     geometryData,
     setGeometryData,
@@ -92,6 +96,22 @@ export function SolveLeftPanel() {
 
   return (
     <div className="h-full flex flex-col p-6 gap-6 bg-card text-card-foreground border-r border-border shadow-inner">
+      {/* Navigation Buttons */}
+      <div className="flex pb-4 border-b border-border/60">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const targetUrl = projectId ? `/che-do-tu-ve?id=${projectId}` : '/che-do-tu-ve'
+            router.push(targetUrl)
+          }}
+          className="w-full flex items-center justify-center gap-1.5 rounded-xl text-xs py-1.5 h-8 font-semibold bg-background hover:bg-accent/40"
+        >
+          <ArrowLeft size={14} />
+          Bản vẽ cá nhân
+        </Button>
+      </div>
+
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Sparkles className="w-5 h-5 text-primary" />

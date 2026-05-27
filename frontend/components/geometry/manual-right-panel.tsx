@@ -32,7 +32,7 @@ function getSolidDisplayName(
 
   const width = Math.abs(opposite[0] - start[0])
   const depth = Math.abs(opposite[1] - start[1])
-  const height = Math.abs(solid.height)
+  const height = Math.abs(solid.height ?? 0)
   const isCube =
     Math.abs(width - depth) < 1e-6 &&
     Math.abs(width - height) < 1e-6
@@ -70,19 +70,20 @@ function PointRow({
   onDelete: () => void
   onApply: (coords: [number, number, number]) => void
 }) {
+  const [cx, cy, cz] = coords
   const [draft, setDraft] = useState({
-    x: formatCoord(coords[0]),
-    y: formatCoord(coords[1]),
-    z: formatCoord(coords[2]),
+    x: formatCoord(cx),
+    y: formatCoord(cy),
+    z: formatCoord(cz),
   })
 
   useEffect(() => {
     setDraft({
-      x: formatCoord(coords[0]),
-      y: formatCoord(coords[1]),
-      z: formatCoord(coords[2]),
+      x: formatCoord(cx),
+      y: formatCoord(cy),
+      z: formatCoord(cz),
     })
-  }, [coords])
+  }, [cx, cy, cz])
 
   const commit = () => {
     const x = Number(draft.x)

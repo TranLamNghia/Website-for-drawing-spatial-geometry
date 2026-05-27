@@ -5,7 +5,7 @@ import { SolveLeftPanel } from '@/components/geometry/solve/solve-left-panel'
 import { Canvas3D } from '@/components/geometry/canvas-3d-r3f'
 import { RightSidebar } from '@/components/geometry/right-sidebar'
 import { useGeometry } from '@/components/geometry/geometry-context'
-import { ChevronLeft, ChevronRight, GripVertical, ArrowLeft } from 'lucide-react'
+import { ChevronLeft, ChevronRight, GripVertical } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────
 // Solver View (Photoshop-style 3-column layout)
@@ -55,16 +55,7 @@ export function SolverView({ onBack }: SolverViewProps) {
         <Canvas3D />
       </div>
 
-      {/* Back Button & Theme (overlay) */}
-      <div className="absolute top-4 left-4 z-50 flex items-center gap-2 pointer-events-auto">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 h-10 px-4 bg-card/90 backdrop-blur-md border border-border rounded-xl text-[13px] font-bold text-foreground hover:bg-card transition-all shadow-lg"
-        >
-          <ArrowLeft size={16} />
-          Trang chủ
-        </button>
-      </div>
+
 
       {/* FloatingToolbar removed: Canvas3D already provides the unified toolbar for both modes. */}
 
