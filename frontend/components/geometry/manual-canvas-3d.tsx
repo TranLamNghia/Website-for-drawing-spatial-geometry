@@ -5,12 +5,12 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { useTheme } from 'next-themes'
-import { Crosshair, Eye, Layers, RefreshCcw, ZoomIn, ZoomOut } from 'lucide-react'
+import { Crosshair, Eye, Layers, RefreshCcw, ZoomIn, ZoomOut, Sparkles } from 'lucide-react'
 import { useGeometry } from './geometry-context'
 import { ManualDisplayPolygon, ManualDisplaySegment, ManualSnapTarget, Vec3 } from './manual-editor'
 
 type InteractiveHit = {
-  kind: 'point' | 'segment' | 'polygon' | 'solid'
+  kind: 'point' | 'segment' | 'polygon' | 'solid' | 'circle'
   id: string
 }
 
@@ -20,7 +20,8 @@ function getColors(isDark: boolean) {
       background: 0x101826,
       grid: 0x334155,
       point: 0x93c5fd,
-      pointSelected: 0xf97316,
+      pointSelected: 0x6bd089,
+      pointHovered: 0xf97316,
       segment: 0xe5e7eb,
       polygon: 0x14b8a6,
       solid: 0x3b82f6,
@@ -36,7 +37,8 @@ function getColors(isDark: boolean) {
     background: 0xf8fafc,
     grid: 0xcbd5e1,
     point: 0x2563eb,
-    pointSelected: 0xf97316,
+    pointSelected: 0x6bd089,
+    pointHovered: 0xf97316,
     segment: 0x0f172a,
     polygon: 0x0f766e,
     solid: 0x1d4ed8,
@@ -78,35 +80,7 @@ function polygonCenter(points: Vec3[]) {
 
 function snapCoordinate(v: number): number {
   if (isNaN(v)) return v
-  const integerPart = Math.floor(v)
-  const f = v - integerPart // fractional part, always in [0, 1)
-
-  let snappedFraction = 0
-  if (f < 0.20) {
-    snappedFraction = 0.0
-  } else if (f < 0.267) {
-    snappedFraction = 0.1
-  } else if (f < 0.333) {
-    snappedFraction = 0.2
-  } else if (f < 0.40) {
-    snappedFraction = 0.3
-  } else if (f < 0.467) {
-    snappedFraction = 0.4
-  } else if (f < 0.533) {
-    snappedFraction = 0.5
-  } else if (f < 0.60) {
-    snappedFraction = 0.6
-  } else if (f < 0.667) {
-    snappedFraction = 0.7
-  } else if (f < 0.733) {
-    snappedFraction = 0.8
-  } else if (f < 0.80) {
-    snappedFraction = 0.9
-  } else {
-    snappedFraction = 1.0
-  }
-
-  return Number((integerPart + snappedFraction).toFixed(1))
+  return Math.round(v * 10) / 10
 }
 
 function snapPosition(pos: Vec3): Vec3 {
@@ -125,6 +99,39 @@ function buildBoxFromCorners(a: Vec3, c: Vec3, height: number) {
   return [baseA, baseB, baseC, baseD, topA, topB, topC, topD]
 }
 
+function addVec3(a: Vec3, b: Vec3): Vec3 {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+function subVec3(a: Vec3, b: Vec3): Vec3 {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+function scaleVec3(vec: Vec3, scalar: number): Vec3 {
+  return [vec[0] * scalar, vec[1] * scalar, vec[2] * scalar]
+}
+
+function dotVec3(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+function crossVec3(a: Vec3, b: Vec3): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ]
+}
+
+function getPolygonNormal(pts: Vec3[]): Vec3 {
+  if (pts.length < 3) return [0, 0, 1]
+  const v1 = subVec3(pts[1], pts[0])
+  const v2 = subVec3(pts[2], pts[0])
+  const normal = crossVec3(v1, v2)
+  const len = Math.hypot(normal[0], normal[1], normal[2])
+  return len > 1e-9 ? scaleVec3(normal, 1 / len) : [0, 0, 1]
+}
+
 export function ManualCanvas3D() {
   const mountRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -138,7 +145,9 @@ export function ManualCanvas3D() {
   const hoverStatusRef = useRef<HTMLSpanElement>(null)
   const hoverRafRef = useRef<number | null>(null)
   const pendingHoverTargetRef = useRef<ManualSnapTarget | null>(null)
+  const smartGuideMeshRef = useRef<THREE.Line | null>(null)
   const pointMeshesRef = useRef<Array<{ id: string; mesh: THREE.Mesh }>>([])
+  const hoveredPointIdRef = useRef<string | null>(null)
   const interactionRef = useRef<{
     creatingPointId: string | null
     createPointStartY: number | null
@@ -146,13 +155,13 @@ export function ManualCanvas3D() {
     wasCtrlPressed?: boolean
     wasShiftPressed?: boolean
     pointerDown:
-      | {
-          x: number
-          y: number
-          didDrag: boolean
-          hit: InteractiveHit | null
-        }
-      | null
+    | {
+      x: number
+      y: number
+      didDrag: boolean
+      hit: InteractiveHit | null
+    }
+    | null
   }>({
     creatingPointId: null,
     createPointStartY: null,
@@ -183,6 +192,10 @@ export function ManualCanvas3D() {
     createSphere,
     createCone,
     createCylinder,
+    createCircle,
+    createRegularPolygon,
+    createSpecialTriangle,
+    createSpecialQuadrilateral,
     cancelManualDraft,
     canUndo,
     canRedo,
@@ -194,7 +207,19 @@ export function ManualCanvas3D() {
     setShowGrid,
     showLabels,
     setShowLabels,
+    saveManualState,
+    createMidpoint,
+    createIntersection,
+    createProjection,
+    createCentroid,
+    createPerpendicularBisector,
+    createAngleBisector,
+    createParallelLine,
+    createPerpendicularLine,
+    removeManualEntity,
     resetTrigger,
+    showSmartGuides,
+    setShowSmartGuides,
   } = useGeometry()
 
   const snapEnabled = true
@@ -203,13 +228,15 @@ export function ManualCanvas3D() {
   const formatHoverCoords = (position: Vec3) =>
     `(${position.map((value) => Number(value.toFixed(2)).toString()).join(', ')})`
 
-  const stateRefs = useRef({ showAxes, showGrid })
+  const stateRefs = useRef({ showAxes, showGrid, showSmartGuides })
   useEffect(() => {
-    stateRefs.current = { showAxes, showGrid }
-  }, [showAxes, showGrid])
+    stateRefs.current = { showAxes, showGrid, showSmartGuides }
+  }, [showAxes, showGrid, showSmartGuides])
 
   const raycasterRef = useRef(new THREE.Raycaster())
-  raycasterRef.current.params.Line = { threshold: 0.18 }
+  useEffect(() => {
+    raycasterRef.current.params.Line = { threshold: 0.18 }
+  }, [])
 
   const projectToScreen = (world: Vec3) => {
     const camera = cameraRef.current
@@ -242,13 +269,13 @@ export function ManualCanvas3D() {
   }
 
   const getSnapTarget = (event: PointerEvent | MouseEvent, planePoint: Vec3 | null) => {
-    const pointCandidates = manualDocument.points
-      .filter((point) => point.visible)
-      .map((point) => {
-        const position = manualDerived.pointPositions[point.id]
-        return position ? { pointId: point.id, label: point.label, position } : null
-      })
-      .filter(Boolean) as Array<{ pointId: string; label: string; position: Vec3 }>
+    const pointCandidates = manualDerived.displayPoints
+      .filter((point) => point.visible && point.selectable)
+      .map((point) => ({
+        pointId: point.id,
+        label: point.label,
+        position: point.position,
+      }))
 
     const segmentCandidates = manualDocument.segments
       .filter((segment) => segment.visible)
@@ -420,6 +447,7 @@ export function ManualCanvas3D() {
     labelRenderer.domElement.style.position = 'absolute'
     labelRenderer.domElement.style.top = '0'
     labelRenderer.domElement.style.pointerEvents = 'none'
+    labelRenderer.domElement.style.zIndex = '10'
     container.appendChild(labelRenderer.domElement)
     labelRendererRef.current = labelRenderer
 
@@ -468,7 +496,7 @@ export function ManualCanvas3D() {
     const axesGroup = new THREE.Group()
     axesGroup.renderOrder = 99
     const ticksList: Array<{ val: number; mesh: THREE.Line | THREE.Mesh; label: CSS2DObject; axis?: string }> = []
-    const axisLength = 150
+    const axisLength = 35
 
     const createAxis = (colorHex: number, dir: THREE.Vector3, labelStr: string) => {
       const lineProps = { color: colorHex, linewidth: 2, transparent: true, opacity: 0.5, depthTest: false }
@@ -586,6 +614,27 @@ export function ManualCanvas3D() {
     scene.add(hoverGroup)
     hoverMarkerRef.current = hoverGroup
 
+    // Smart Guides line mesh initialization
+    const smartGuideMat = new THREE.LineDashedMaterial({
+      color: 0x9333ea, // Modern violet color for guide lines
+      dashSize: 0.3,
+      gapSize: 0.15,
+      linewidth: 1.5,
+      transparent: true,
+      opacity: 0.7,
+      depthTest: false,
+    })
+    const smartGuideGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, 0),
+    ])
+    const smartGuideLine = new THREE.Line(smartGuideGeo, smartGuideMat)
+    smartGuideLine.computeLineDistances()
+    smartGuideLine.visible = false
+    smartGuideLine.renderOrder = 100
+    scene.add(smartGuideLine)
+    smartGuideMeshRef.current = smartGuideLine
+
     let frameId = 0
     const animate = () => {
       frameId = requestAnimationFrame(animate)
@@ -639,7 +688,7 @@ export function ManualCanvas3D() {
         if (dynamicGrid) {
           environment.remove(dynamicGrid)
           dynamicGrid.geometry.dispose()
-          ;(dynamicGrid.material as THREE.Material).dispose()
+            ; (dynamicGrid.material as THREE.Material).dispose()
           dynamicGrid = null
         }
 
@@ -667,7 +716,7 @@ export function ManualCanvas3D() {
 
       axesGroup.visible = stateRefs.current.showAxes
       basePlane.visible = stateRefs.current.showGrid
-      basePlane.position.set(centerX, centerY, 0)
+      basePlane.position.set(centerX, centerY, -0.002)
       basePlane.scale.set(gridRadius / 120, gridRadius / 120, 1)
       renderer.render(scene, camera)
       labelRenderer.render(scene, camera)
@@ -696,6 +745,8 @@ export function ManualCanvas3D() {
       hoverHorizontal.dispose()
       hoverVertical.dispose()
       hoverMaterial.dispose()
+      smartGuideLine.geometry.dispose()
+        ; (smartGuideLine.material as THREE.Material).dispose()
       renderer.dispose()
       if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement)
       if (labelRenderer.domElement.parentNode) labelRenderer.domElement.parentNode.removeChild(labelRenderer.domElement)
@@ -741,6 +792,9 @@ export function ManualCanvas3D() {
           transparent: true,
           opacity: polygon.opacity,
           side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1,
         })
         const mesh = new THREE.Mesh(faceGeometry, material)
         mesh.userData.entity = {
@@ -757,11 +811,17 @@ export function ManualCanvas3D() {
           new THREE.Vector3(...segment.start),
           new THREE.Vector3(...segment.end),
         ])
+        const isDraftSelected =
+          draftOperation &&
+          (draftOperation.segmentIds?.includes(segment.sourceId) ||
+            draftOperation.centerPointId === segment.sourceId ||
+            draftOperation.basePolygonId === segment.sourceId)
         const isSelected =
-          manualSelection &&
-          ((manualSelection.kind === 'segment' && manualSelection.id === segment.sourceId) ||
-            (manualSelection.kind === 'polygon' && segment.sourceKind === 'polygon' && manualSelection.id === segment.sourceId) ||
-            (manualSelection.kind === 'solid' && segment.sourceKind === 'solid' && manualSelection.id === segment.sourceId))
+          (manualSelection &&
+            ((manualSelection.kind === 'segment' && manualSelection.id === segment.sourceId) ||
+              (manualSelection.kind === 'polygon' && segment.sourceKind === 'polygon' && manualSelection.id === segment.sourceId) ||
+              (manualSelection.kind === 'solid' && segment.sourceKind === 'solid' && manualSelection.id === segment.sourceId))) ||
+          !!isDraftSelected
         const material = new THREE.LineBasicMaterial({
           color: isSelected ? colors.pointSelected : segment.sourceKind === 'solid' ? colors.solid : colors.segment,
         })
@@ -776,20 +836,37 @@ export function ManualCanvas3D() {
     manualDerived.displayPoints
       .filter((point) => point.visible)
       .forEach((point) => {
+        const isDraftSelected =
+          draftOperation &&
+          (draftOperation.pointIds?.includes(point.id) ||
+            draftOperation.pointIds?.includes(point.sourceId) ||
+            draftOperation.centerPointId === point.id ||
+            draftOperation.centerPointId === point.sourceId ||
+            draftOperation.apexPointId === point.id ||
+            draftOperation.apexPointId === point.sourceId ||
+            draftOperation.topPointId === point.id ||
+            draftOperation.topPointId === point.sourceId)
+        const isHovered = point.id === hoveredPointIdRef.current || point.sourceId === hoveredPointIdRef.current
         const isSelected =
-          manualSelection?.kind === 'point' && manualSelection.id === point.sourceId && !point.generated
+          (manualSelection?.kind === 'point' && (manualSelection.id === point.id || manualSelection.id === point.sourceId))
+
+        let pointColor = point.generated ? colors.solid : colors.point
+        if (isSelected) {
+          pointColor = colors.pointSelected
+        } else if (isHovered || isDraftSelected) {
+          pointColor = colors.pointHovered
+        }
+
         const material = new THREE.MeshBasicMaterial({
-          color: isSelected ? colors.pointSelected : point.generated ? colors.solid : colors.point,
+          color: pointColor,
         })
         const mesh = new THREE.Mesh(pointGeometry, material)
         mesh.position.set(point.position[0], point.position[1], point.position[2])
-        if (!point.generated && point.selectable) {
-          mesh.userData.entity = { kind: 'point', id: point.sourceId } satisfies InteractiveHit
+        if (point.selectable) {
+          mesh.userData.entity = { kind: 'point', id: point.id } satisfies InteractiveHit
         }
         group.add(mesh)
-        if (!point.generated) {
-          pointMeshesRef.current.push({ id: point.sourceId, mesh })
-        }
+        pointMeshesRef.current.push({ id: point.id, mesh })
 
         if (showLabels) {
           const element = document.createElement('div')
@@ -803,6 +880,45 @@ export function ManualCanvas3D() {
         }
       })
 
+    // Render derived circles
+    if (manualDerived.displayCircles) {
+      manualDerived.displayCircles
+        .filter((c) => c.visible)
+        .forEach((circle) => {
+          const circlePts: THREE.Vector3[] = []
+          const segments = 64
+          const R = circle.radius
+          const center = new THREE.Vector3(...circle.center)
+          const normal = new THREE.Vector3(...circle.normal).normalize()
+
+          // Find two orthogonal vectors to the normal
+          let u = new THREE.Vector3(1, 0, 0)
+          if (Math.abs(normal.dot(u)) > 0.9) {
+            u.set(0, 1, 0)
+          }
+          const w = new THREE.Vector3().crossVectors(normal, u).normalize()
+          u.crossVectors(w, normal).normalize()
+
+          for (let i = 0; i <= segments; i++) {
+            const theta = (i / segments) * Math.PI * 2
+            const cos = Math.cos(theta) * R
+            const sin = Math.sin(theta) * R
+            const pt = center.clone().addScaledVector(u, cos).addScaledVector(w, sin)
+            circlePts.push(pt)
+          }
+
+          const geometry = new THREE.BufferGeometry().setFromPoints(circlePts)
+          const isSelected = manualSelection?.kind === 'circle' && manualSelection.id === circle.sourceId
+          const material = new THREE.LineBasicMaterial({
+            color: isSelected ? colors.pointSelected : colors.polygon,
+            linewidth: isSelected ? 2.5 : 1.5,
+          })
+          const line = new THREE.Line(geometry, material)
+          line.userData.entity = { kind: 'circle', id: circle.sourceId } as any
+          group.add(line)
+        })
+    }
+
     const preview = draftOperation
     if (preview?.tool === 'segment' && preview.pointIds?.length === 1 && preview.previewPosition) {
       const start = manualDerived.pointPositions[preview.pointIds[0]]
@@ -815,6 +931,9 @@ export function ManualCanvas3D() {
         line.computeLineDistances()
         group.add(line)
       }
+    }
+
+    if (preview?.tool === 'polygon' && preview.pointIds?.length) {
     }
 
     if (preview?.tool === 'polygon' && preview.pointIds?.length) {
@@ -852,47 +971,66 @@ export function ManualCanvas3D() {
       }
     }
 
-    if ((preview?.tool === 'pyramid' || preview?.tool === 'prism') && preview.basePolygonId && preview.height && preview.height > 0) {
+    if ((preview?.tool === 'pyramid' || preview?.tool === 'prism') && preview.basePolygonId) {
       const basePolygon = manualDerived.displayPolygons.find(
         (polygon) => polygon.sourceKind === 'polygon' && polygon.sourceId === preview.basePolygonId,
       )
-      if (basePolygon) {
+      if (basePolygon && basePolygon.points.length >= 3) {
+        const basePoints = basePolygon.points
+        const center = polygonCenter(basePoints)
+
         if (preview.tool === 'pyramid') {
-          const top = polygonCenter(basePolygon.points)
-          const apex: Vec3 = [top[0], top[1], preview.height]
-          basePolygon.points.forEach((point, index) => {
-            const next = basePolygon.points[(index + 1) % basePolygon.points.length]
-            ;[
-              [point, next],
-              [point, apex],
-            ].forEach(([start, end]) => {
-              const geometry = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(...start),
-                new THREE.Vector3(...end),
-              ])
-              const line = new THREE.Line(geometry, previewMaterial)
-              line.computeLineDistances()
-              group.add(line)
-            })
+          const hasApex = !!(preview.apexPointId && manualDerived.pointPositions[preview.apexPointId])
+          const normal = getPolygonNormal(basePoints)
+          const apex: Vec3 = hasApex
+            ? manualDerived.pointPositions[preview.apexPointId!]
+            : addVec3(center, scaleVec3(normal, preview.height ?? 4))
+
+          basePoints.forEach((point, index) => {
+            const next = basePoints[(index + 1) % basePoints.length]
+              ;[
+                [point, next],
+                [point, apex],
+              ].forEach(([start, end]) => {
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                  new THREE.Vector3(...start),
+                  new THREE.Vector3(...end),
+                ])
+                const line = new THREE.Line(geometry, previewMaterial)
+                line.computeLineDistances()
+                group.add(line)
+              })
           })
         } else {
-          const topPoints = basePolygon.points.map<Vec3>((point) => [point[0], point[1], point[2] + preview.height!])
-          basePolygon.points.forEach((point, index) => {
-            const nextBase = basePolygon.points[(index + 1) % basePolygon.points.length]
+          const hasTopPoint = !!(preview.topPointId && manualDerived.pointPositions[preview.topPointId])
+          const normal = getPolygonNormal(basePoints)
+          const sideLen = Math.hypot(
+            basePoints[1][0] - basePoints[0][0],
+            basePoints[1][1] - basePoints[0][1],
+            basePoints[1][2] - basePoints[0][2]
+          )
+          const translation = hasTopPoint
+            ? subVec3(manualDerived.pointPositions[preview.topPointId!], basePoints[0])
+            : scaleVec3(normal, preview.height ?? sideLen)
+
+          const topPoints = basePoints.map<Vec3>((pt) => addVec3(pt, translation))
+
+          basePoints.forEach((point, index) => {
+            const nextBase = basePoints[(index + 1) % basePoints.length]
             const nextTop = topPoints[(index + 1) % topPoints.length]
-            ;[
-              [point, nextBase],
-              [topPoints[index], nextTop],
-              [point, topPoints[index]],
-            ].forEach(([start, end]) => {
-              const geometry = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(...start),
-                new THREE.Vector3(...end),
-              ])
-              const line = new THREE.Line(geometry, previewMaterial)
-              line.computeLineDistances()
-              group.add(line)
-            })
+              ;[
+                [point, nextBase],
+                [topPoints[index], nextTop],
+                [point, topPoints[index]],
+              ].forEach(([start, end]) => {
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                  new THREE.Vector3(...start),
+                  new THREE.Vector3(...end),
+                ])
+                const line = new THREE.Line(geometry, previewMaterial)
+                line.computeLineDistances()
+                group.add(line)
+              })
           })
         }
       }
@@ -962,11 +1100,17 @@ export function ManualCanvas3D() {
         if (!materializedPointId) return
         const currentIds = draftOperation?.tool === 'box' ? [...(draftOperation.pointIds ?? [])] : []
         if (currentIds.length < 2) currentIds.push(materializedPointId)
-        setDraftOperation({
-          tool: 'box',
-          pointIds: currentIds.slice(0, 2),
-          height: draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4,
-        })
+        if (currentIds.length === 2) {
+          const height = draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4
+          createBox([currentIds[0], currentIds[1]], height)
+          setDraftOperation({ tool: 'box', pointIds: [], height })
+        } else {
+          setDraftOperation({
+            tool: 'box',
+            pointIds: currentIds.slice(0, 2),
+            height: draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4,
+          })
+        }
         return
       }
 
@@ -979,6 +1123,17 @@ export function ManualCanvas3D() {
             draftOperation?.tool === activeTool
               ? draftOperation.height ?? 4
               : 4,
+        })
+        return
+      }
+
+      if ((activeTool === 'cone' || activeTool === 'cylinder') && hit?.kind === 'circle') {
+        setManualSelection(hit)
+        setDraftOperation({
+          tool: activeTool,
+          baseCircleId: hit.id,
+          radius: draftOperation?.tool === activeTool ? draftOperation.radius ?? 3 : 3,
+          height: draftOperation?.tool === activeTool ? draftOperation.height ?? 5 : 5,
         })
         return
       }
@@ -1004,12 +1159,471 @@ export function ManualCanvas3D() {
         })
         return
       }
+
+      if (activeTool === 'midpoint') {
+        if (hit?.kind === 'segment') {
+          const seg = manualDocument.segments.find((s) => s.id === hit.id)
+          if (seg) {
+            createMidpoint(seg.startPointId, seg.endPointId)
+            setDraftOperation({ tool: 'midpoint', pointIds: [] })
+          }
+          return
+        }
+        const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+        if (clickedPointId) {
+          const currentIds = draftOperation?.tool === 'midpoint' ? [...(draftOperation.pointIds ?? [])] : []
+          if (currentIds.length === 0) {
+            setDraftOperation({ tool: 'midpoint', pointIds: [clickedPointId] })
+          } else if (currentIds[0] !== clickedPointId) {
+            createMidpoint(currentIds[0], clickedPointId)
+            setDraftOperation({ tool: 'midpoint', pointIds: [] })
+          }
+        }
+        return
+      }
+
+      if (activeTool === 'intersection') {
+        if (hit?.kind === 'segment') {
+          const currentIds = draftOperation?.tool === 'intersection' ? [...(draftOperation.segmentIds ?? [])] : []
+          if (currentIds.length === 0) {
+            setDraftOperation({ tool: 'intersection', segmentIds: [hit.id] })
+          } else if (currentIds[0] !== hit.id) {
+            createIntersection(currentIds[0], hit.id)
+            setDraftOperation({ tool: 'intersection', segmentIds: [] })
+          }
+        }
+        return
+      }
+
+      if (activeTool === 'projection') {
+        const currentPointIds = draftOperation?.tool === 'projection' ? draftOperation.pointIds ?? [] : []
+        if (currentPointIds.length === 0) {
+          const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+          if (clickedPointId) {
+            setDraftOperation({ tool: 'projection', pointIds: [clickedPointId] })
+          }
+          return
+        }
+        if (hit?.kind === 'segment') {
+          createProjection(currentPointIds[0], hit.id, 'segment')
+          setDraftOperation({ tool: 'projection', pointIds: [] })
+          return
+        }
+        if (hit?.kind === 'polygon') {
+          createProjection(currentPointIds[0], hit.id, 'polygon')
+          setDraftOperation({ tool: 'projection', pointIds: [] })
+          return
+        }
+        return
+      }
+
+      if (activeTool === 'regularPolygon' && fallbackPosition) {
+        const clickedPointId = snapTarget?.kind === 'point' && snapTarget.pointId
+          ? snapTarget.pointId
+          : createPointFromTarget(snapTarget, fallbackPosition)
+        if (!clickedPointId) return
+        const currentIds = draftOperation?.tool === 'regularPolygon' ? [...(draftOperation.pointIds ?? [])] : []
+        if (currentIds.length === 0) {
+          setDraftOperation({ tool: 'regularPolygon', pointIds: [clickedPointId], radius: draftOperation?.radius ?? 5 })
+        } else if (currentIds[0] !== clickedPointId) {
+          const sides = draftOperation?.radius ?? 5
+          createRegularPolygon(currentIds[0], clickedPointId, sides)
+          setDraftOperation({ tool: 'regularPolygon', pointIds: [], radius: sides })
+        }
+        return
+      }
+
+      if (activeTool === 'specialTriangle' && fallbackPosition) {
+        const clickedPointId = snapTarget?.kind === 'point' && snapTarget.pointId
+          ? snapTarget.pointId
+          : createPointFromTarget(snapTarget, fallbackPosition)
+        if (!clickedPointId) return
+        const currentIds = draftOperation?.tool === 'specialTriangle' ? [...(draftOperation.pointIds ?? [])] : []
+        const typeCode = draftOperation?.height ?? 1
+        const type = typeCode === 1 ? 'vuong' : typeCode === 2 ? 'can' : typeCode === 3 ? 'vuong_can' : typeCode === 4 ? 'deu' : 'thuong'
+
+        if (type === 'thuong') {
+          if (currentIds.length < 2) {
+            if (!currentIds.includes(clickedPointId)) {
+              setDraftOperation({
+                tool: 'specialTriangle',
+                pointIds: [...currentIds, clickedPointId],
+                height: typeCode,
+              })
+            }
+          } else if (currentIds.length === 2 && !currentIds.includes(clickedPointId)) {
+            const allPts = [...currentIds, clickedPointId]
+            createSegment(allPts[0], allPts[1])
+            createSegment(allPts[1], allPts[2])
+            createSegment(allPts[2], allPts[0])
+            createPolygon(allPts)
+            setDraftOperation({ tool: 'specialTriangle', pointIds: [], height: typeCode })
+          }
+          return
+        }
+
+        if (currentIds.length === 0) {
+          setDraftOperation({ tool: 'specialTriangle', pointIds: [clickedPointId], height: typeCode, centerPointId: clickedPointId })
+        } else if (currentIds[0] !== clickedPointId) {
+          const anchor = draftOperation?.centerPointId ?? currentIds[0]
+          createSpecialTriangle(type as any, currentIds[0], clickedPointId, anchor)
+          setDraftOperation({ tool: 'specialTriangle', pointIds: [], height: typeCode, centerPointId: clickedPointId })
+        }
+        return
+      }
+
+      if (activeTool === 'specialQuadrilateral' && fallbackPosition) {
+        const clickedPointId = snapTarget?.kind === 'point' && snapTarget.pointId
+          ? snapTarget.pointId
+          : createPointFromTarget(snapTarget, fallbackPosition)
+        if (!clickedPointId) return
+        const currentIds = draftOperation?.tool === 'specialQuadrilateral' ? [...(draftOperation.pointIds ?? [])] : []
+        const typeCode = draftOperation?.height ?? 1
+        const type = typeCode === 1 ? 'binh_huanh' : typeCode === 2 ? 'chu_nhat' : typeCode === 3 ? 'thoi' : 'vuong'
+
+        if (type === 'thoi' || type === 'vuong') {
+          if (currentIds.length === 0) {
+            setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [clickedPointId], height: typeCode })
+          } else if (currentIds[0] !== clickedPointId) {
+            createSpecialQuadrilateral(type, [currentIds[0], clickedPointId])
+            setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [], height: typeCode })
+          }
+        } else {
+          if (currentIds.length < 2) {
+            if (!currentIds.includes(clickedPointId)) {
+              setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [...currentIds, clickedPointId], height: typeCode })
+            }
+          } else if (currentIds.length === 2 && !currentIds.includes(clickedPointId)) {
+            createSpecialQuadrilateral(type, [...currentIds, clickedPointId])
+            setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [], height: typeCode })
+          }
+        }
+        return
+      }
+
+      if (activeTool === 'circle' && fallbackPosition) {
+        const clickedPointId = snapTarget?.kind === 'point' && snapTarget.pointId
+          ? snapTarget.pointId
+          : createPointFromTarget(snapTarget, fallbackPosition)
+        if (!clickedPointId) return
+        const currentIds = draftOperation?.tool === 'circle' ? [...(draftOperation.pointIds ?? [])] : []
+        const kindCode = draftOperation?.height ?? 1
+        const kind = kindCode === 1 ? 'threePoints' : kindCode === 2 ? 'centerRadius' : 'centerPoint'
+
+        if (kind === 'threePoints') {
+          if (currentIds.length < 2) {
+            if (!currentIds.includes(clickedPointId)) {
+              setDraftOperation({ tool: 'circle', pointIds: [...currentIds, clickedPointId], height: kindCode, radius: draftOperation?.radius ?? 3 })
+            }
+          } else if (currentIds.length === 2 && !currentIds.includes(clickedPointId)) {
+            createCircle('threePoints', { sourcePointIds: [...currentIds, clickedPointId] })
+            setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation?.radius ?? 3 })
+          }
+        } else if (kind === 'centerRadius') {
+          createCircle('centerRadius', { centerPointId: clickedPointId, radius: draftOperation?.radius ?? 3 })
+          setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation?.radius ?? 3 })
+        } else if (kind === 'centerPoint') {
+          if (currentIds.length === 0) {
+            setDraftOperation({ tool: 'circle', pointIds: [clickedPointId], height: kindCode, radius: draftOperation?.radius ?? 3 })
+          } else if (currentIds[0] !== clickedPointId) {
+            createCircle('centerPoint', { centerPointId: currentIds[0], radiusPointId: clickedPointId })
+            setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation?.radius ?? 3 })
+          }
+        }
+        return
+      }
+
+      if (activeTool === 'centroid') {
+        if (hit?.kind === 'polygon') {
+          createCentroid(hit.id)
+          setDraftOperation({ tool: 'centroid', pointIds: [] })
+          return
+        }
+        const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+        if (clickedPointId) {
+          const currentIds = draftOperation?.tool === 'centroid' ? [...(draftOperation.pointIds ?? [])] : []
+          if (!currentIds.includes(clickedPointId)) {
+            const nextIds = [...currentIds, clickedPointId]
+            setDraftOperation({ tool: 'centroid', pointIds: nextIds })
+          }
+        }
+        return
+      }
+
+      if (activeTool === 'perpendicularBisector') {
+        if (hit?.kind === 'segment') {
+          createPerpendicularBisector(hit.id)
+          setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [] })
+          return
+        }
+        const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+        if (clickedPointId) {
+          const currentIds = draftOperation?.tool === 'perpendicularBisector' ? [...(draftOperation.pointIds ?? [])] : []
+          if (!currentIds.includes(clickedPointId)) {
+            const nextIds = [...currentIds, clickedPointId]
+            if (nextIds.length === 2) {
+              createPerpendicularBisector(undefined, nextIds[0], nextIds[1])
+              setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [] })
+            } else {
+              setDraftOperation({ tool: 'perpendicularBisector', pointIds: nextIds, segmentIds: [] })
+            }
+          }
+        }
+        return
+      }
+
+      if (activeTool === 'angleBisector') {
+        const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+        if (clickedPointId) {
+          const currentIds = draftOperation?.tool === 'angleBisector' ? [...(draftOperation.pointIds ?? [])] : []
+          if (!currentIds.includes(clickedPointId)) {
+            const nextIds = [...currentIds, clickedPointId]
+            if (nextIds.length === 3) {
+              createAngleBisector(nextIds[0], nextIds[1], nextIds[2])
+              setDraftOperation({ tool: 'angleBisector', pointIds: [] })
+            } else {
+              setDraftOperation({ tool: 'angleBisector', pointIds: nextIds })
+            }
+          }
+        }
+        return
+      }
+
+      if (activeTool === 'parallelLine') {
+        const currentPointIds = draftOperation?.tool === 'parallelLine' ? draftOperation.pointIds ?? [] : []
+        if (currentPointIds.length === 0) {
+          const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+          if (clickedPointId) {
+            setDraftOperation({ tool: 'parallelLine', pointIds: [clickedPointId], segmentIds: [] })
+          }
+          return
+        }
+        if (hit?.kind === 'segment') {
+          createParallelLine(currentPointIds[0], hit.id)
+          setDraftOperation({ tool: 'parallelLine', pointIds: [], segmentIds: [] })
+        }
+        return
+      }
+
+      if (activeTool === 'perpendicularLine') {
+        const currentPointIds = draftOperation?.tool === 'perpendicularLine' ? draftOperation.pointIds ?? [] : []
+        if (currentPointIds.length === 0) {
+          const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+          if (clickedPointId) {
+            setDraftOperation({ tool: 'perpendicularLine', pointIds: [clickedPointId], segmentIds: [] })
+          }
+          return
+        }
+        if (hit?.kind === 'segment') {
+          createPerpendicularLine(currentPointIds[0], hit.id)
+          setDraftOperation({ tool: 'perpendicularLine', pointIds: [], segmentIds: [] })
+        }
+        return
+      }
+    }
+
+    const computeSmartGuide = (rawPos: Vec3): { snapped: Vec3; guide: { start: Vec3; end: Vec3; label: string } | null } => {
+      if (!stateRefs.current.showSmartGuides) {
+        return { snapped: rawPos, guide: null }
+      }
+
+      const threshold = 0.25 // Snapping distance threshold in 3D units
+
+      // 1. Check Parallelism & Perpendicularity first if drawing a segment
+      if (draftOperation && (draftOperation.tool === 'segment' || draftOperation.tool === 'polygon')) {
+        const pointIds = draftOperation.pointIds ?? []
+        if (pointIds.length > 0) {
+          const startId = pointIds[pointIds.length - 1]
+          const posA = manualDerived.pointPositions[startId]
+          if (posA) {
+            const v = [rawPos[0] - posA[0], rawPos[1] - posA[1], rawPos[2] - posA[2]] as Vec3
+            const vLen = Math.hypot(v[0], v[1], v[2])
+            if (vLen > 0.1) {
+              const vNorm = [v[0] / vLen, v[1] / vLen, v[2] / vLen] as Vec3
+
+              // Check parallel/perpendicular to existing segments
+              for (const seg of manualDocument.segments) {
+                const segDisp = manualDerived.displaySegments.find((s) => s.id === seg.id)
+                if (!segDisp) continue
+                const u = [segDisp.end[0] - segDisp.start[0], segDisp.end[1] - segDisp.start[1], segDisp.end[2] - segDisp.start[2]] as Vec3
+                const uLen = Math.hypot(u[0], u[1], u[2])
+                if (uLen < 0.05) continue
+                const uNorm = [u[0] / uLen, u[1] / uLen, u[2] / uLen] as Vec3
+
+                const dotVal = vNorm[0] * uNorm[0] + vNorm[1] * uNorm[1] + vNorm[2] * uNorm[2]
+                const absDot = Math.abs(dotVal)
+
+                // Parallel: dot product close to 1 or -1 (angle close to 0 or 180)
+                if (absDot > 0.975) {
+                  // Project rawPos onto the line posA + t * uNorm
+                  const t = (rawPos[0] - posA[0]) * uNorm[0] + (rawPos[1] - posA[1]) * uNorm[1] + (rawPos[2] - posA[2]) * uNorm[2]
+                  const snapped: Vec3 = [
+                    posA[0] + t * uNorm[0],
+                    posA[1] + t * uNorm[1],
+                    posA[2] + t * uNorm[2],
+                  ]
+                  const dist = Math.hypot(rawPos[0] - snapped[0], rawPos[1] - snapped[1], rawPos[2] - snapped[2])
+                  if (dist < threshold * 1.5) {
+                    const extent = 60
+                    const start: Vec3 = [posA[0] - uNorm[0] * extent, posA[1] - uNorm[1] * extent, posA[2] - uNorm[2] * extent]
+                    const end: Vec3 = [posA[0] + uNorm[0] * extent, posA[1] + uNorm[1] * extent, posA[2] + uNorm[2] * extent]
+                    return {
+                      snapped,
+                      guide: { start, end, label: `Song song ${seg.label}` }
+                    }
+                  }
+                }
+
+                // Perpendicular: dot product close to 0 (angle close to 90)
+                if (absDot < 0.08) {
+                  // We project rawPos onto the plane passing through posA with normal uNorm
+                  const distToPlane = (rawPos[0] - posA[0]) * uNorm[0] + (rawPos[1] - posA[1]) * uNorm[1] + (rawPos[2] - posA[2]) * uNorm[2]
+                  const snapped: Vec3 = [
+                    rawPos[0] - distToPlane * uNorm[0],
+                    rawPos[1] - distToPlane * uNorm[1],
+                    rawPos[2] - distToPlane * uNorm[2],
+                  ]
+                  const dist = Math.hypot(rawPos[0] - snapped[0], rawPos[1] - snapped[1], rawPos[2] - snapped[2])
+                  if (dist < threshold * 1.5) {
+                    // Find a good line direction in the plane for representation
+                    const projV = [snapped[0] - posA[0], snapped[1] - posA[1], snapped[2] - posA[2]] as Vec3
+                    const projVLen = Math.hypot(projV[0], projV[1], projV[2])
+                    if (projVLen > 0.05) {
+                      const dir: Vec3 = [projV[0] / projVLen, projV[1] / projVLen, projV[2] / projVLen]
+                      const extent = 60
+                      const start: Vec3 = [posA[0] - dir[0] * extent, posA[1] - dir[1] * extent, posA[2] - dir[2] * extent]
+                      const end: Vec3 = [posA[0] + dir[0] * extent, posA[1] + dir[1] * extent, posA[2] + dir[2] * extent]
+                      return {
+                        snapped,
+                        guide: { start, end, label: `Vu\u00f4ng g\u00f3c ${seg.label}` }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Point coordinate alignment (axis alignment)
+      // Check if rawPos is close to some point P's coordinate along X, Y, or Z axis
+      for (const point of manualDocument.points) {
+        if (!point.visible) continue
+        if (point.id === interactionRef.current.creatingPointId) continue
+        const posP = manualDerived.pointPositions[point.id]
+        if (!posP) continue
+
+        // Alignment X (same y and z or similar)
+        const dx = Math.abs(rawPos[0] - posP[0])
+        const dy = Math.abs(rawPos[1] - posP[1])
+        const dz = Math.abs(rawPos[2] - posP[2])
+
+        if (dx < threshold) {
+          const snapped: Vec3 = [posP[0], rawPos[1], rawPos[2]]
+          const extent = 60
+          return {
+            snapped,
+            guide: {
+              start: [posP[0], rawPos[1] - extent, rawPos[2]],
+              end: [posP[0], rawPos[1] + extent, rawPos[2]],
+              label: `Th\u1eb3ng h\u00e0ng X v\u1edbi ${point.label}`
+            }
+          }
+        }
+
+        if (dy < threshold) {
+          const snapped: Vec3 = [rawPos[0], posP[1], rawPos[2]]
+          const extent = 60
+          return {
+            snapped,
+            guide: {
+              start: [rawPos[0] - extent, posP[1], rawPos[2]],
+              end: [rawPos[0] + extent, posP[1], rawPos[2]],
+              label: `Th\u1eb3ng h\u00e0ng Y v\u1edbi ${point.label}`
+            }
+          }
+        }
+
+        if (dz < threshold) {
+          const snapped: Vec3 = [rawPos[0], rawPos[1], posP[2]]
+          const extent = 60
+          return {
+            snapped,
+            guide: {
+              start: [rawPos[0], rawPos[1], posP[2] - extent],
+              end: [rawPos[0], rawPos[1], posP[2] + extent],
+              label: `Th\u1eb3ng h\u00e0ng Z v\u1edbi ${point.label}`
+            }
+          }
+        }
+      }
+
+      return { snapped: rawPos, guide: null }
+    }
+
+    const updatePointHighlight = (hoveredId?: string | null) => {
+      pointMeshesRef.current.forEach(({ id, mesh }) => {
+        const point = manualDerived.displayPoints.find((p) => p.id === id || p.sourceId === id)
+        const isSelected = manualSelection?.kind === 'point' && (manualSelection.id === id || point?.sourceId === manualSelection.id)
+        const isHovered = id === hoveredId || point?.sourceId === hoveredId
+        const isDraftSelected =
+          draftOperation &&
+          (draftOperation.pointIds?.includes(id) ||
+            draftOperation.pointIds?.includes(point?.sourceId ?? '') ||
+            draftOperation.centerPointId === id ||
+            draftOperation.centerPointId === point?.sourceId ||
+            draftOperation.apexPointId === id ||
+            draftOperation.apexPointId === point?.sourceId ||
+            draftOperation.topPointId === id ||
+            draftOperation.topPointId === point?.sourceId)
+        const mat = mesh.material as THREE.MeshBasicMaterial
+        if (mat) {
+          if (isSelected) {
+            mat.color.set(colors.pointSelected)
+          } else if (isHovered || isDraftSelected) {
+            mat.color.set(colors.pointHovered)
+          } else {
+            mat.color.set(point?.generated ? colors.solid : colors.point)
+          }
+        }
+      })
     }
 
     const handlePointerMove = (event: PointerEvent) => {
       const planePoint = getPlaneIntersection(event)
       const snappedPlanePoint = planePoint ? snapPosition(planePoint) : null
       const snapTarget = getSnapTarget(event, snappedPlanePoint)
+
+      // Hover point highlight
+      const hoveredId = snapTarget?.kind === 'point' ? snapTarget.pointId : null
+      hoveredPointIdRef.current = hoveredId
+      updatePointHighlight(hoveredId)
+
+      let activePosition = snappedPlanePoint ?? snapTarget?.position ?? null
+      let currentGuide: { start: Vec3; end: Vec3; label: string } | null = null
+
+      if (activePosition && snapTarget?.kind !== 'point') {
+        const guideRes = computeSmartGuide(activePosition)
+        activePosition = guideRes.snapped
+        currentGuide = guideRes.guide
+      }
+
+      // Update smart guide mesh visibility and coordinates (disabled drawing as requested: 'còn không hãy xóa nó đi')
+      const smartGuideMesh = smartGuideMeshRef.current
+      if (smartGuideMesh) {
+        if (currentGuide && stateRefs.current.showSmartGuides) {
+          const pts = [
+            new THREE.Vector3(...currentGuide.start),
+            new THREE.Vector3(...currentGuide.end),
+          ]
+          smartGuideMesh.geometry.setFromPoints(pts)
+          smartGuideMesh.computeLineDistances()
+          smartGuideMesh.visible = false
+        } else {
+          smartGuideMesh.visible = false
+        }
+      }
 
       if (interactionRef.current.creatingPointId && interactionRef.current.createPointBasePosition) {
         const camera = cameraRef.current
@@ -1055,7 +1669,28 @@ export function ManualCanvas3D() {
           const deltaY = interactionRef.current.createPointStartY - event.clientY
           const [baseX, baseY, baseZ = 0] = interactionRef.current.createPointBasePosition
           const nextZ = baseZ + deltaY * worldPerPixel * 1.35
-          const snappedZ = snapCoordinate(nextZ)
+          let snappedZ = snapCoordinate(nextZ)
+
+          let candidatePos: Vec3 = [baseX, baseY, snappedZ]
+          const guideRes = computeSmartGuide(candidatePos)
+          candidatePos = guideRes.snapped
+          snappedZ = candidatePos[2]
+          currentGuide = guideRes.guide
+
+          // Update mesh again
+          if (smartGuideMesh) {
+            if (currentGuide && stateRefs.current.showSmartGuides) {
+              const pts = [
+                new THREE.Vector3(...currentGuide.start),
+                new THREE.Vector3(...currentGuide.end),
+              ]
+              smartGuideMesh.geometry.setFromPoints(pts)
+              smartGuideMesh.computeLineDistances()
+              smartGuideMesh.visible = false
+            } else {
+              smartGuideMesh.visible = false
+            }
+          }
 
           updatePointPosition(
             interactionRef.current.creatingPointId,
@@ -1072,17 +1707,36 @@ export function ManualCanvas3D() {
 
           scheduleHoverPresentation({
             kind: 'workplane',
-            label: 'Điểm đang di chuyển',
+            label: currentGuide ? currentGuide.label : 'Điểm đang di chuyển',
             position: [baseX, baseY, snappedZ],
           })
         } else {
           // Horizontal dragging along Oxy plane
-          const [,, baseZ = 0] = interactionRef.current.createPointBasePosition
+          const [, , baseZ = 0] = interactionRef.current.createPointBasePosition
           const horizontalPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -baseZ)
           const planeIntersection = getPlaneIntersection(event, horizontalPlane)
 
           if (planeIntersection) {
-            const snappedIntersection = snapPosition(planeIntersection)
+            let snappedIntersection = snapPosition(planeIntersection)
+
+            const guideRes = computeSmartGuide([snappedIntersection[0], snappedIntersection[1], baseZ])
+            snappedIntersection = guideRes.snapped
+            currentGuide = guideRes.guide
+
+            // Update mesh again
+            if (smartGuideMesh) {
+              if (currentGuide && stateRefs.current.showSmartGuides) {
+                const pts = [
+                  new THREE.Vector3(...currentGuide.start),
+                  new THREE.Vector3(...currentGuide.end),
+                ]
+                smartGuideMesh.geometry.setFromPoints(pts)
+                smartGuideMesh.computeLineDistances()
+                smartGuideMesh.visible = false
+              } else {
+                smartGuideMesh.visible = false
+              }
+            }
 
             updatePointPosition(
               interactionRef.current.creatingPointId,
@@ -1099,7 +1753,7 @@ export function ManualCanvas3D() {
 
             scheduleHoverPresentation({
               kind: 'workplane',
-              label: 'Điểm đang di chuyển',
+              label: currentGuide ? currentGuide.label : 'Điểm đang di chuyển',
               position: [snappedIntersection[0], snappedIntersection[1], baseZ],
             })
           }
@@ -1115,13 +1769,22 @@ export function ManualCanvas3D() {
         }
       }
 
-      scheduleHoverPresentation(snapTarget)
+      let activeSnapTarget = snapTarget
+      if (currentGuide && stateRefs.current.showSmartGuides && activePosition) {
+        activeSnapTarget = {
+          kind: 'workplane',
+          label: currentGuide.label,
+          position: activePosition,
+        }
+      }
+
+      scheduleHoverPresentation(activeSnapTarget)
       if (!draftOperation) return
       if (draftOperation.tool === 'segment' || draftOperation.tool === 'polygon') {
         setDraftOperation({
           ...draftOperation,
-          previewPosition: snapTarget?.position ?? snappedPlanePoint ?? null,
-          snapTarget,
+          previewPosition: activePosition,
+          snapTarget: activeSnapTarget,
         })
       }
     }
@@ -1136,8 +1799,14 @@ export function ManualCanvas3D() {
       interactionRef.current.pointerDown = null
       controls.enabled = true
       scheduleHoverPresentation(null)
+      hoveredPointIdRef.current = null
+      updatePointHighlight(null)
+      if (smartGuideMeshRef.current) {
+        smartGuideMeshRef.current.visible = false
+      }
 
       if (creatingPointId) {
+        saveManualState()
         if (activeTool === 'segment') {
           const currentIds = draftOperation?.tool === 'segment' ? draftOperation.pointIds ?? [] : []
           if (currentIds.length === 0) {
@@ -1162,17 +1831,37 @@ export function ManualCanvas3D() {
         } else if (activeTool === 'box') {
           const currentIds = draftOperation?.tool === 'box' ? [...(draftOperation.pointIds ?? [])] : []
           if (currentIds.length < 2) currentIds.push(creatingPointId)
-          setDraftOperation({
-            tool: 'box',
-            pointIds: currentIds.slice(0, 2),
-            height: draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4,
-          })
+          if (currentIds.length === 2) {
+            const height = draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4
+            createBox([currentIds[0], currentIds[1]], height)
+            setDraftOperation({ tool: 'box', pointIds: [], height })
+          } else {
+            setDraftOperation({
+              tool: 'box',
+              pointIds: currentIds.slice(0, 2),
+              height: draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4,
+            })
+          }
         } else if (['sphere', 'cone', 'cylinder'].includes(activeTool)) {
           setDraftOperation({
             ...draftOperation,
             tool: activeTool,
             centerPointId: creatingPointId,
           })
+        } else if (activeTool === 'pyramid') {
+          if (draftOperation?.tool === 'pyramid' && draftOperation.basePolygonId) {
+            setDraftOperation({
+              ...draftOperation,
+              apexPointId: creatingPointId,
+            })
+          }
+        } else if (activeTool === 'prism') {
+          if (draftOperation?.tool === 'prism' && draftOperation.basePolygonId) {
+            setDraftOperation({
+              ...draftOperation,
+              topPointId: creatingPointId,
+            })
+          }
         }
         return
       }
@@ -1193,7 +1882,7 @@ export function ManualCanvas3D() {
       const snappedPlanePoint = planePoint ? snapPosition(planePoint) : null
       const snapTarget = getSnapTarget(event, snappedPlanePoint)
 
-      const drawingTools = ['select', 'point', 'segment', 'polygon', 'box', 'sphere', 'cone', 'cylinder']
+      const drawingTools = ['select', 'point', 'segment', 'polygon', 'box', 'sphere', 'cone', 'cylinder', 'pyramid', 'prism']
 
       if (drawingTools.includes(activeTool) && snapTarget?.kind === 'point' && snapTarget.pointId) {
         const pos = snapTarget.position
@@ -1206,10 +1895,16 @@ export function ManualCanvas3D() {
         return
       }
 
+      const hitEntity = findIntersectionEntity(event)
+      const isCircleClick = (activeTool === 'cone' || activeTool === 'cylinder') && hitEntity?.kind === 'circle'
+      const isPolygonClick = (activeTool === 'pyramid' || activeTool === 'prism') && hitEntity?.kind === 'polygon'
+
       const shouldCreateAndDragPoint =
         activeTool !== 'select' &&
         ['point', 'segment', 'polygon', 'box', 'sphere', 'cone', 'cylinder'].includes(activeTool) &&
-        (!snapTarget || snapTarget.kind !== 'point')
+        (!snapTarget || snapTarget.kind !== 'point') &&
+        !isCircleClick &&
+        !isPolygonClick
 
       if (shouldCreateAndDragPoint) {
         const fallback = snappedPlanePoint ?? [0, 0, 0]
@@ -1236,9 +1931,21 @@ export function ManualCanvas3D() {
 
     const handlePointerLeave = () => {
       scheduleHoverPresentation(null)
+      hoveredPointIdRef.current = null
+      updatePointHighlight(null)
+      if (smartGuideMeshRef.current) {
+        smartGuideMeshRef.current.visible = false
+      }
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Delete' && manualSelection) {
+        event.preventDefault()
+        removeManualEntity(manualSelection.kind, manualSelection.id)
+        setManualSelection(null)
+        return
+      }
+
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault()
         if (event.shiftKey) redoManual()
@@ -1305,6 +2012,17 @@ export function ManualCanvas3D() {
     setManualSelection,
     undoManual,
     updatePointPosition,
+    createMidpoint,
+    createIntersection,
+    createProjection,
+    createCircle,
+    createRegularPolygon,
+    createSpecialTriangle,
+    createSpecialQuadrilateral,
+    removeManualEntity,
+    manualSelection,
+    colors,
+    saveManualState,
   ])
 
   useEffect(() => {
@@ -1339,7 +2057,7 @@ export function ManualCanvas3D() {
         className="pointer-events-none absolute top-0 left-0 z-40 rounded-md border border-border bg-card/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-lg backdrop-blur-md opacity-0 transition-opacity"
       />
 
-      <div className="absolute top-5 left-1/2 -translate-x-1/2 z-30">
+      <div className="absolute top-5 left-1/2 -translate-x-1/2 z-50">
         <div className="flex bg-card/95 backdrop-blur-md border border-border rounded-2xl shadow-xl p-1.5 items-center gap-1">
           <button
             onClick={() => setShowAxes(!showAxes)}
@@ -1367,6 +2085,7 @@ export function ManualCanvas3D() {
             <Eye size={18} />
             <span className="text-xs">{'Nh\u00e3n'}</span>
           </button>
+
           <div className="w-px h-6 bg-border mx-2" />
           <button
             onClick={handleResetCamera}
@@ -1379,7 +2098,7 @@ export function ManualCanvas3D() {
         </div>
       </div>
 
-      <div className="absolute bottom-6 left-6 z-30 rounded-xl border border-border bg-card/95 backdrop-blur-md px-3 py-2 shadow-lg">
+      <div className="absolute bottom-6 left-6 z-50 rounded-xl border border-border bg-card/95 backdrop-blur-md px-3 py-2 shadow-lg">
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
           <span className="font-semibold text-foreground">{'C\u00f4ng c\u1ee5:'}</span>
           <span>
@@ -1392,24 +2111,24 @@ export function ManualCanvas3D() {
                   : activeTool === 'polygon'
                     ? '\u0110a gi\u00e1c'
                     : activeTool === 'box'
-                       ? 'H\u00ecnh h\u1ed9p'
-                       : activeTool === 'pyramid'
-                         ? 'H\u00ecnh ch\u00f3p'
-                         : activeTool === 'prism'
-                           ? 'L\u0103ng tr\u1ee5'
-                           : activeTool === 'sphere'
-                             ? 'H\u00ecnh c\u1ea7u'
-                             : activeTool === 'cone'
-                               ? 'H\u00ecnh n\u00f3n'
-                               : activeTool === 'cylinder'
-                                 ? 'H\u00ecnh tr\u1ee5'
-                                 : 'Ch\u1ecdn'}
+                      ? 'H\u00ecnh h\u1ed9p'
+                      : activeTool === 'pyramid'
+                        ? 'H\u00ecnh ch\u00f3p'
+                        : activeTool === 'prism'
+                          ? 'L\u0103ng tr\u1ee5'
+                          : activeTool === 'sphere'
+                            ? 'H\u00ecnh c\u1ea7u'
+                            : activeTool === 'cone'
+                              ? 'H\u00ecnh n\u00f3n'
+                              : activeTool === 'cylinder'
+                                ? 'H\u00ecnh tr\u1ee5'
+                                : 'Ch\u1ecdn'}
           </span>
           <span className="text-border">{'\u2022'}</span>
           <span ref={hoverStatusRef}>Không bám</span>
         </div>
       </div>
-      <div className="absolute bottom-6 right-6 z-30 flex flex-col gap-3">
+      <div className="absolute bottom-6 right-6 z-50 flex flex-col gap-3">
         <div className="flex flex-col bg-card/95 backdrop-blur-md border border-border rounded-xl shadow-lg overflow-hidden">
           <button onClick={() => handleZoom(0.82)} className="p-3 hover:bg-primary hover:text-primary-foreground border-b border-border text-muted-foreground transition-colors">
             <ZoomIn size={20} />

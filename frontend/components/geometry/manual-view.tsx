@@ -35,7 +35,7 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
       </div>
 
       <div
-        className={`absolute top-0 bottom-0 left-0 z-30 border-r border-border bg-card/92 shadow-xl backdrop-blur-md transition-transform duration-500 ease-in-out ${
+        className={`absolute top-0 bottom-0 left-0 z-[100] border-r border-border bg-card/92 shadow-xl backdrop-blur-md transition-transform duration-500 ease-in-out ${
           leftOpen ? 'translate-x-0' : '-translate-x-[320px]'
         }`}
         style={{ width: 320 }}
@@ -46,14 +46,14 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
 
         <button
           onClick={() => setLeftOpen(!leftOpen)}
-          className="pointer-events-auto absolute top-1/2 -right-10 z-40 flex -translate-y-1/2 items-center justify-center rounded-r-2xl border border-l-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl transition-all hover:bg-primary hover:text-primary-foreground backdrop-blur-sm"
+          className="pointer-events-auto absolute top-1/2 -right-10 z-[101] flex -translate-y-1/2 items-center justify-center rounded-r-2xl border border-l-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl transition-all hover:bg-primary hover:text-primary-foreground backdrop-blur-sm"
         >
           {leftOpen ? <ChevronLeft size={24} /> : <ChevronRight size={24} />}
         </button>
       </div>
 
       <div
-        className="absolute top-0 right-0 bottom-0 z-30 border-l border-border bg-card/92 shadow-2xl backdrop-blur-md transition-transform duration-500 ease-in-out"
+        className="absolute top-0 right-0 bottom-0 z-[100] border-l border-border bg-card/92 shadow-2xl backdrop-blur-md transition-transform duration-500 ease-in-out"
         style={{
           width: 440,
           transform: rightOpen ? 'translateX(0px)' : 'translateX(440px)',
@@ -65,7 +65,7 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
 
         <button
           onClick={() => setRightOpen(!rightOpen)}
-          className="pointer-events-auto absolute top-1/2 -left-10 z-40 flex -translate-y-1/2 items-center justify-center rounded-l-2xl border border-r-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl transition-all hover:bg-primary hover:text-primary-foreground backdrop-blur-sm"
+          className="pointer-events-auto absolute top-1/2 -left-10 z-[101] flex -translate-y-1/2 items-center justify-center rounded-l-2xl border border-r-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl transition-all hover:bg-primary hover:text-primary-foreground backdrop-blur-sm"
         >
           {rightOpen ? <ChevronRight size={24} /> : <ChevronLeft size={24} />}
         </button>

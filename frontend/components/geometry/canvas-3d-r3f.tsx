@@ -401,7 +401,7 @@ export function Canvas3D() {
 
       basePlane.visible = stateRefs.current.showGrid
       // Move base plane with camera focus
-      basePlane.position.set(centerX, centerY, 0)
+      basePlane.position.set(centerX, centerY, -0.002)
       basePlane.scale.set(gridRadius / 120, gridRadius / 120, 1)
       axesGroup.visible = stateRefs.current.showAxes
 

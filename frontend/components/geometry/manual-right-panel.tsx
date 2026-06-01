@@ -15,6 +15,7 @@ import {
 } from './manual-editor'
 
 function formatCoord(value: number) {
+  if (Number.isNaN(value) || !Number.isFinite(value)) return '0'
   return Number(value.toFixed(2)).toString()
 }
 
@@ -62,6 +63,7 @@ function PointRow({
   onSelect,
   onDelete,
   onApply,
+  onRename,
 }: {
   point: ManualPoint
   coords: [number, number, number]
@@ -69,6 +71,7 @@ function PointRow({
   onSelect: () => void
   onDelete: () => void
   onApply: (coords: [number, number, number]) => void
+  onRename: (newLabel: string) => void
 }) {
   const [cx, cy, cz] = coords
   const [draft, setDraft] = useState({
@@ -76,6 +79,7 @@ function PointRow({
     y: formatCoord(cy),
     z: formatCoord(cz),
   })
+  const [labelDraft, setLabelDraft] = useState(point.label)
 
   useEffect(() => {
     setDraft({
@@ -83,7 +87,11 @@ function PointRow({
       y: formatCoord(cy),
       z: formatCoord(cz),
     })
-  }, [cx, cy, cz])
+  }, [Number.isNaN(cx) ? 0 : cx, Number.isNaN(cy) ? 0 : cy, Number.isNaN(cz) ? 0 : cz])
+
+  useEffect(() => {
+    setLabelDraft(point.label)
+  }, [point.label])
 
   const commit = () => {
     const x = Number(draft.x)
@@ -91,6 +99,13 @@ function PointRow({
     const z = Number(draft.z)
     if ([x, y, z].some((value) => Number.isNaN(value))) return
     onApply([x, y, z])
+  }
+
+  const commitLabel = () => {
+    const trimmed = labelDraft.trim()
+    if (trimmed && trimmed !== point.label) {
+      onRename(trimmed)
+    }
   }
 
   return (
@@ -105,9 +120,15 @@ function PointRow({
         <TypePill icon={<Circle size={13} fill="currentColor" />} label={'\u0110i\u1ec3m'} />
       </button>
 
-      <button onClick={onSelect} className="truncate text-left text-[15px] font-semibold tracking-tight">
-        {point.label}
-      </button>
+      <Input
+        value={labelDraft}
+        onChange={(event) => setLabelDraft(event.target.value)}
+        onBlur={commitLabel}
+        onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
+        onClick={onSelect}
+        className="h-7 border-none bg-transparent p-0 text-left text-[15px] font-semibold tracking-tight focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:bg-background/80 truncate w-full"
+        title="Click để đổi tên điểm"
+      />
 
       <div className="grid min-w-0 grid-cols-3 gap-1.5">
         <Input
@@ -182,9 +203,9 @@ function ObjectRow({
       </button>
 
       <button onClick={onSelect} className="flex min-w-0 flex-wrap gap-1.5 text-left">
-        {values.map((value) => (
+        {values.map((value, idx) => (
           <span
-            key={`${name}-${value}`}
+            key={`${name}-${value}-${idx}`}
             className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2 text-[11px] font-medium text-foreground"
           >
             {value}
@@ -204,6 +225,182 @@ function ObjectRow({
   )
 }
 
+function SegmentRow({
+  segment,
+  typeLabel,
+  values,
+  selected,
+  onSelect,
+  onDelete,
+  onUpdateLength,
+  lengthVal,
+}: {
+  segment: ManualSegment
+  typeLabel: string
+  values: string[]
+  selected: boolean
+  onSelect: () => void
+  onDelete: () => void
+  onUpdateLength?: (newLength: number) => void
+  lengthVal?: number
+}) {
+  const [lengthDraft, setLengthDraft] = useState(lengthVal ? lengthVal.toString() : '')
+
+  useEffect(() => {
+    if (lengthVal !== undefined) {
+      setLengthDraft(lengthVal.toString())
+    }
+  }, [lengthVal])
+
+  const commitLength = () => {
+    const numeric = Number(lengthDraft)
+    if (Number.isFinite(numeric) && numeric > 0 && onUpdateLength && lengthVal !== undefined) {
+      onUpdateLength(numeric)
+    }
+  }
+
+  const isEditable = onUpdateLength !== undefined && lengthVal !== undefined
+
+  return (
+    <div
+      className={`grid ${
+        isEditable
+          ? 'grid-cols-[80px_60px_minmax(0,1fr)_80px_36px]'
+          : 'grid-cols-[80px_88px_minmax(0,1fr)_36px]'
+      } items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${
+        selected
+          ? 'border-primary/35 bg-primary/10 shadow-sm'
+          : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
+      }`}
+    >
+      <button onClick={onSelect} className="text-left">
+        <TypePill icon={<PencilRuler size={13} />} label={typeLabel} />
+      </button>
+
+      <button onClick={onSelect} className="truncate text-left text-[13px] font-semibold tracking-tight">
+        {segment.label}
+      </button>
+
+      <button onClick={onSelect} className="flex min-w-0 flex-wrap gap-1.5 text-left">
+        {values.map((value, idx) => (
+          <span
+            key={`${segment.label}-${value}-${idx}`}
+            className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2 text-[11px] font-medium text-foreground"
+          >
+            {value}
+          </span>
+        ))}
+      </button>
+
+      {isEditable && (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <span className="text-[10px] text-muted-foreground">L:</span>
+          <Input
+            value={lengthDraft}
+            onChange={(e) => setLengthDraft(e.target.value)}
+            onBlur={commitLength}
+            onKeyDown={(e) => e.key === 'Enter' && commitLength()}
+            className="h-7 w-12 rounded-md border-border/70 bg-background px-1 text-center text-[11px]"
+          />
+        </div>
+      )}
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-lg border border-border/70"
+        onClick={onDelete}
+      >
+        <Trash2 size={14} />
+      </Button>
+    </div>
+  )
+}
+
+function CircleRow({
+  circle,
+  desc,
+  selected,
+  onSelect,
+  onDelete,
+  onUpdateRadius,
+  radiusVal,
+}: {
+  circle: any
+  desc: string
+  selected: boolean
+  onSelect: () => void
+  onDelete: () => void
+  onUpdateRadius?: (newRadius: number) => void
+  radiusVal?: number
+}) {
+  const [radiusDraft, setRadiusDraft] = useState(radiusVal ? radiusVal.toString() : '')
+
+  useEffect(() => {
+    if (radiusVal !== undefined) {
+      setRadiusDraft(radiusVal.toString())
+    }
+  }, [radiusVal])
+
+  const commitRadius = () => {
+    const numeric = Number(radiusDraft)
+    if (Number.isFinite(numeric) && numeric > 0 && onUpdateRadius && radiusVal !== undefined) {
+      onUpdateRadius(numeric)
+    }
+  }
+
+  const isEditable = onUpdateRadius !== undefined && radiusVal !== undefined
+
+  return (
+    <div
+      className={`grid ${
+        isEditable
+          ? 'grid-cols-[80px_76px_minmax(0,1fr)_80px_36px]'
+          : 'grid-cols-[80px_88px_minmax(0,1fr)_36px]'
+      } items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${
+        selected
+          ? 'border-primary/35 bg-primary/10 shadow-sm'
+          : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
+      }`}
+    >
+      <button onClick={onSelect} className="text-left">
+        <TypePill icon={<Circle size={13} />} label="Đường tròn" />
+      </button>
+
+      <button onClick={onSelect} className="truncate text-left text-[13px] font-semibold tracking-tight">
+        {circle.label}
+      </button>
+
+      <button onClick={onSelect} className="truncate text-left text-[11px] text-muted-foreground font-medium">
+        {desc}
+      </button>
+
+      {isEditable && (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <span className="text-[10px] text-muted-foreground">R:</span>
+          <Input
+            value={radiusDraft}
+            onChange={(e) => setRadiusDraft(e.target.value)}
+            onBlur={commitRadius}
+            onKeyDown={(e) => e.key === 'Enter' && commitRadius()}
+            className="h-7 w-12 rounded-md border-border/70 bg-background px-1 text-center text-[11px]"
+          />
+        </div>
+      )}
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-lg border border-border/70"
+        onClick={onDelete}
+      >
+        <Trash2 size={14} />
+      </Button>
+    </div>
+  )
+}
+
+
 export function ManualRightPanel() {
   const {
     manualDocument,
@@ -212,6 +409,9 @@ export function ManualRightPanel() {
     setManualSelection,
     removeManualEntity,
     updatePointPosition,
+    renameManualEntity,
+    updateSegmentLength,
+    updateCircleRadius,
     showAxes,
     showGrid,
     showLabels,
@@ -262,7 +462,8 @@ export function ManualRightPanel() {
     manualDocument.points.length +
     manualDocument.segments.length +
     manualDocument.polygons.length +
-    manualDocument.solids.length
+    manualDocument.solids.length +
+    (manualDocument.circles?.length ?? 0)
 
   const handleSave = () => {
     setIsSaving(true)
@@ -319,25 +520,80 @@ export function ManualRightPanel() {
                 onSelect={() => setManualSelection({ kind: 'point', id: point.id })}
                 onDelete={() => removeManualEntity('point', point.id)}
                 onApply={(nextCoords) => updatePointPosition(point.id, nextCoords)}
+                onRename={(newLabel) => renameManualEntity('point', point.id, newLabel)}
               />
             )
           })}
 
-          {manualDocument.segments.map((segment: ManualSegment) => (
-            <ObjectRow
-              key={segment.id}
-              typeLabel={'\u0110o\u1ea1n'}
-              icon={<PencilRuler size={14} />}
-              name={segment.label}
-              values={[
-                pointLabelMap[segment.startPointId] ?? segment.startPointId,
-                pointLabelMap[segment.endPointId] ?? segment.endPointId,
-              ]}
-              selected={manualSelection?.kind === 'segment' && manualSelection.id === segment.id}
-              onSelect={() => setManualSelection({ kind: 'segment', id: segment.id })}
-              onDelete={() => removeManualEntity('segment', segment.id)}
-            />
-          ))}
+          {manualDocument.segments.map((segment: ManualSegment) => {
+            let typeLabel = '\u0110o\u1ea1n'
+            let values = [
+              pointLabelMap[segment.startPointId] ?? segment.startPointId,
+              pointLabelMap[segment.endPointId] ?? segment.endPointId,
+            ]
+            
+            const p1 = manualDocument.points.find((p) => p.id === segment.startPointId)
+            const p2 = manualDocument.points.find((p) => p.id === segment.endPointId)
+
+            let isEditable = false
+            let lengthVal = 20
+
+            if (segment.createdByTool === 'parallelLine') {
+              typeLabel = 'Đ.Song song'
+              const anchorLabel = p1?.anchorPointId ? pointLabelMap[p1.anchorPointId] ?? '?' : '?'
+              const refSeg = p1?.sourceSegmentId ? manualDocument.segments.find(s => s.id === p1.sourceSegmentId) : null
+              const refSegLabel = refSeg ? refSeg.label : '?'
+              lengthVal = p2?.t ? Math.abs(p2.t) : 20
+              values = [`Qua ${anchorLabel}`, `// ${refSegLabel}`]
+              isEditable = true
+            } else if (segment.createdByTool === 'perpendicularLine') {
+              typeLabel = 'Đ.Vuông góc'
+              const anchorLabel = p1?.anchorPointId ? pointLabelMap[p1.anchorPointId] ?? '?' : '?'
+              const refSeg = p1?.sourceSegmentId ? manualDocument.segments.find(s => s.id === p1.sourceSegmentId) : null
+              const refSegLabel = refSeg ? refSeg.label : '?'
+              lengthVal = p2?.t ? Math.abs(p2.t) : 20
+              values = [`Qua ${anchorLabel}`, `⊥ ${refSegLabel}`]
+              isEditable = true
+            } else if (segment.createdByTool === 'perpendicularBisector') {
+              typeLabel = 'Đ.Trung trực'
+              let refLabel = ''
+              if (p1?.sourcePointIds && p1.sourcePointIds.length >= 2) {
+                const labels = p1.sourcePointIds.map((pid) => pointLabelMap[pid] ?? '?')
+                refLabel = `Của ${labels.join('')}`
+              } else {
+                refLabel = 'Trung trực'
+              }
+              lengthVal = p2?.t ? Math.abs(p2.t) : 20
+              values = [refLabel]
+              isEditable = true
+            } else if (segment.createdByTool === 'angleBisector') {
+              typeLabel = 'Tia P.Giác'
+              let refLabel = ''
+              if (p2?.sourcePointIds && p2.sourcePointIds.length >= 3) {
+                const labels = p2.sourcePointIds.map((pid) => pointLabelMap[pid] ?? '?')
+                refLabel = `Góc ${labels.join('')}`
+              } else {
+                refLabel = 'Phân giác'
+              }
+              lengthVal = p2?.t ? Math.abs(p2.t) : 20
+              values = [refLabel]
+              isEditable = true
+            }
+
+            return (
+              <SegmentRow
+                key={segment.id}
+                segment={segment}
+                typeLabel={typeLabel}
+                values={values}
+                selected={manualSelection?.kind === 'segment' && manualSelection.id === segment.id}
+                onSelect={() => setManualSelection({ kind: 'segment', id: segment.id })}
+                onDelete={() => removeManualEntity('segment', segment.id)}
+                onUpdateLength={isEditable ? (newLen) => updateSegmentLength(segment.id, newLen) : undefined}
+                lengthVal={isEditable ? lengthVal : undefined}
+              />
+            )
+          })}
 
           {manualDocument.polygons.map((polygon: ManualPolygon) => (
             <ObjectRow
@@ -364,6 +620,34 @@ export function ManualRightPanel() {
               onDelete={() => removeManualEntity('solid', solid.id)}
             />
           ))}
+
+          {manualDocument.circles?.map((circle) => {
+            const centerLabel = circle.centerPointId ? pointLabelMap[circle.centerPointId] ?? '?' : '?'
+            const radiusPointLabel = circle.radiusPointId ? pointLabelMap[circle.radiusPointId] ?? '?' : '?'
+            let desc = ''
+            let isEditable = false
+            if (circle.circleKind === 'threePoints') {
+              const labels = circle.sourcePointIds?.map((pid) => pointLabelMap[pid] ?? '?') ?? []
+              desc = `Qua ${labels.join(', ')}`
+            } else if (circle.circleKind === 'centerRadius') {
+              desc = `Tâm ${centerLabel}`
+              isEditable = true
+            } else {
+              desc = `Tâm ${centerLabel}, qua ${radiusPointLabel}`
+            }
+            return (
+              <CircleRow
+                key={circle.id}
+                circle={circle}
+                desc={desc}
+                selected={manualSelection?.kind === 'circle' && manualSelection.id === circle.id}
+                onSelect={() => setManualSelection({ kind: 'circle', id: circle.id })}
+                onDelete={() => removeManualEntity('circle', circle.id)}
+                onUpdateRadius={isEditable ? (newRad) => updateCircleRadius(circle.id, newRad) : undefined}
+                radiusVal={isEditable ? Number(circle.radius) : undefined}
+              />
+            )
+          })}
 
           {totalEntities === 0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-background/75 px-6 py-12 text-center">
