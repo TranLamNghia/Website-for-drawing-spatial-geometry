@@ -180,6 +180,8 @@ interface GeometryContextType {
   updatePointPosition: (pointId: string, position: Vec3, target?: ManualSnapTarget | null) => void
   updateSegmentLength: (segmentId: string, newLength: number) => void
   updateCircleRadius: (circleId: string, newRadius: number) => void
+  flipPolygonVertical: (polygonId: string) => void
+  flipPolygonHorizontal: (polygonId: string) => void
   saveManualState: () => void
   createMidpoint: (pointIdA: string, pointIdB: string) => string | null
   createIntersection: (segmentIdA: string, segmentIdB: string) => string | null
@@ -344,6 +346,133 @@ function removeEntityDependencies(
   return nextDocument
 }
 
+function deduplicateDocumentPoints(current: ManualDocument, next: ManualDocument): ManualDocument {
+  const currentPointIds = new Set(current.points.map(p => p.id))
+  const newPoints = next.points.filter(p => !currentPointIds.has(p.id))
+  if (newPoints.length === 0) return next
+
+  const resolved = resolvePointPositions(next)
+  const replacements = new Map<string, string>()
+  const pointsToRemove = new Set<string>()
+  const upgrades = new Map<string, Partial<ManualPoint>>()
+
+  for (const newPt of newPoints) {
+    const newPos = resolved[newPt.id]
+    if (!newPos) continue
+
+    const match = next.points.find(p => {
+      if (p.id === newPt.id) return false
+      if (pointsToRemove.has(p.id)) return false
+      
+      const pPos = resolved[p.id]
+      if (!pPos) return false
+
+      const dist = Math.hypot(pPos[0] - newPos[0], pPos[1] - newPos[1], pPos[2] - newPos[2])
+      return dist < 0.25
+    })
+
+    if (match) {
+      replacements.set(newPt.id, match.id)
+      pointsToRemove.add(newPt.id)
+
+      const isMatchFree = match.pointKind === 'free' || !match.pointKind
+      if (isMatchFree && newPt.pointKind && newPt.pointKind !== 'free') {
+        upgrades.set(match.id, {
+          pointKind: newPt.pointKind,
+          shapeType: newPt.shapeType,
+          sourcePointIds: newPt.sourcePointIds,
+          sourceSegmentId: newPt.sourceSegmentId,
+          sourceSegmentIds: newPt.sourceSegmentIds,
+          sourcePointId: newPt.sourcePointId,
+          targetSegmentId: newPt.targetSegmentId,
+          targetPolygonId: newPt.targetPolygonId,
+          t: newPt.t,
+          flip: newPt.flip,
+          dependsOn: newPt.dependsOn,
+          locked: newPt.locked,
+          segmentId: newPt.segmentId,
+          sideIndex: newPt.sideIndex,
+          totalSides: newPt.totalSides,
+          anchorPointId: newPt.anchorPointId,
+        })
+      }
+    }
+  }
+
+  if (replacements.size === 0) return next
+
+  const replaceId = (id: string) => replacements.get(id) ?? id
+  const replaceIds = (ids: string[]) => ids.map(replaceId)
+
+  const result = cloneDocument(next)
+
+  result.points = result.points.filter(p => !pointsToRemove.has(p.id))
+
+  result.points = result.points.map(p => {
+    const upgrade = upgrades.get(p.id)
+    if (upgrade) {
+      return {
+        ...p,
+        ...upgrade,
+        sourcePointIds: upgrade.sourcePointIds ? replaceIds(upgrade.sourcePointIds) : undefined,
+        sourceSegmentId: upgrade.sourceSegmentId ? replaceId(upgrade.sourceSegmentId) : undefined,
+        sourceSegmentIds: upgrade.sourceSegmentIds ? [replaceId(upgrade.sourceSegmentIds[0]), replaceId(upgrade.sourceSegmentIds[1])] : undefined,
+        sourcePointId: upgrade.sourcePointId ? replaceId(upgrade.sourcePointId) : undefined,
+        targetSegmentId: upgrade.targetSegmentId ? replaceId(upgrade.targetSegmentId) : undefined,
+        targetPolygonId: upgrade.targetPolygonId ? replaceId(upgrade.targetPolygonId) : undefined,
+        dependsOn: upgrade.dependsOn ? replaceIds(upgrade.dependsOn) : undefined,
+        segmentId: upgrade.segmentId ? replaceId(upgrade.segmentId) : undefined,
+        anchorPointId: upgrade.anchorPointId ? replaceId(upgrade.anchorPointId) : undefined,
+      } as ManualPoint
+    }
+    return p
+  })
+
+  result.points = result.points.map(p => {
+    if (p.dependsOn) p.dependsOn = replaceIds(p.dependsOn)
+    if (p.sourcePointIds) p.sourcePointIds = replaceIds(p.sourcePointIds)
+    if (p.sourcePointId) p.sourcePointId = replaceId(p.sourcePointId)
+    if (p.anchorPointId) p.anchorPointId = replaceId(p.anchorPointId)
+    if (p.segmentId) p.segmentId = replaceId(p.segmentId)
+    return p
+  })
+
+  result.segments = result.segments.map(s => {
+    s.startPointId = replaceId(s.startPointId)
+    s.endPointId = replaceId(s.endPointId)
+    if (s.dependsOn) s.dependsOn = replaceIds(s.dependsOn)
+    return s
+  })
+
+  result.polygons = result.polygons.map(poly => {
+    poly.pointIds = replaceIds(poly.pointIds)
+    if (poly.dependsOn) poly.dependsOn = replaceIds(poly.dependsOn)
+    return poly
+  })
+
+  result.solids = result.solids.map(solid => {
+    if (solid.cornerPointIds) {
+      solid.cornerPointIds = [replaceId(solid.cornerPointIds[0]), replaceId(solid.cornerPointIds[1])]
+    }
+    if (solid.centerPointId) solid.centerPointId = replaceId(solid.centerPointId)
+    if (solid.apexPointId) solid.apexPointId = replaceId(solid.apexPointId)
+    if (solid.topPointId) solid.topPointId = replaceId(solid.topPointId)
+    if (solid.radiusPointId) solid.radiusPointId = replaceId(solid.radiusPointId)
+    if (solid.dependsOn) solid.dependsOn = replaceIds(solid.dependsOn)
+    return solid
+  })
+
+  result.circles = result.circles.map(circle => {
+    if (circle.centerPointId) circle.centerPointId = replaceId(circle.centerPointId)
+    if (circle.radiusPointId) circle.radiusPointId = replaceId(circle.radiusPointId)
+    if (circle.sourcePointIds) circle.sourcePointIds = replaceIds(circle.sourcePointIds)
+    if (circle.dependsOn) circle.dependsOn = replaceIds(circle.dependsOn)
+    return circle
+  })
+
+  return result
+}
+
 function resolvePointPlacement(
   document: ManualDocument,
   target: ManualSnapTarget | null,
@@ -439,13 +568,14 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       setManualDocumentState((current) => {
         const next = updater(current)
         if (!next) return current
+        const deduplicated = deduplicateDocumentPoints(current, next)
         if (!isTransient) {
           setTimeout(() => {
             setUndoStack((stack) => [...stack, cloneDocument(current)].slice(-60))
             setRedoStack([])
           }, 0)
         }
-        return cloneDocument(next)
+        return cloneDocument(deduplicated)
       })
     },
     [],
@@ -479,15 +609,19 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         return target.pointId
       }
 
-      const createdPoint = resolvePointPlacement(manualDocument, target, fallback)
-      commitManualDocument((current) => ({
-        ...current,
-        points: [...current.points, createdPoint],
-      }))
-      setManualSelection({ kind: 'point', id: createdPoint.id })
-      return createdPoint.id
+      const createdPointId = createEntityId('point')
+      commitManualDocument((current) => {
+        const createdPoint = resolvePointPlacement(current, target, fallback)
+        createdPoint.id = createdPointId
+        return {
+          ...current,
+          points: [...current.points, createdPoint],
+        }
+      })
+      setManualSelection({ kind: 'point', id: createdPointId })
+      return createdPointId
     },
-    [commitManualDocument, manualDocument],
+    [commitManualDocument],
   )
 
   const updatePointPosition = useCallback(
@@ -687,6 +821,165 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
+        if (point.pointKind === 'specialShapeVertex') {
+          if (point.shapeType === 'rectangle_C' && point.sourcePointIds) {
+            const resolved = resolvePointPositions(current)
+            const posA = resolved[point.sourcePointIds[0]]
+            const posB = resolved[point.sourcePointIds[1]]
+            if (posA && posB) {
+              const E = subVec3(posB, posA)
+              const D_vec: Vec3 = [-E[1], E[0], 0]
+              const lenD = Math.hypot(D_vec[0], D_vec[1])
+              const D_norm = lenD > 1e-9 ? scaleVec3(D_vec, 1 / lenD) : ([0, 1, 0] as Vec3)
+              const proj = subVec3(position, posB)
+              const nextT = dotVec3(proj, D_norm)
+              return {
+                ...current,
+                points: mapEntities(current.points, pointId, (candidate) => ({
+                  ...candidate,
+                  t: nextT,
+                })),
+              }
+            }
+          }
+
+          if (point.shapeType === 'parallelogram_D' && point.sourcePointIds) {
+            const resolved = resolvePointPositions(current)
+            const posA = resolved[point.sourcePointIds[0]]
+            const posB = resolved[point.sourcePointIds[1]]
+            const posCId = point.sourcePointIds[2]
+            const posCPoint = current.points.find((p) => p.id === posCId)
+            if (posA && posB && posCPoint) {
+              if (posCPoint.shapeType === 'rectangle_C') {
+                const C_ideal_x = position[0] + posB[0] - posA[0]
+                const C_ideal_y = position[1] + posB[1] - posA[1]
+                const E = subVec3(posB, posA)
+                const D_vec: Vec3 = [-E[1], E[0], 0]
+                const lenD = Math.hypot(D_vec[0], D_vec[1])
+                const D_norm = lenD > 1e-9 ? scaleVec3(D_vec, 1 / lenD) : ([0, 1, 0] as Vec3)
+                const proj = subVec3([C_ideal_x, C_ideal_y, 0], posB)
+                const nextT = dotVec3(proj, D_norm)
+                return {
+                  ...current,
+                  points: current.points.map((p) => p.id === posCId ? { ...p, t: nextT } : p),
+                }
+              } else {
+                const C_ideal_x = position[0] + posB[0] - posA[0]
+                const C_ideal_y = position[1] + posB[1] - posA[1]
+                return {
+                  ...current,
+                  points: current.points.map((p) => p.id === posCId ? { ...p, position: [C_ideal_x, C_ideal_y, posCPoint.position[2]] } : p),
+                }
+              }
+            }
+          }
+
+          if (point.shapeType === 'rhombus_C' && point.sourcePointIds) {
+            const resolved = resolvePointPositions(current)
+            const posA = resolved[point.sourcePointIds[0]]
+            const posB = resolved[point.sourcePointIds[1]]
+            if (posA && posB) {
+              const BA: Vec3 = [posA[0] - posB[0], posA[1] - posB[1], 0]
+              const BC: Vec3 = [position[0] - posB[0], position[1] - posB[1], 0]
+              const angleBA = Math.atan2(BA[1], BA[0])
+              const angleBC = Math.atan2(BC[1], BC[0])
+              let nextT = angleBC - angleBA
+              while (nextT < -Math.PI) nextT += 2 * Math.PI
+              while (nextT > Math.PI) nextT -= 2 * Math.PI
+              return {
+                ...current,
+                points: mapEntities(current.points, pointId, (candidate) => ({
+                  ...candidate,
+                  t: nextT,
+                })),
+              }
+            }
+          }
+
+          if (point.shapeType === 'rhombus_D' && point.sourcePointIds) {
+            const resolved = resolvePointPositions(current)
+            const posA = resolved[point.sourcePointIds[0]]
+            const posB = resolved[point.sourcePointIds[1]]
+            const posCId = point.sourcePointIds[2]
+            const posC = resolved[posCId]
+            if (posA && posB && posC) {
+              const C_ideal_x = position[0] + posB[0] - posA[0]
+              const C_ideal_y = position[1] + posB[1] - posA[1]
+              const BA: Vec3 = [posA[0] - posB[0], posA[1] - posB[1], 0]
+              const BC: Vec3 = [C_ideal_x - posB[0], C_ideal_y - posB[1], 0]
+              const angleBA = Math.atan2(BA[1], BA[0])
+              const angleBC = Math.atan2(BC[1], BC[0])
+              let nextT = angleBC - angleBA
+              while (nextT < -Math.PI) nextT += 2 * Math.PI
+              while (nextT > Math.PI) nextT -= 2 * Math.PI
+              return {
+                ...current,
+                points: current.points.map((p) => p.id === posCId ? { ...p, t: nextT } : p),
+              }
+            }
+          }
+
+          if (point.shapeType === 'square_C' && point.sourcePointIds) {
+            const sourcePointIds = point.sourcePointIds
+            const resolved = resolvePointPositions(current)
+            const posA = resolved[sourcePointIds[0]]
+            const posB = resolved[sourcePointIds[1]]
+            if (posA && posB) {
+              const E = subVec3(posB, posA)
+              const lenE = Math.hypot(E[0], E[1])
+              const u_AB = lenE > 1e-9 ? scaleVec3(E, 1 / lenE) : ([1, 0, 0] as Vec3)
+              const u_rot: Vec3 = [-u_AB[1], u_AB[0], 0]
+              const proj = subVec3(position, posB)
+              const L_new = Math.max(0.1, Math.abs(dotVec3(proj, u_rot)))
+              const isFlipped = dotVec3(proj, u_rot) < 0
+              const nextFlip = isFlipped ? -1 : 1
+              const nextB_pos = addVec3(posA, scaleVec3(u_AB, L_new))
+              const posDPoint = current.points.find((p) => p.createdByTool === 'specialQuadrilateral' && p.shapeType === 'square_D' && p.sourcePointIds?.[0] === sourcePointIds[0])
+              const posDId = posDPoint?.id
+
+              return {
+                ...current,
+                points: current.points.map((p) => {
+                  if (p.id === sourcePointIds[1]) return { ...p, position: nextB_pos }
+                  if (p.id === pointId) return { ...p, flip: nextFlip }
+                  if (posDId && p.id === posDId) return { ...p, flip: nextFlip }
+                  return p
+                }),
+              }
+            }
+          }
+
+          if (point.shapeType === 'square_D' && point.sourcePointIds) {
+            const sourcePointIds = point.sourcePointIds
+            const resolved = resolvePointPositions(current)
+            const posA = resolved[sourcePointIds[0]]
+            const posB = resolved[sourcePointIds[1]]
+            if (posA && posB) {
+              const E = subVec3(posB, posA)
+              const lenE = Math.hypot(E[0], E[1])
+              const u_AB = lenE > 1e-9 ? scaleVec3(E, 1 / lenE) : ([1, 0, 0] as Vec3)
+              const u_rot: Vec3 = [-u_AB[1], u_AB[0], 0]
+              const proj = subVec3(position, posA)
+              const L_new = Math.max(0.1, Math.abs(dotVec3(proj, u_rot)))
+              const isFlipped = dotVec3(proj, u_rot) < 0
+              const nextFlip = isFlipped ? -1 : 1
+              const nextB_pos = addVec3(posA, scaleVec3(u_AB, L_new))
+              const posCPoint = current.points.find((p) => p.createdByTool === 'specialQuadrilateral' && p.shapeType === 'square_C' && p.sourcePointIds?.[0] === sourcePointIds[0])
+              const posCId = posCPoint?.id
+
+              return {
+                ...current,
+                points: current.points.map((p) => {
+                  if (p.id === sourcePointIds[1]) return { ...p, position: nextB_pos }
+                  if (p.id === pointId) return { ...p, flip: nextFlip }
+                  if (posCId && p.id === posCId) return { ...p, flip: nextFlip }
+                  return p
+                }),
+              }
+            }
+          }
+        }
+
         const nextPosition = target?.position ?? position
         return {
           ...current,
@@ -780,85 +1073,87 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const createMidpoint = useCallback(
     (pointIdA: string, pointIdB: string) => {
       if (pointIdA === pointIdB) return null
-      const labelA = manualDocument.points.find((p) => p.id === pointIdA)?.label ?? '?'
-      const labelB = manualDocument.points.find((p) => p.id === pointIdB)?.label ?? '?'
       const midId = createEntityId('point')
-      const midPoint: ManualPoint = {
-        id: midId,
-        label: nextPointLabel(manualDocument),
-        entityType: 'point',
-        pointKind: 'midpoint',
-        position: [0, 0, 0],
-        sourcePointIds: [pointIdA, pointIdB],
-        createdByTool: 'midpoint',
-        dependsOn: [pointIdA, pointIdB],
-        locked: true,
-        visible: true,
-        selectable: true,
-      }
-      commitManualDocument((current) => ({
-        ...current,
-        points: [...current.points, midPoint],
-      }))
+      commitManualDocument((current) => {
+        const midPoint: ManualPoint = {
+          id: midId,
+          label: nextPointLabel(current),
+          entityType: 'point',
+          pointKind: 'midpoint',
+          position: [0, 0, 0],
+          sourcePointIds: [pointIdA, pointIdB],
+          createdByTool: 'midpoint',
+          dependsOn: [pointIdA, pointIdB],
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+        return {
+          ...current,
+          points: [...current.points, midPoint],
+        }
+      })
       setManualSelection({ kind: 'point', id: midId })
       return midId
     },
-    [commitManualDocument, manualDocument],
+    [commitManualDocument],
   )
 
   const createIntersection = useCallback(
     (segmentIdA: string, segmentIdB: string) => {
       if (segmentIdA === segmentIdB) return null
       const intId = createEntityId('point')
-      const intPoint: ManualPoint = {
-        id: intId,
-        label: nextPointLabel(manualDocument),
-        entityType: 'point',
-        pointKind: 'intersection',
-        position: [0, 0, 0],
-        sourceSegmentIds: [segmentIdA, segmentIdB],
-        createdByTool: 'intersection',
-        dependsOn: [segmentIdA, segmentIdB],
-        locked: true,
-        visible: true,
-        selectable: true,
-      }
       commitManualDocument((current) => {
+        const intPoint: ManualPoint = {
+          id: intId,
+          label: nextPointLabel(current),
+          entityType: 'point',
+          pointKind: 'intersection',
+          position: [0, 0, 0],
+          sourceSegmentIds: [segmentIdA, segmentIdB],
+          createdByTool: 'intersection',
+          dependsOn: [segmentIdA, segmentIdB],
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
         const derived = resolvePointPositions({ ...current, points: [...current.points, intPoint] })
-        if (!derived[intId]) return null
+        if (!derived[intId]) return current
         return { ...current, points: [...current.points, intPoint] }
       })
       setManualSelection({ kind: 'point', id: intId })
       return intId
     },
-    [commitManualDocument, manualDocument],
+    [commitManualDocument],
   )
 
   const createProjection = useCallback(
     (pointId: string, targetId: string, targetKind: 'segment' | 'polygon') => {
       const projId = createEntityId('point')
-      const projPoint: ManualPoint = {
-        id: projId,
-        label: nextPointLabel(manualDocument),
-        entityType: 'point',
-        pointKind: 'projection',
-        position: [0, 0, 0],
-        sourcePointId: pointId,
-        ...(targetKind === 'segment' ? { targetSegmentId: targetId } : { targetPolygonId: targetId }),
-        createdByTool: 'projection',
-        dependsOn: [pointId, targetId],
-        locked: true,
-        visible: true,
-        selectable: true,
-      }
-      commitManualDocument((current) => ({
-        ...current,
-        points: [...current.points, projPoint],
-      }))
+      commitManualDocument((current) => {
+        const projPoint: ManualPoint = {
+          id: projId,
+          label: nextPointLabel(current),
+          entityType: 'point',
+          pointKind: 'projection',
+          position: [0, 0, 0],
+          sourcePointId: pointId,
+          ...(targetKind === 'segment' ? { targetSegmentId: targetId } : { targetPolygonId: targetId }),
+          createdByTool: 'projection',
+          dependsOn: [pointId, targetId],
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+        return {
+          ...current,
+          points: [...current.points, projPoint],
+        }
+      })
       setManualSelection({ kind: 'point', id: projId })
       return projId
     },
-    [commitManualDocument, manualDocument],
+    [commitManualDocument],
   )
 
   const createCentroid = useCallback(
@@ -869,111 +1164,114 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       if (targetPolygonId) dependsOn.push(targetPolygonId)
       if (sourcePointIds) dependsOn.push(...sourcePointIds)
 
-      const cPoint: ManualPoint = {
-        id: cId,
-        label: nextPointLabel(manualDocument),
-        entityType: 'point',
-        pointKind: 'centroid',
-        position: [0, 0, 0],
-        targetPolygonId,
-        sourcePointIds,
-        createdByTool: 'centroid',
-        dependsOn,
-        locked: true,
-        visible: true,
-        selectable: true,
-      }
-
-      commitManualDocument((current) => ({
-        ...current,
-        points: [...current.points, cPoint],
-      }))
+      commitManualDocument((current) => {
+        const cPoint: ManualPoint = {
+          id: cId,
+          label: nextPointLabel(current),
+          entityType: 'point',
+          pointKind: 'centroid',
+          position: [0, 0, 0],
+          targetPolygonId,
+          sourcePointIds,
+          createdByTool: 'centroid',
+          dependsOn,
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+        return {
+          ...current,
+          points: [...current.points, cPoint],
+        }
+      })
       setManualSelection({ kind: 'point', id: cId })
       return cId
     },
-    [commitManualDocument, manualDocument, saveManualState],
+    [commitManualDocument, saveManualState],
   )
 
   const createPerpendicularBisector = useCallback(
     (segmentId?: string, pointIdA?: string, pointIdB?: string) => {
       saveManualState()
       
-      let pA = pointIdA
-      let pB = pointIdB
-      const dependsOn: string[] = []
-
-      if (segmentId) {
-        dependsOn.push(segmentId)
-        const seg = manualDocument.segments.find((s) => s.id === segmentId)
-        if (seg) {
-          pA = seg.startPointId
-          pB = seg.endPointId
-        }
-      }
-
-      if (!pA || !pB) return null
-      if (!segmentId) {
-        dependsOn.push(pA, pB)
-      }
-
       const tVal = draftOperation?.radius ?? 20
       const p1Id = createEntityId('point')
       const p2Id = createEntityId('point')
-
-      const p1: ManualPoint = {
-        id: p1Id,
-        label: '',
-        entityType: 'point',
-        pointKind: 'bisectorLinePoint',
-        position: [0, 0, 0],
-        sourcePointIds: [pA, pB],
-        t: -tVal,
-        createdByTool: 'perpendicularBisector',
-        dependsOn: [pA, pB],
-        locked: true,
-        visible: false,
-        selectable: false,
-      }
-
-      const p2: ManualPoint = {
-        id: p2Id,
-        label: '',
-        entityType: 'point',
-        pointKind: 'bisectorLinePoint',
-        position: [0, 0, 0],
-        sourcePointIds: [pA, pB],
-        t: tVal,
-        createdByTool: 'perpendicularBisector',
-        dependsOn: [pA, pB],
-        locked: true,
-        visible: false,
-        selectable: false,
-      }
-
       const lineSegId = createEntityId('segment')
-      const lineSeg = {
-        id: lineSegId,
-        label: `d_trung_truc`,
-        entityType: 'segment' as const,
-        startPointId: p1Id,
-        endPointId: p2Id,
-        createdByTool: 'perpendicularBisector' as const,
-        dependsOn: [p1Id, p2Id, ...dependsOn],
-        locked: true,
-        visible: true,
-        selectable: true,
-      }
 
-      commitManualDocument((current) => ({
-        ...current,
-        points: [...current.points, p1, p2],
-        segments: [...current.segments, lineSeg],
-      }))
+      commitManualDocument((current) => {
+        let pA = pointIdA
+        let pB = pointIdB
+        const dependsOn: string[] = []
+
+        if (segmentId) {
+          dependsOn.push(segmentId)
+          const seg = current.segments.find((s) => s.id === segmentId)
+          if (seg) {
+            pA = seg.startPointId
+            pB = seg.endPointId
+          }
+        }
+
+        if (!pA || !pB) return current
+        if (!segmentId) {
+          dependsOn.push(pA, pB)
+        }
+
+        const p1: ManualPoint = {
+          id: p1Id,
+          label: '',
+          entityType: 'point',
+          pointKind: 'bisectorLinePoint',
+          position: [0, 0, 0],
+          sourcePointIds: [pA, pB],
+          t: -tVal,
+          createdByTool: 'perpendicularBisector',
+          dependsOn: [pA, pB],
+          locked: true,
+          visible: false,
+          selectable: false,
+        }
+
+        const p2: ManualPoint = {
+          id: p2Id,
+          label: '',
+          entityType: 'point',
+          pointKind: 'bisectorLinePoint',
+          position: [0, 0, 0],
+          sourcePointIds: [pA, pB],
+          t: tVal,
+          createdByTool: 'perpendicularBisector',
+          dependsOn: [pA, pB],
+          locked: true,
+          visible: false,
+          selectable: false,
+        }
+
+        const lineSeg = {
+          id: lineSegId,
+          label: `d_trung_truc`,
+          entityType: 'segment' as const,
+          startPointId: p1Id,
+          endPointId: p2Id,
+          createdByTool: 'perpendicularBisector' as const,
+          dependsOn: [p1Id, p2Id, ...dependsOn],
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+
+        return {
+          ...current,
+          points: [...current.points, p1, p2],
+          segments: [...current.segments, lineSeg],
+        }
+      })
 
       setManualSelection({ kind: 'segment', id: lineSegId })
       return lineSegId
     },
-    [commitManualDocument, manualDocument, saveManualState, draftOperation],
+    [commitManualDocument, saveManualState, draftOperation],
   )
 
   const createAngleBisector = useCallback(
@@ -1196,78 +1494,81 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     (pointIdA: string, pointIdB: string, sides: number) => {
       if (sides < 3) return null
       saveManualState()
-
-      const generatedPoints: ManualPoint[] = []
-      const allPointIds = [pointIdA, pointIdB]
-
-      for (let i = 2; i < sides; i++) {
-        const pid = createEntityId('point')
-        const pt: ManualPoint = {
-          id: pid,
-          label: nextPointLabel({
-            ...manualDocument,
-            points: [...manualDocument.points, ...generatedPoints],
-          }),
-          entityType: 'point',
-          pointKind: 'regularPolygonVertex',
-          position: [0, 0, 0],
-          sourcePointIds: [pointIdA, pointIdB],
-          sideIndex: i,
-          totalSides: sides,
-          createdByTool: 'regularPolygon',
-          dependsOn: [pointIdA, pointIdB],
-          locked: true,
-          visible: true,
-          selectable: true,
-        }
-        generatedPoints.push(pt)
-        allPointIds.push(pid)
-      }
-
-      const generatedSegments: ManualSegment[] = []
-      for (let i = 0; i < sides; i++) {
-        const sid = createEntityId('segment')
-        const startId = allPointIds[i]
-        const endId = allPointIds[(i + 1) % sides]
-
-        const seg: ManualSegment = {
-          id: sid,
-          label: '',
-          entityType: 'segment',
-          startPointId: startId,
-          endPointId: endId,
-          createdByTool: 'regularPolygon',
-          dependsOn: [startId, endId],
-          locked: true,
-          visible: true,
-          selectable: true,
-        }
-        generatedSegments.push(seg)
-      }
-
       const polygonId = createEntityId('polygon')
-      const polygon = {
-        id: polygonId,
-        label: `Đa giác đều ${sides} cạnh`,
-        entityType: 'polygon' as const,
-        pointIds: allPointIds,
-        createdByTool: 'regularPolygon' as const,
-        dependsOn: [...allPointIds],
-        locked: true,
-        visible: true,
-        selectable: true,
-      }
 
-      commitManualDocument((current) => ({
-        ...current,
-        points: [...current.points, ...generatedPoints],
-        segments: [...current.segments, ...generatedSegments],
-        polygons: [...current.polygons, polygon],
-      }))
+      commitManualDocument((current) => {
+        const generatedPoints: ManualPoint[] = []
+        const allPointIds = [pointIdA, pointIdB]
+
+        for (let i = 2; i < sides; i++) {
+          const pid = createEntityId('point')
+          const pt: ManualPoint = {
+            id: pid,
+            label: nextPointLabel({
+              ...current,
+              points: [...current.points, ...generatedPoints],
+            }),
+            entityType: 'point',
+            pointKind: 'regularPolygonVertex',
+            position: [0, 0, 0],
+            sourcePointIds: [pointIdA, pointIdB],
+            sideIndex: i,
+            totalSides: sides,
+            createdByTool: 'regularPolygon',
+            dependsOn: [pointIdA, pointIdB],
+            locked: true,
+            visible: true,
+            selectable: true,
+          }
+          generatedPoints.push(pt)
+          allPointIds.push(pid)
+        }
+
+        const generatedSegments: ManualSegment[] = []
+        for (let i = 0; i < sides; i++) {
+          const sid = createEntityId('segment')
+          const startId = allPointIds[i]
+          const endId = allPointIds[(i + 1) % sides]
+
+          const seg: ManualSegment = {
+            id: sid,
+            label: '',
+            entityType: 'segment',
+            startPointId: startId,
+            endPointId: endId,
+            createdByTool: 'regularPolygon',
+            dependsOn: [startId, endId],
+            locked: true,
+            visible: true,
+            selectable: true,
+          }
+          generatedSegments.push(seg)
+        }
+
+        const polygon = {
+          id: polygonId,
+          label: `Đa giác đều ${sides} cạnh`,
+          entityType: 'polygon' as const,
+          pointIds: allPointIds,
+          createdByTool: 'regularPolygon' as const,
+          dependsOn: [...allPointIds],
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+
+        return {
+          ...current,
+          points: [...current.points, ...generatedPoints],
+          segments: [...current.segments, ...generatedSegments],
+          polygons: [...current.polygons, polygon],
+        }
+      })
+
       setManualSelection({ kind: 'polygon', id: polygonId })
       return polygonId
     },
-    [commitManualDocument, manualDocument, saveManualState],
+    [commitManualDocument, saveManualState],
   )
 
   const createSpecialTriangle = useCallback(
@@ -1316,6 +1617,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
             locked: true,
             visible: true,
             selectable: true,
+            flip: 1,
           }
         } else if (type === 'deu') {
           cPoint = {
@@ -1331,6 +1633,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
             locked: true,
             visible: true,
             selectable: true,
+            flip: 1,
           }
         } else if (type === 'vuong') {
           const anchor = anchorPointId ?? pointIdA
@@ -1425,154 +1728,343 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const createSpecialQuadrilateral = useCallback(
     (type: 'binh_huanh' | 'chu_nhat' | 'thoi' | 'vuong', pointIds: string[]) => {
       saveManualState()
-      const generatedPoints: ManualPoint[] = []
-      const generatedSegments: ManualSegment[] = []
-      let allPointIds = [...pointIds]
-
-      if ((type === 'binh_huanh' || type === 'chu_nhat') && pointIds.length >= 3) {
-        const [pA, pB, pC] = pointIds
-        const pD = createEntityId('point')
-        const cPoint: ManualPoint = {
-          id: pD,
-          label: nextPointLabel(manualDocument),
-          entityType: 'point',
-          pointKind: 'specialShapeVertex',
-          shapeType: 'parallelogram_D',
-          sourcePointIds: [pA, pB, pC],
-          position: [0, 0, 0],
-          createdByTool: 'specialQuadrilateral',
-          dependsOn: [pA, pB, pC],
-          locked: true,
-          visible: true,
-          selectable: true,
-        }
-        generatedPoints.push(cPoint)
-        allPointIds.push(pD)
-      } else if (type === 'thoi' && pointIds.length >= 2) {
-        const [pA, pB] = pointIds
-        const pC = createEntityId('point')
-        const pD = createEntityId('point')
-
-        const ptC: ManualPoint = {
-          id: pC,
-          label: nextPointLabel({ ...manualDocument, points: [...manualDocument.points, ...generatedPoints] }),
-          entityType: 'point',
-          pointKind: 'specialShapeVertex',
-          shapeType: 'rhombus_C',
-          sourcePointIds: [pA, pB],
-          position: [0, 0, 0],
-          createdByTool: 'specialQuadrilateral',
-          dependsOn: [pA, pB],
-          locked: true,
-          visible: true,
-          selectable: true,
-        }
-        generatedPoints.push(ptC)
-
-        const ptD: ManualPoint = {
-          id: pD,
-          label: nextPointLabel({ ...manualDocument, points: [...manualDocument.points, ...generatedPoints] }),
-          entityType: 'point',
-          pointKind: 'specialShapeVertex',
-          shapeType: 'rhombus_D',
-          sourcePointIds: [pA, pB],
-          position: [0, 0, 0],
-          createdByTool: 'specialQuadrilateral',
-          dependsOn: [pA, pB],
-          locked: true,
-          visible: true,
-          selectable: true,
-         }
-        generatedPoints.push(ptD)
-
-        allPointIds = [pA, pC, pB, pD]
-      } else if (type === 'vuong' && pointIds.length >= 2) {
-        const [pA, pB] = pointIds
-        const pC = createEntityId('point')
-        const pD = createEntityId('point')
-
-        const ptC: ManualPoint = {
-          id: pC,
-          label: nextPointLabel({ ...manualDocument, points: [...manualDocument.points, ...generatedPoints] }),
-          entityType: 'point',
-          pointKind: 'specialShapeVertex',
-          shapeType: 'square_C' as any,
-          sourcePointIds: [pA, pB],
-          position: [0, 0, 0],
-          createdByTool: 'specialQuadrilateral',
-          dependsOn: [pA, pB],
-          locked: true,
-          visible: true,
-          selectable: true,
-        }
-        generatedPoints.push(ptC)
-
-        const ptD: ManualPoint = {
-          id: pD,
-          label: nextPointLabel({ ...manualDocument, points: [...manualDocument.points, ...generatedPoints] }),
-          entityType: 'point',
-          pointKind: 'specialShapeVertex',
-          shapeType: 'square_D' as any,
-          sourcePointIds: [pA, pB],
-          position: [0, 0, 0],
-          createdByTool: 'specialQuadrilateral',
-          dependsOn: [pA, pB],
-          locked: true,
-          visible: true,
-          selectable: true,
-         }
-        generatedPoints.push(ptD)
-
-        allPointIds = [pA, pC, pB, pD]
-      }
-
-      const sides = allPointIds.length
-      for (let i = 0; i < sides; i++) {
-        const startId = allPointIds[i]
-        const endId = allPointIds[(i + 1) % sides]
-        const existing = manualDocument.segments.find(
-          (s) => (s.startPointId === startId && s.endPointId === endId)
-            || (s.startPointId === endId && s.endPointId === startId)
-        )
-        if (!existing) {
-          generatedSegments.push({
-            id: createEntityId('segment'),
-            label: '',
-            entityType: 'segment',
-            startPointId: startId,
-            endPointId: endId,
-            createdByTool: 'specialQuadrilateral',
-            dependsOn: [startId, endId],
-            locked: true,
-            visible: true,
-            selectable: true,
-          })
-        }
-      }
-
       const polygonId = createEntityId('polygon')
-      const polygon = {
-        id: polygonId,
-        label: `Tứ giác ${type === 'binh_huanh' ? 'bình hành' : type === 'thoi' ? 'thoi' : type === 'chu_nhat' ? 'chữ nhật' : 'vuông'}`,
-        entityType: 'polygon' as const,
-        pointIds: allPointIds,
-        createdByTool: 'specialQuadrilateral' as const,
-        dependsOn: [...allPointIds],
-        locked: true,
-        visible: true,
-        selectable: true,
-      }
 
-      commitManualDocument((current) => ({
-        ...current,
-        points: [...current.points, ...generatedPoints],
-        segments: [...current.segments, ...generatedSegments],
-        polygons: [...current.polygons, polygon],
-      }))
+      commitManualDocument((current) => {
+        const generatedPoints: ManualPoint[] = []
+        const generatedSegments: ManualSegment[] = []
+        let allPointIds = [...pointIds]
+        let pointsList = [...current.points]
+
+        if ((type === 'binh_huanh' || type === 'chu_nhat') && pointIds.length >= 3) {
+          const [pA, pB, pC] = pointIds
+          const posA = current.points.find(p => p.id === pA)?.position ?? [0, 0, 0]
+          const posB = current.points.find(p => p.id === pB)?.position ?? [0, 0, 0]
+          const posC = current.points.find(p => p.id === pC)?.position ?? [0, 0, 0]
+
+          const expectedD: Vec3 = [
+            posA[0] + posC[0] - posB[0],
+            posA[1] + posC[1] - posB[1],
+            posA[2] + posC[2] - posB[2]
+          ]
+
+          const resolved = resolvePointPositions(current)
+          const existingD = current.points.find(p => {
+            if (pointIds.includes(p.id)) return false
+            const pos = resolved[p.id]
+            if (!pos) return false
+            return Math.hypot(pos[0] - expectedD[0], pos[1] - expectedD[1], pos[2] - expectedD[2]) < 0.25
+          })
+
+          const pD = existingD ? existingD.id : createEntityId('point')
+
+          if (type === 'chu_nhat') {
+            const E = subVec3(posB, posA)
+            const D_vec: Vec3 = [-E[1], E[0], 0]
+            const lenD = Math.hypot(D_vec[0], D_vec[1])
+            const D_norm = lenD > 1e-9 ? scaleVec3(D_vec, 1 / lenD) : [0, 1, 0] as Vec3
+            const proj = subVec3(posC, posB)
+            const tVal = dotVec3(proj, D_norm)
+
+            pointsList = pointsList.map((p) => {
+              if (p.id === pC) {
+                return {
+                  ...p,
+                  pointKind: 'specialShapeVertex',
+                  shapeType: 'rectangle_C' as any,
+                  sourcePointIds: [pA, pB],
+                  dependsOn: [pA, pB],
+                  t: tVal,
+                  locked: false,
+                }
+              }
+              return p
+            })
+          }
+
+          if (existingD) {
+            pointsList = pointsList.map((p) => {
+              if (p.id === pD) {
+                return {
+                  ...p,
+                  pointKind: 'specialShapeVertex',
+                  shapeType: 'parallelogram_D',
+                  sourcePointIds: [pA, pB, pC],
+                  dependsOn: [pA, pB, pC],
+                  locked: false,
+                }
+              }
+              return p
+            })
+          } else {
+            const cPoint: ManualPoint = {
+              id: pD,
+              label: nextPointLabel({ ...current, points: [...pointsList, ...generatedPoints] }),
+              entityType: 'point',
+              pointKind: 'specialShapeVertex',
+              shapeType: 'parallelogram_D',
+              sourcePointIds: [pA, pB, pC],
+              position: expectedD,
+              createdByTool: 'specialQuadrilateral',
+              dependsOn: [pA, pB, pC],
+              locked: false,
+              visible: true,
+              selectable: true,
+            }
+            generatedPoints.push(cPoint)
+          }
+
+          allPointIds.push(pD)
+        } else if (type === 'thoi' && pointIds.length >= 2) {
+          const [pA, pB] = pointIds
+          const posA = current.points.find(p => p.id === pA)?.position ?? [0, 0, 0]
+          const posB = current.points.find(p => p.id === pB)?.position ?? [0, 0, 0]
+
+          const E = subVec3(posA, posB)
+          const theta = Math.PI / 3 // 60 deg default
+          const cosT = Math.cos(theta)
+          const sinT = Math.sin(theta)
+          const E_rot: Vec3 = [
+            E[0] * cosT - E[1] * sinT,
+            E[0] * sinT + E[1] * cosT,
+            0
+          ]
+          const expectedC = addVec3(posB, E_rot)
+          const expectedD = addVec3(posA, subVec3(expectedC, posB))
+
+          const resolved = resolvePointPositions(current)
+          const existingC = current.points.find(p => {
+            if (pointIds.includes(p.id)) return false
+            const pos = resolved[p.id]
+            if (!pos) return false
+            return Math.hypot(pos[0] - expectedC[0], pos[1] - expectedC[1], pos[2] - expectedC[2]) < 0.25
+          })
+
+          const pC = existingC ? existingC.id : createEntityId('point')
+
+          const existingD = current.points.find(p => {
+            if (pointIds.includes(p.id) || p.id === pC) return false
+            const pos = resolved[p.id]
+            if (!pos) return false
+            return Math.hypot(pos[0] - expectedD[0], pos[1] - expectedD[1], pos[2] - expectedD[2]) < 0.25
+          })
+
+          const pD = existingD ? existingD.id : createEntityId('point')
+
+          if (existingC) {
+            pointsList = pointsList.map(p => {
+              if (p.id === pC) {
+                return {
+                  ...p,
+                  pointKind: 'specialShapeVertex',
+                  shapeType: 'rhombus_C',
+                  sourcePointIds: [pA, pB],
+                  dependsOn: [pA, pB],
+                  t: theta,
+                  locked: false,
+                }
+              }
+              return p
+            })
+          } else {
+            const ptC: ManualPoint = {
+              id: pC,
+              label: nextPointLabel({ ...current, points: [...pointsList, ...generatedPoints] }),
+              entityType: 'point',
+              pointKind: 'specialShapeVertex',
+              shapeType: 'rhombus_C',
+              sourcePointIds: [pA, pB],
+              position: expectedC,
+              createdByTool: 'specialQuadrilateral',
+              dependsOn: [pA, pB],
+              locked: false,
+              visible: true,
+              selectable: true,
+              t: theta,
+            }
+            generatedPoints.push(ptC)
+          }
+
+          if (existingD) {
+            pointsList = pointsList.map(p => {
+              if (p.id === pD) {
+                return {
+                  ...p,
+                  pointKind: 'specialShapeVertex',
+                  shapeType: 'rhombus_D',
+                  sourcePointIds: [pA, pB, pC],
+                  dependsOn: [pA, pB, pC],
+                  locked: false,
+                }
+              }
+              return p
+            })
+          } else {
+            const ptD: ManualPoint = {
+              id: pD,
+              label: nextPointLabel({ ...current, points: [...pointsList, ...generatedPoints] }),
+              entityType: 'point',
+              pointKind: 'specialShapeVertex',
+              shapeType: 'rhombus_D',
+              sourcePointIds: [pA, pB, pC],
+              position: expectedD,
+              createdByTool: 'specialQuadrilateral',
+              dependsOn: [pA, pB, pC],
+              locked: false,
+              visible: true,
+              selectable: true,
+            }
+            generatedPoints.push(ptD)
+          }
+
+          allPointIds = [pA, pB, pC, pD]
+        } else if (type === 'vuong' && pointIds.length >= 2) {
+          const [pA, pB] = pointIds
+          const posA = current.points.find(p => p.id === pA)?.position ?? [0, 0, 0]
+          const posB = current.points.find(p => p.id === pB)?.position ?? [0, 0, 0]
+
+          const v = subVec3(posB, posA)
+          const expectedC = addVec3(posB, [-v[1], v[0], 0])
+          const expectedD = addVec3(posA, [-v[1], v[0], 0])
+
+          const resolved = resolvePointPositions(current)
+          const existingC = current.points.find(p => {
+            if (pointIds.includes(p.id)) return false
+            const pos = resolved[p.id]
+            if (!pos) return false
+            return Math.hypot(pos[0] - expectedC[0], pos[1] - expectedC[1], pos[2] - expectedC[2]) < 0.25
+          })
+
+          const pC = existingC ? existingC.id : createEntityId('point')
+
+          const existingD = current.points.find(p => {
+            if (pointIds.includes(p.id) || p.id === pC) return false
+            const pos = resolved[p.id]
+            if (!pos) return false
+            return Math.hypot(pos[0] - expectedD[0], pos[1] - expectedD[1], pos[2] - expectedD[2]) < 0.25
+          })
+
+          const pD = existingD ? existingD.id : createEntityId('point')
+
+          if (existingC) {
+            pointsList = pointsList.map(p => {
+              if (p.id === pC) {
+                return {
+                  ...p,
+                  pointKind: 'specialShapeVertex',
+                  shapeType: 'square_C' as any,
+                  sourcePointIds: [pA, pB],
+                  dependsOn: [pA, pB],
+                  locked: false,
+                  flip: 1,
+                }
+              }
+              return p
+            })
+          } else {
+            const ptC: ManualPoint = {
+              id: pC,
+              label: nextPointLabel({ ...current, points: [...pointsList, ...generatedPoints] }),
+              entityType: 'point',
+              pointKind: 'specialShapeVertex',
+              shapeType: 'square_C' as any,
+              sourcePointIds: [pA, pB],
+              position: expectedC,
+              createdByTool: 'specialQuadrilateral',
+              dependsOn: [pA, pB],
+              locked: false,
+              visible: true,
+              selectable: true,
+              flip: 1,
+            }
+            generatedPoints.push(ptC)
+          }
+
+          if (existingD) {
+            pointsList = pointsList.map(p => {
+              if (p.id === pD) {
+                return {
+                  ...p,
+                  pointKind: 'specialShapeVertex',
+                  shapeType: 'square_D' as any,
+                  sourcePointIds: [pA, pB],
+                  dependsOn: [pA, pB],
+                  locked: false,
+                  flip: 1,
+                }
+              }
+              return p
+            })
+          } else {
+            const ptD: ManualPoint = {
+              id: pD,
+              label: nextPointLabel({ ...current, points: [...pointsList, ...generatedPoints] }),
+              entityType: 'point',
+              pointKind: 'specialShapeVertex',
+              shapeType: 'square_D' as any,
+              sourcePointIds: [pA, pB],
+              position: expectedD,
+              createdByTool: 'specialQuadrilateral',
+              dependsOn: [pA, pB],
+              locked: false,
+              visible: true,
+              selectable: true,
+              flip: 1,
+            }
+            generatedPoints.push(ptD)
+          }
+
+          allPointIds = [pA, pB, pC, pD]
+        }
+
+        const sides = allPointIds.length
+        for (let i = 0; i < sides; i++) {
+          const startId = allPointIds[i]
+          const endId = allPointIds[(i + 1) % sides]
+          const existing = current.segments.find(
+            (s) => (s.startPointId === startId && s.endPointId === endId)
+              || (s.startPointId === endId && s.endPointId === startId)
+          )
+          if (!existing) {
+            generatedSegments.push({
+              id: createEntityId('segment'),
+              label: '',
+              entityType: 'segment',
+              startPointId: startId,
+              endPointId: endId,
+              createdByTool: 'specialQuadrilateral',
+              dependsOn: [startId, endId],
+              locked: true,
+              visible: true,
+              selectable: true,
+            })
+          }
+        }
+
+        const polygon = {
+          id: polygonId,
+          label: type === 'binh_huanh' ? 'Hình bình hành' : type === 'thoi' ? 'Hình thoi' : type === 'chu_nhat' ? 'Hình chữ nhật' : 'Hình vuông',
+          entityType: 'polygon' as const,
+          pointIds: allPointIds,
+          createdByTool: 'specialQuadrilateral' as const,
+          dependsOn: [...allPointIds],
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+
+        return {
+          ...current,
+          points: [...pointsList, ...generatedPoints],
+          segments: [...current.segments, ...generatedSegments],
+          polygons: [...current.polygons, polygon],
+        }
+      })
+
       setManualSelection({ kind: 'polygon', id: polygonId })
       return polygonId
     },
-    [commitManualDocument, manualDocument, saveManualState],
+    [commitManualDocument, saveManualState],
   )
 
   const createPolygon = useCallback(
@@ -1967,6 +2459,130 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     setDraftOperation(null)
   }, [manualDocument])
 
+  const flipPolygonVertical = useCallback(
+    (polygonId: string) => {
+      saveManualState()
+      commitManualDocument((current) => {
+        const polygon = current.polygons.find((p) => p.id === polygonId)
+        if (!polygon || polygon.pointIds.length === 0) return current
+
+        const pointPositions = resolvePointPositions(current)
+        const validPoints = polygon.pointIds.map(id => pointPositions[id]).filter(Boolean) as Vec3[]
+        if (validPoints.length === 0) return current
+
+        // Calculate Centroid G
+        const Gx = validPoints.reduce((sum, p) => sum + p[0], 0) / validPoints.length
+        const Gy = validPoints.reduce((sum, p) => sum + p[1], 0) / validPoints.length
+        const Gz = validPoints.reduce((sum, p) => sum + p[2], 0) / validPoints.length
+
+        const pointIdsSet = new Set(polygon.pointIds)
+
+        return {
+          ...current,
+          points: current.points.map((p) => {
+            if (!pointIdsSet.has(p.id)) return p
+
+            // If it is a free point, reflect its y coordinate across Gy
+            const isFreePoint = p.pointKind === 'free' || !p.pointKind
+            if (isFreePoint) {
+              const oldPos = pointPositions[p.id] ?? p.position
+              return {
+                ...p,
+                position: [oldPos[0], 2 * Gy - oldPos[1], oldPos[2]] as Vec3,
+              }
+            }
+
+            // If it is a dependent shape point, invert its parameters to reflect geometrically
+            if (p.pointKind === 'specialShapeVertex') {
+              if (p.shapeType === 'rectangle_C') {
+                return { ...p, t: -(p.t ?? 4) }
+              }
+              if (
+                p.shapeType === ('square_C' as any) ||
+                p.shapeType === ('square_D' as any) ||
+                p.shapeType === ('rightIsosceles_C' as any) ||
+                p.shapeType === ('equilateral_C' as any)
+              ) {
+                return { ...p, flip: -(p.flip ?? 1) }
+              }
+              if (p.shapeType === 'rhombus_C') {
+                return { ...p, t: -(p.t ?? (Math.PI / 3)) }
+              }
+            }
+            if (p.pointKind === 'perpendicularLinePoint' || p.pointKind === 'bisectorLinePoint') {
+              return { ...p, t: -(p.t ?? 4) }
+            }
+
+            return p
+          }),
+        }
+      })
+    },
+    [commitManualDocument, saveManualState],
+  )
+
+  const flipPolygonHorizontal = useCallback(
+    (polygonId: string) => {
+      saveManualState()
+      commitManualDocument((current) => {
+        const polygon = current.polygons.find((p) => p.id === polygonId)
+        if (!polygon || polygon.pointIds.length === 0) return current
+
+        const pointPositions = resolvePointPositions(current)
+        const validPoints = polygon.pointIds.map(id => pointPositions[id]).filter(Boolean) as Vec3[]
+        if (validPoints.length === 0) return current
+
+        // Calculate Centroid G
+        const Gx = validPoints.reduce((sum, p) => sum + p[0], 0) / validPoints.length
+        const Gy = validPoints.reduce((sum, p) => sum + p[1], 0) / validPoints.length
+        const Gz = validPoints.reduce((sum, p) => sum + p[2], 0) / validPoints.length
+
+        const pointIdsSet = new Set(polygon.pointIds)
+
+        return {
+          ...current,
+          points: current.points.map((p) => {
+            if (!pointIdsSet.has(p.id)) return p
+
+            // If it is a free point, reflect its x coordinate across Gx
+            const isFreePoint = p.pointKind === 'free' || !p.pointKind
+            if (isFreePoint) {
+              const oldPos = pointPositions[p.id] ?? p.position
+              return {
+                ...p,
+                position: [2 * Gx - oldPos[0], oldPos[1], oldPos[2]] as Vec3,
+              }
+            }
+
+            // If it is a dependent shape point, invert its parameters to reflect geometrically
+            if (p.pointKind === 'specialShapeVertex') {
+              if (p.shapeType === 'rectangle_C') {
+                return { ...p, t: -(p.t ?? 4) }
+              }
+              if (
+                p.shapeType === ('square_C' as any) ||
+                p.shapeType === ('square_D' as any) ||
+                p.shapeType === ('rightIsosceles_C' as any) ||
+                p.shapeType === ('equilateral_C' as any)
+              ) {
+                return { ...p, flip: -(p.flip ?? 1) }
+              }
+              if (p.shapeType === 'rhombus_C') {
+                return { ...p, t: -(p.t ?? (Math.PI / 3)) }
+              }
+            }
+            if (p.pointKind === 'perpendicularLinePoint' || p.pointKind === 'bisectorLinePoint') {
+              return { ...p, t: -(p.t ?? 4) }
+            }
+
+            return p
+          }),
+        }
+      })
+    },
+    [commitManualDocument, saveManualState],
+  )
+
   const contextValue = useMemo(
     () => ({
       workspaceMode,
@@ -2026,6 +2642,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updatePointPosition,
       updateSegmentLength,
       updateCircleRadius,
+      flipPolygonVertical,
+      flipPolygonHorizontal,
       createSegment,
       createPolygon,
       createBox,
@@ -2105,6 +2723,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updatePointPosition,
       updateSegmentLength,
       updateCircleRadius,
+      flipPolygonVertical,
+      flipPolygonHorizontal,
       validation,
       workspaceMode,
       saveManualState,

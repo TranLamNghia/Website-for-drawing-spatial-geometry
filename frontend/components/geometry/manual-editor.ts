@@ -71,12 +71,14 @@ export interface ManualPoint extends ManualEntityMeta {
   anchorPointId?: string
   shapeType?:
     | 'parallelogram_D'
+    | 'rectangle_C'
     | 'rhombus_C'
     | 'rhombus_D'
     | 'rightIsosceles_C'
     | 'equilateral_C'
     | 'square_C'
     | 'square_D'
+  flip?: number
 }
 
 export interface ManualSegment extends ManualEntityMeta {
@@ -584,17 +586,38 @@ export function resolvePointPositions(document: ManualDocument) {
         visiting.delete(pointId)
         return positions[pointId]
       }
-      if ((point.shapeType === 'rhombus_C' || point.shapeType === 'rhombus_D') && point.sourcePointIds.length >= 2) {
+      if (point.shapeType === 'rectangle_C' && point.sourcePointIds.length >= 2) {
         const posA = resolvePoint(point.sourcePointIds[0], visiting)
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
-        const M = scaleVec3(addVec3(posA, posB), 0.5)
         const E = subVec3(posB, posA)
-        const lenE = Math.hypot(E[0], E[1], E[2])
-        const w: Vec3 = [-E[1], E[0], 0]
-        const lenw = Math.hypot(w[0], w[1])
-        const w_norm = lenw > 1e-9 ? scaleVec3(w, 1 / lenw) : [0, 1, 0] as Vec3
-        const offset = scaleVec3(w_norm, lenE * 0.4)
-        positions[pointId] = point.shapeType === 'rhombus_C' ? addVec3(M, offset) : subVec3(M, offset)
+        const D_vec: Vec3 = [-E[1], E[0], 0]
+        const lenD = Math.hypot(D_vec[0], D_vec[1])
+        const D_norm = lenD > 1e-9 ? scaleVec3(D_vec, 1 / lenD) : [0, 1, 0] as Vec3
+        positions[pointId] = addVec3(posB, scaleVec3(D_norm, point.t ?? 4))
+        visiting.delete(pointId)
+        return positions[pointId]
+      }
+      if (point.shapeType === 'rhombus_C' && point.sourcePointIds.length >= 2) {
+        const posA = resolvePoint(point.sourcePointIds[0], visiting)
+        const posB = resolvePoint(point.sourcePointIds[1], visiting)
+        const E = subVec3(posA, posB) // vector BA
+        const theta = point.t ?? (Math.PI / 3) // 60 deg default
+        const cosT = Math.cos(theta)
+        const sinT = Math.sin(theta)
+        const E_rot: Vec3 = [
+          E[0] * cosT - E[1] * sinT,
+          E[0] * sinT + E[1] * cosT,
+          0
+        ]
+        positions[pointId] = addVec3(posB, E_rot)
+        visiting.delete(pointId)
+        return positions[pointId]
+      }
+      if (point.shapeType === 'rhombus_D' && point.sourcePointIds.length >= 3) {
+        const posA = resolvePoint(point.sourcePointIds[0], visiting)
+        const posB = resolvePoint(point.sourcePointIds[1], visiting)
+        const posC = resolvePoint(point.sourcePointIds[2], visiting)
+        positions[pointId] = addVec3(posA, subVec3(posC, posB)) // D = A + C - B
         visiting.delete(pointId)
         return positions[pointId]
       }
@@ -602,7 +625,8 @@ export function resolvePointPositions(document: ManualDocument) {
         const posA = resolvePoint(point.sourcePointIds[0], visiting)
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
         const v = subVec3(posB, posA)
-        const vRot: Vec3 = [-v[1], v[0], 0]
+        const flip = point.flip ?? 1
+        const vRot: Vec3 = [-v[1] * flip, v[0] * flip, 0]
         positions[pointId] = addVec3(posA, vRot)
         visiting.delete(pointId)
         return positions[pointId]
@@ -611,8 +635,9 @@ export function resolvePointPositions(document: ManualDocument) {
         const posA = resolvePoint(point.sourcePointIds[0], visiting)
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
         const v = subVec3(posB, posA)
+        const flip = point.flip ?? 1
         const cos60 = 0.5
-        const sin60 = 0.8660254
+        const sin60 = 0.8660254 * flip
         const vRot: Vec3 = [
           v[0] * cos60 - v[1] * sin60,
           v[0] * sin60 + v[1] * cos60,
@@ -626,7 +651,8 @@ export function resolvePointPositions(document: ManualDocument) {
         const posA = resolvePoint(point.sourcePointIds[0], visiting)
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
         const v = subVec3(posB, posA)
-        const vRot: Vec3 = [-v[1], v[0], 0]
+        const flip = point.flip ?? 1
+        const vRot: Vec3 = [-v[1] * flip, v[0] * flip, 0]
         positions[pointId] = addVec3(posB, vRot)
         visiting.delete(pointId)
         return positions[pointId]
@@ -635,7 +661,8 @@ export function resolvePointPositions(document: ManualDocument) {
         const posA = resolvePoint(point.sourcePointIds[0], visiting)
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
         const v = subVec3(posB, posA)
-        const vRot: Vec3 = [-v[1], v[0], 0]
+        const flip = point.flip ?? 1
+        const vRot: Vec3 = [-v[1] * flip, v[0] * flip, 0]
         positions[pointId] = addVec3(posA, vRot)
         visiting.delete(pointId)
         return positions[pointId]
@@ -767,19 +794,32 @@ function getPolygonNormal(points: Vec3[]): Vec3 {
   const v2 = subVec3(points[2], points[0])
   const cross = crossVec3(v1, v2)
   const len = Math.hypot(cross[0], cross[1], cross[2])
+  let normal: Vec3 = [0, 0, 1]
   if (len < 1e-9) {
+    let found = false
     for (let i = 2; i < points.length - 1; i++) {
       const v1_alt = subVec3(points[i], points[0])
       const v2_alt = subVec3(points[i+1], points[0])
       const cross_alt = crossVec3(v1_alt, v2_alt)
       const len_alt = Math.hypot(cross_alt[0], cross_alt[1], cross_alt[2])
       if (len_alt > 1e-9) {
-        return [cross_alt[0] / len_alt, cross_alt[1] / len_alt, cross_alt[2] / len_alt]
+        normal = [cross_alt[0] / len_alt, cross_alt[1] / len_alt, cross_alt[2] / len_alt]
+        found = true
+        break
       }
     }
-    return [0, 0, 1]
+    if (!found) {
+      normal = [0, 0, 1]
+    }
+  } else {
+    normal = [cross[0] / len, cross[1] / len, cross[2] / len]
   }
-  return [cross[0] / len, cross[1] / len, cross[2] / len]
+
+  // Ensure normal always points upwards (z >= 0) so 3D solids project upwards
+  if (normal[2] < 0) {
+    normal = [-normal[0], -normal[1], -normal[2]]
+  }
+  return normal
 }
 
 function resolveCircleProps(
@@ -802,7 +842,27 @@ function resolveCircleProps(
     const cPos = pointPositions[circle.centerPointId]
     const rPos = pointPositions[circle.radiusPointId]
     if (cPos && rPos) {
-      return { center: cPos, radius: distance(cPos, rPos), normal: [0, 0, 1] }
+      const vx = rPos[0] - cPos[0]
+      const vy = rPos[1] - cPos[1]
+      const vz = rPos[2] - cPos[2]
+      const len2DSq = vx * vx + vy * vy
+      let normal: Vec3 = [0, 0, 1]
+      let radius = Math.hypot(vx, vy)
+      if (len2DSq > 1e-9) {
+        const rawNormal: Vec3 = [-vx * vz, -vy * vz, len2DSq]
+        const lenN = Math.hypot(rawNormal[0], rawNormal[1], rawNormal[2])
+        if (lenN > 1e-9) {
+          normal = [rawNormal[0] / lenN, rawNormal[1] / lenN, rawNormal[2] / lenN]
+        }
+        radius = Math.sqrt(vx * vx + vy * vy + vz * vz)
+      } else {
+        radius = Math.abs(vz)
+        normal = [1, 0, 0]
+      }
+      if (normal[2] < 0) {
+        normal = [-normal[0], -normal[1], -normal[2]]
+      }
+      return { center: cPos, radius, normal }
     }
   }
   return null
@@ -1657,9 +1717,27 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         const cPos = pointPositions[circle.centerPointId]
         const rPos = pointPositions[circle.radiusPointId]
         if (cPos && rPos) {
+          const vx = rPos[0] - cPos[0]
+          const vy = rPos[1] - cPos[1]
+          const vz = rPos[2] - cPos[2]
+          const len2DSq = vx * vx + vy * vy
           center = cPos
-          radius = distance(cPos, rPos)
           normal = [0, 0, 1]
+          radius = Math.hypot(vx, vy)
+          if (len2DSq > 1e-9) {
+            const rawNormal: Vec3 = [-vx * vz, -vy * vz, len2DSq]
+            const lenN = Math.hypot(rawNormal[0], rawNormal[1], rawNormal[2])
+            if (lenN > 1e-9) {
+              normal = [rawNormal[0] / lenN, rawNormal[1] / lenN, rawNormal[2] / lenN]
+            }
+            radius = Math.sqrt(vx * vx + vy * vy + vz * vz)
+          } else {
+            radius = Math.abs(vz)
+            normal = [1, 0, 0]
+          }
+          if (normal[2] < 0) {
+            normal = [-normal[0], -normal[1], -normal[2]]
+          }
         }
       }
 

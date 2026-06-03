@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Circle, Pentagon, PencilRuler, Pyramid, Save, Trash2 } from 'lucide-react'
+import { Box, Circle, Pentagon, PencilRuler, Pyramid, Save, Trash2, Triangle, Square, FlipHorizontal, FlipVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useProjectStore } from '@/hooks/use-project-store'
@@ -74,6 +74,7 @@ function PointRow({
   onRename: (newLabel: string) => void
 }) {
   const [cx, cy, cz] = coords
+  const [isFocused, setIsFocused] = useState(false)
   const [draft, setDraft] = useState({
     x: formatCoord(cx),
     y: formatCoord(cy),
@@ -82,18 +83,20 @@ function PointRow({
   const [labelDraft, setLabelDraft] = useState(point.label)
 
   useEffect(() => {
+    setLabelDraft(point.label)
+  }, [point.label])
+
+  const handleFocus = () => {
+    setIsFocused(true)
     setDraft({
       x: formatCoord(cx),
       y: formatCoord(cy),
       z: formatCoord(cz),
     })
-  }, [Number.isNaN(cx) ? 0 : cx, Number.isNaN(cy) ? 0 : cy, Number.isNaN(cz) ? 0 : cz])
-
-  useEffect(() => {
-    setLabelDraft(point.label)
-  }, [point.label])
+  }
 
   const commit = () => {
+    setIsFocused(false)
     const x = Number(draft.x)
     const y = Number(draft.y)
     const z = Number(draft.z)
@@ -132,7 +135,8 @@ function PointRow({
 
       <div className="grid min-w-0 grid-cols-3 gap-1.5">
         <Input
-          value={draft.x}
+          value={isFocused ? draft.x : formatCoord(cx)}
+          onFocus={handleFocus}
           onChange={(event) => setDraft((current) => ({ ...current, x: event.target.value }))}
           onBlur={commit}
           onKeyDown={(event) => event.key === 'Enter' && commit()}
@@ -140,7 +144,8 @@ function PointRow({
           className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
         />
         <Input
-          value={draft.y}
+          value={isFocused ? draft.y : formatCoord(cy)}
+          onFocus={handleFocus}
           onChange={(event) => setDraft((current) => ({ ...current, y: event.target.value }))}
           onBlur={commit}
           onKeyDown={(event) => event.key === 'Enter' && commit()}
@@ -148,7 +153,8 @@ function PointRow({
           className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
         />
         <Input
-          value={draft.z}
+          value={isFocused ? draft.z : formatCoord(cz)}
+          onFocus={handleFocus}
           onChange={(event) => setDraft((current) => ({ ...current, z: event.target.value }))}
           onBlur={commit}
           onKeyDown={(event) => event.key === 'Enter' && commit()}
@@ -401,6 +407,101 @@ function CircleRow({
 }
 
 
+function PolygonRow({
+  polygon,
+  typeLabel,
+  icon,
+  values,
+  selected,
+  onSelect,
+  onDelete,
+  onFlipHorizontal,
+  onFlipVertical,
+  isSpecialShape,
+}: {
+  polygon: ManualPolygon
+  typeLabel: string
+  icon: React.ReactNode
+  values: string[]
+  selected: boolean
+  onSelect: () => void
+  onDelete: () => void
+  onFlipHorizontal: () => void
+  onFlipVertical: () => void
+  isSpecialShape: boolean
+}) {
+  return (
+    <div
+      className={`flex flex-col gap-2 rounded-xl border px-2.5 py-2 transition-all ${
+        selected
+          ? 'border-primary/35 bg-primary/10 shadow-sm'
+          : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
+      }`}
+    >
+      <div className="grid grid-cols-[80px_88px_minmax(0,1fr)_36px] items-center gap-2.5">
+        <button onClick={onSelect} className="text-left">
+          <TypePill icon={icon} label={typeLabel} />
+        </button>
+
+        <button onClick={onSelect} className="truncate text-left text-[13px] font-semibold tracking-tight">
+          {polygon.label}
+        </button>
+
+        <button onClick={onSelect} className="flex min-w-0 flex-wrap gap-1.5 text-left">
+          {values.map((value, idx) => (
+            <span
+              key={`${polygon.label}-${value}-${idx}`}
+              className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2 text-[11px] font-medium text-foreground"
+            >
+              {value}
+            </span>
+          ))}
+        </button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-lg border border-border/70"
+          onClick={onDelete}
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
+
+      {selected && isSpecialShape && (
+        <div className="flex items-center gap-2 border-t border-border/40 pt-2 px-1">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mr-auto">Thao tác hình phẳng:</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onFlipHorizontal()
+            }}
+            className="h-7 gap-1 px-2 text-[11px] font-semibold hover:bg-primary/5 hover:text-primary transition-colors"
+          >
+            <FlipHorizontal size={12} />
+            Lật ngang
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onFlipVertical()
+            }}
+            className="h-7 gap-1 px-2 text-[11px] font-semibold hover:bg-primary/5 hover:text-primary transition-colors"
+          >
+            <FlipVertical size={12} />
+            Lật dọc
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 export function ManualRightPanel() {
   const {
     manualDocument,
@@ -412,6 +513,8 @@ export function ManualRightPanel() {
     renameManualEntity,
     updateSegmentLength,
     updateCircleRadius,
+    flipPolygonVertical,
+    flipPolygonHorizontal,
     showAxes,
     showGrid,
     showLabels,
@@ -595,18 +698,26 @@ export function ManualRightPanel() {
             )
           })}
 
-          {manualDocument.polygons.map((polygon: ManualPolygon) => (
-            <ObjectRow
-              key={polygon.id}
-              typeLabel={'\u0110a gi\u00e1c'}
-              icon={<Pentagon size={14} />}
-              name={polygon.label}
-              values={polygonPointMap[polygon.id] ?? []}
-              selected={manualSelection?.kind === 'polygon' && manualSelection.id === polygon.id}
-              onSelect={() => setManualSelection({ kind: 'polygon', id: polygon.id })}
-              onDelete={() => removeManualEntity('polygon', polygon.id)}
-            />
-          ))}
+          {manualDocument.polygons.map((polygon: ManualPolygon) => {
+            const numPoints = polygon.pointIds.length
+            const typeLabel = numPoints === 3 ? 'Tam giác' : numPoints === 4 ? 'Tứ giác' : 'Đa giác'
+            const IconComponent = numPoints === 3 ? Triangle : numPoints === 4 ? Square : Pentagon
+            return (
+              <PolygonRow
+                key={polygon.id}
+                polygon={polygon}
+                typeLabel={typeLabel}
+                icon={<IconComponent size={14} />}
+                values={polygonPointMap[polygon.id] ?? []}
+                selected={manualSelection?.kind === 'polygon' && manualSelection.id === polygon.id}
+                onSelect={() => setManualSelection({ kind: 'polygon', id: polygon.id })}
+                onDelete={() => removeManualEntity('polygon', polygon.id)}
+                onFlipHorizontal={() => flipPolygonHorizontal(polygon.id)}
+                onFlipVertical={() => flipPolygonVertical(polygon.id)}
+                isSpecialShape={true}
+              />
+            )
+          })}
 
           {manualDocument.solids.map((solid: ManualSolid) => (
             <ObjectRow

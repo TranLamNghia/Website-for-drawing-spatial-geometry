@@ -1946,19 +1946,6 @@ export function ManualCanvas3D() {
         return
       }
 
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
-        event.preventDefault()
-        if (event.shiftKey) redoManual()
-        else undoManual()
-        return
-      }
-
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
-        event.preventDefault()
-        redoManual()
-        return
-      }
-
       if (event.key === 'Escape') {
         cancelManualDraft()
         setActiveTool('select')
