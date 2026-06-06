@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { useTheme } from 'next-themes'
-import { Crosshair, Eye, Layers, RefreshCcw, ZoomIn, ZoomOut, Sparkles } from 'lucide-react'
+import { Crosshair, Eye, Layers, RefreshCcw, ZoomIn, ZoomOut, Sparkles, Compass } from 'lucide-react'
 import { useGeometry } from './geometry-context'
 import { ManualDisplayPolygon, ManualDisplaySegment, ManualSnapTarget, Vec3 } from './manual-editor'
 
@@ -20,8 +20,8 @@ function getColors(isDark: boolean) {
       background: 0x101826,
       grid: 0x334155,
       point: 0x93c5fd,
-      pointSelected: 0x6bd089,
-      pointHovered: 0xf97316,
+      pointSelected: 0x86efac,
+      pointHovered: 0xfdba74,
       segment: 0xe5e7eb,
       polygon: 0x14b8a6,
       solid: 0x3b82f6,
@@ -37,8 +37,8 @@ function getColors(isDark: boolean) {
     background: 0xf8fafc,
     grid: 0xcbd5e1,
     point: 0x2563eb,
-    pointSelected: 0x6bd089,
-    pointHovered: 0xf97316,
+    pointSelected: 0x86efac,
+    pointHovered: 0xfdba74,
     segment: 0x0f172a,
     polygon: 0x0f766e,
     solid: 0x1d4ed8,
@@ -147,7 +147,17 @@ export function ManualCanvas3D() {
   const pendingHoverTargetRef = useRef<ManualSnapTarget | null>(null)
   const smartGuideMeshRef = useRef<THREE.Line | null>(null)
   const pointMeshesRef = useRef<Array<{ id: string; mesh: THREE.Mesh }>>([])
-  const hoveredPointIdRef = useRef<string | null>(null)
+  const segmentMeshesRef = useRef<Array<{ id: string; mesh: THREE.Line }>>([])
+  const hoveredEntityIdRef = useRef<string | null>(null)
+  const [showGizmo, setShowGizmo] = useState(true)
+
+  // Navigation Gizmo SVG Refs
+  const gizmoXLineRef = useRef<SVGLineElement>(null)
+  const gizmoYLineRef = useRef<SVGLineElement>(null)
+  const gizmoZLineRef = useRef<SVGLineElement>(null)
+  const gizmoXGroupRef = useRef<SVGGElement>(null)
+  const gizmoYGroupRef = useRef<SVGGElement>(null)
+  const gizmoZGroupRef = useRef<SVGGElement>(null)
   const interactionRef = useRef<{
     creatingPointId: string | null
     createPointStartY: number | null
@@ -220,6 +230,7 @@ export function ManualCanvas3D() {
     resetTrigger,
     showSmartGuides,
     setShowSmartGuides,
+    autoRevertToSelect,
   } = useGeometry()
 
   const snapEnabled = true
@@ -228,14 +239,62 @@ export function ManualCanvas3D() {
   const formatHoverCoords = (position: Vec3) =>
     `(${position.map((value) => Number(value.toFixed(2)).toString()).join(', ')})`
 
-  const stateRefs = useRef({ showAxes, showGrid, showSmartGuides })
+  const stateRefs = useRef({ showAxes, showGrid, showSmartGuides, autoRevertToSelect })
   useEffect(() => {
-    stateRefs.current = { showAxes, showGrid, showSmartGuides }
-  }, [showAxes, showGrid, showSmartGuides])
+    stateRefs.current = { showAxes, showGrid, showSmartGuides, autoRevertToSelect }
+  }, [showAxes, showGrid, showSmartGuides, autoRevertToSelect])
 
   const raycasterRef = useRef(new THREE.Raycaster())
   useEffect(() => {
     raycasterRef.current.params.Line = { threshold: 0.18 }
+  }, [])
+
+  // Smoothly aligns camera to specific axes (X, Y, Z) with animation transition
+  const handleAlignView = useCallback((axis: 'x' | 'y' | 'z') => {
+    const cam = cameraRef.current
+    const controls = controlsRef.current
+    if (!cam || !controls) return
+
+    const target = controls.target
+    const dist = cam.position.distanceTo(target)
+
+    const duration = 400 // Animation duration in ms
+    const startTime = performance.now()
+
+    const startPos = cam.position.clone()
+    const endPos = new THREE.Vector3()
+
+    if (axis === 'z') {
+      endPos.set(target.x, target.y, target.z + dist)
+    } else if (axis === 'y') {
+      endPos.set(target.x, target.y - dist, target.z)
+    } else {
+      endPos.set(target.x + dist, target.y, target.z)
+    }
+
+    const animateTransition = (now: number) => {
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+
+      // easeInOutCubic easing
+      const t = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2
+
+      cam.position.lerpVectors(startPos, endPos, t)
+
+      if (axis === 'z') {
+        cam.up.set(0, 1, 0)
+      } else {
+        cam.up.set(0, 0, 1)
+      }
+
+      controls.update()
+
+      if (progress < 1) {
+        requestAnimationFrame(animateTransition)
+      }
+    }
+
+    requestAnimationFrame(animateTransition)
   }, [])
 
   const projectToScreen = (world: Vec3) => {
@@ -277,17 +336,14 @@ export function ManualCanvas3D() {
         position: point.position,
       }))
 
-    const segmentCandidates = manualDocument.segments
+    const segmentCandidates = manualDerived.displaySegments
       .filter((segment) => segment.visible)
-      .map((segment) => {
-        const displaySegment = manualDerived.displaySegments.find(
-          (candidate) => candidate.id === segment.id,
-        )
-        return displaySegment
-          ? { segmentId: segment.id, label: segment.label, start: displaySegment.start, end: displaySegment.end }
-          : null
-      })
-      .filter(Boolean) as Array<{ segmentId: string; label: string; start: Vec3; end: Vec3 }>
+      .map((displaySegment) => ({
+        segmentId: displaySegment.id,
+        label: '', // Polygon edges won't show labels in snap info, which is fine
+        start: displaySegment.start,
+        end: displaySegment.end,
+      }))
 
     const evaluateTarget = (position: Vec3) => {
       const screen = projectToScreen(position)
@@ -499,7 +555,8 @@ export function ManualCanvas3D() {
     const axisLength = 35
 
     const createAxis = (colorHex: number, dir: THREE.Vector3, labelStr: string) => {
-      const lineProps = { color: colorHex, linewidth: 2, transparent: true, opacity: 0.5, depthTest: false }
+      const opacity = 0.75
+      const lineProps = { color: colorHex, linewidth: 2, transparent: true, opacity, depthTest: false }
 
       if (labelStr === 'z') {
         const positivePts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, axisLength)]
@@ -545,7 +602,7 @@ export function ManualCanvas3D() {
       if (labelStr === 'x') tickGeoPts.push(new THREE.Vector3(0, -tickLength, 0), new THREE.Vector3(0, tickLength, 0))
       else tickGeoPts.push(new THREE.Vector3(-tickLength, 0, 0), new THREE.Vector3(tickLength, 0, 0))
       const tickGeometry = new THREE.BufferGeometry().setFromPoints(tickGeoPts)
-      const tickMaterial = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.5, depthTest: false })
+      const tickMaterial = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.75, depthTest: false })
 
       for (let index = -axisLength; index <= axisLength; index += 1) {
         if (index === 0) continue
@@ -583,6 +640,7 @@ export function ManualCanvas3D() {
     let lastGridCenterX = -1
     let lastGridCenterY = -1
     let lastGridShow = true
+    let lastGridShowAxes = true
     let dynamicGrid: THREE.LineSegments | null = null
 
     const dynamicGroup = new THREE.Group()
@@ -674,16 +732,18 @@ export function ManualCanvas3D() {
       })
 
       const showGridState = stateRefs.current.showGrid
+      const showAxesState = stateRefs.current.showAxes
       const gridRadius = 40
       const snapX = Math.round(centerX / step) * step
       const snapY = Math.round(centerY / step) * step
       const hasMoved = Math.abs(lastGridCenterX - snapX) > 0.001 || Math.abs(lastGridCenterY - snapY) > 0.001
 
-      if (lastGridStep !== step || hasMoved || lastGridShow !== showGridState) {
+      if (lastGridStep !== step || hasMoved || lastGridShow !== showGridState || lastGridShowAxes !== showAxesState) {
         lastGridStep = step
         lastGridCenterX = snapX
         lastGridCenterY = snapY
         lastGridShow = showGridState
+        lastGridShowAxes = showAxesState
 
         if (dynamicGrid) {
           environment.remove(dynamicGrid)
@@ -697,12 +757,12 @@ export function ManualCanvas3D() {
           const gridZ = -0.001
 
           for (let x = snapX - gridRadius; x <= snapX + gridRadius; x += step) {
-            if (x === 0 || Math.abs(x) > axisLength) continue
+            if ((x === 0 && showAxesState) || Math.abs(x) > axisLength) continue
             gridPoints.push(new THREE.Vector3(x, snapY - gridRadius, gridZ), new THREE.Vector3(x, snapY + gridRadius, gridZ))
           }
 
           for (let y = snapY - gridRadius; y <= snapY + gridRadius; y += step) {
-            if (y === 0 || Math.abs(y) > axisLength) continue
+            if ((y === 0 && showAxesState) || Math.abs(y) > axisLength) continue
             gridPoints.push(new THREE.Vector3(snapX - gridRadius, y, gridZ), new THREE.Vector3(snapX + gridRadius, y, gridZ))
           }
 
@@ -718,6 +778,83 @@ export function ManualCanvas3D() {
       basePlane.visible = stateRefs.current.showGrid
       basePlane.position.set(centerX, centerY, -0.002)
       basePlane.scale.set(gridRadius / 120, gridRadius / 120, 1)
+      // Update Orientation Gizmo SVG lines and positions based on NDC projection for 100% canvas alignment
+      if (cameraRef.current) {
+        const cam = cameraRef.current
+        
+        // Project O and axes endpoints to NDC
+        const posO = new THREE.Vector3(0, 0, 0).project(cam)
+        const posX = new THREE.Vector3(1, 0, 0).project(cam)
+        const posY = new THREE.Vector3(0, 1, 0).project(cam)
+        const posZ = new THREE.Vector3(0, 0, 1).project(cam)
+
+        // Normalize 2D directions on screen
+        const dirX = new THREE.Vector2(posX.x - posO.x, posX.y - posO.y).normalize()
+        const dirY = new THREE.Vector2(posY.x - posO.x, posY.y - posO.y).normalize()
+        const dirZ = new THREE.Vector2(posZ.x - posO.x, posZ.y - posO.y).normalize()
+
+        const cx = 45
+        const cy = 45
+        const r = 26
+
+        // Compute 3D depth to camera to adjust scale and opacity
+        const distCam = cam.position.length()
+        const distX = cam.position.distanceTo(new THREE.Vector3(1, 0, 0))
+        const distY = cam.position.distanceTo(new THREE.Vector3(0, 1, 0))
+        const distZ = cam.position.distanceTo(new THREE.Vector3(0, 0, 1))
+
+        const depthX = distCam - distX
+        const depthY = distCam - distY
+        const depthZ = distCam - distZ
+
+        const scaleX = 1 + Math.max(-0.6, Math.min(0.6, depthX)) * 0.25
+        const scaleY = 1 + Math.max(-0.6, Math.min(0.6, depthY)) * 0.25
+        const scaleZ = 1 + Math.max(-0.6, Math.min(0.6, depthZ)) * 0.25
+
+        const opX = depthX < -0.3 ? 0.35 : (depthX < 0 ? 0.65 : 1)
+        const opY = depthY < -0.3 ? 0.35 : (depthY < 0 ? 0.65 : 1)
+        const opZ = depthZ < -0.3 ? 0.35 : (depthZ < 0 ? 0.65 : 1)
+
+        // X Axis (Red)
+        const x2 = cx + dirX.x * r
+        const y2 = cy - dirX.y * r
+        if (gizmoXLineRef.current) {
+          gizmoXLineRef.current.setAttribute('x2', x2.toString())
+          gizmoXLineRef.current.setAttribute('y2', y2.toString())
+          gizmoXLineRef.current.setAttribute('opacity', opX.toString())
+        }
+        if (gizmoXGroupRef.current) {
+          gizmoXGroupRef.current.setAttribute('transform', `translate(${dirX.x * r}, ${-dirX.y * r}) scale(${scaleX})`)
+          gizmoXGroupRef.current.setAttribute('opacity', opX.toString())
+        }
+
+        // Y Axis (Green)
+        const y2x = cx + dirY.x * r
+        const y2y = cy - dirY.y * r
+        if (gizmoYLineRef.current) {
+          gizmoYLineRef.current.setAttribute('x2', y2x.toString())
+          gizmoYLineRef.current.setAttribute('y2', y2y.toString())
+          gizmoYLineRef.current.setAttribute('opacity', opY.toString())
+        }
+        if (gizmoYGroupRef.current) {
+          gizmoYGroupRef.current.setAttribute('transform', `translate(${dirY.x * r}, ${-dirY.y * r}) scale(${scaleY})`)
+          gizmoYGroupRef.current.setAttribute('opacity', opY.toString())
+        }
+
+        // Z Axis (Blue)
+        const z2x = cx + dirZ.x * r
+        const z2y = cy - dirZ.y * r
+        if (gizmoZLineRef.current) {
+          gizmoZLineRef.current.setAttribute('x2', z2x.toString())
+          gizmoZLineRef.current.setAttribute('y2', z2y.toString())
+          gizmoZLineRef.current.setAttribute('opacity', opZ.toString())
+        }
+        if (gizmoZGroupRef.current) {
+          gizmoZGroupRef.current.setAttribute('transform', `translate(${dirZ.x * r}, ${-dirZ.y * r}) scale(${scaleZ})`)
+          gizmoZGroupRef.current.setAttribute('opacity', opZ.toString())
+        }
+      }
+
       renderer.render(scene, camera)
       labelRenderer.render(scene, camera)
     }
@@ -757,6 +894,7 @@ export function ManualCanvas3D() {
     const group = dynamicGroupRef.current
     if (!group) return
     pointMeshesRef.current = []
+    segmentMeshesRef.current = []
 
     while (group.children.length > 0) {
       const child = group.children[0]
@@ -778,7 +916,7 @@ export function ManualCanvas3D() {
 
     manualDerived.displayPolygons
       .filter((polygon) => polygon.visible)
-      .forEach((polygon) => {
+      .forEach((polygon, pIdx) => {
         if (polygon.points.length < 3) return
         const faceGeometry = new THREE.BufferGeometry()
         const positions: number[] = []
@@ -793,7 +931,7 @@ export function ManualCanvas3D() {
           opacity: polygon.opacity,
           side: THREE.DoubleSide,
           polygonOffset: true,
-          polygonOffsetFactor: 1,
+          polygonOffsetFactor: 1 + pIdx * 0.1,
           polygonOffsetUnits: 1,
         })
         const mesh = new THREE.Mesh(faceGeometry, material)
@@ -831,6 +969,7 @@ export function ManualCanvas3D() {
           id: segment.sourceId,
         } satisfies InteractiveHit
         group.add(line)
+        segmentMeshesRef.current.push({ id: segment.sourceId, mesh: line })
       })
 
     manualDerived.displayPoints
@@ -846,7 +985,7 @@ export function ManualCanvas3D() {
             draftOperation.apexPointId === point.sourceId ||
             draftOperation.topPointId === point.id ||
             draftOperation.topPointId === point.sourceId)
-        const isHovered = point.id === hoveredPointIdRef.current || point.sourceId === hoveredPointIdRef.current
+        const isHovered = point.id === hoveredEntityIdRef.current || point.sourceId === hoveredEntityIdRef.current
         const isSelected =
           (manualSelection?.kind === 'point' && (manualSelection.id === point.id || manualSelection.id === point.sourceId))
 
@@ -1075,7 +1214,7 @@ export function ManualCanvas3D() {
         if (currentIds[0] !== materializedPointId) {
           createSegment(currentIds[0], materializedPointId)
         }
-        setDraftOperation({ tool: 'segment', pointIds: [] })
+        autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'segment', pointIds: [] })
         return
       }
 
@@ -1085,7 +1224,7 @@ export function ManualCanvas3D() {
         const currentIds = draftOperation?.tool === 'polygon' ? [...(draftOperation.pointIds ?? [])] : []
         if (currentIds.length >= 3 && currentIds[0] === materializedPointId) {
           createPolygon(currentIds)
-          setDraftOperation({ tool: 'polygon', pointIds: [] })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'polygon', pointIds: [] })
           return
         }
         if (currentIds[currentIds.length - 1] !== materializedPointId) {
@@ -1103,7 +1242,7 @@ export function ManualCanvas3D() {
         if (currentIds.length === 2) {
           const height = draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4
           createBox([currentIds[0], currentIds[1]], height)
-          setDraftOperation({ tool: 'box', pointIds: [], height })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'box', pointIds: [], height })
         } else {
           setDraftOperation({
             tool: 'box',
@@ -1114,19 +1253,60 @@ export function ManualCanvas3D() {
         return
       }
 
+      // Click 2 for Pyramid / Prism
+      if ((activeTool === 'pyramid' || activeTool === 'prism') && draftOperation?.basePolygonId) {
+        const isSkew = activeTool === 'pyramid' ? !!draftOperation.apexPointId : !!draftOperation.topPointId;
+        
+        if (isSkew) {
+          if (snapTarget?.kind === 'point' && snapTarget.pointId) {
+            if (activeTool === 'pyramid') createPyramid(draftOperation.basePolygonId, 0, snapTarget.pointId);
+            if (activeTool === 'prism') createPrism(draftOperation.basePolygonId, 0, snapTarget.pointId);
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null);
+            return;
+          }
+        } else {
+          let heightToUse = draftOperation.height ?? 4;
+          if (activeTool === 'prism' && draftOperation.height === undefined) {
+            const basePolygon = manualDerived.displayPolygons.find((p) => p.sourceId === draftOperation.basePolygonId)
+            if (basePolygon && basePolygon.points.length > 1) {
+              heightToUse = Math.hypot(
+                basePolygon.points[1][0] - basePolygon.points[0][0],
+                basePolygon.points[1][1] - basePolygon.points[0][1],
+                basePolygon.points[1][2] - basePolygon.points[0][2]
+              )
+            }
+          }
+          if (activeTool === 'pyramid') createPyramid(draftOperation.basePolygonId, heightToUse);
+          if (activeTool === 'prism') createPrism(draftOperation.basePolygonId, heightToUse);
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null);
+          return;
+        }
+      }
+
+      // Click 1 for Pyramid / Prism
       if ((activeTool === 'pyramid' || activeTool === 'prism') && hit?.kind === 'polygon') {
         setManualSelection(hit)
         setDraftOperation({
           tool: activeTool,
           basePolygonId: hit.id,
-          height:
-            draftOperation?.tool === activeTool
-              ? draftOperation.height ?? 4
-              : 4,
+          height: draftOperation?.tool === activeTool ? draftOperation.height : 4,
+          apexPointId: draftOperation?.tool === activeTool ? draftOperation.apexPointId : undefined,
+          topPointId: draftOperation?.tool === activeTool ? draftOperation.topPointId : undefined,
         })
         return
       }
 
+      // Click 2 for Cone / Cylinder
+      if ((activeTool === 'cone' || activeTool === 'cylinder') && draftOperation?.baseCircleId) {
+        const heightToUse = draftOperation.height ?? 5;
+        const radiusToUse = draftOperation.radius ?? 3;
+        if (activeTool === 'cone') createCone('', radiusToUse, heightToUse, draftOperation.baseCircleId);
+        if (activeTool === 'cylinder') createCylinder('', radiusToUse, heightToUse, draftOperation.baseCircleId);
+        autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null);
+        return;
+      }
+
+      // Click 1 for Cone / Cylinder
       if ((activeTool === 'cone' || activeTool === 'cylinder') && hit?.kind === 'circle') {
         setManualSelection(hit)
         setDraftOperation({
@@ -1139,7 +1319,7 @@ export function ManualCanvas3D() {
       }
 
       // Sphere / Cone / Cylinder: click to select center point
-      if ((activeTool === 'sphere' || activeTool === 'cone' || activeTool === 'cylinder') && fallbackPosition) {
+      if ((activeTool === 'sphere' || ((activeTool === 'cone' || activeTool === 'cylinder') && !draftOperation?.baseCircleId)) && fallbackPosition) {
         // If user clicks on an existing point, use it as center
         if (snapTarget?.kind === 'point' && snapTarget.pointId) {
           setDraftOperation({
@@ -1165,7 +1345,7 @@ export function ManualCanvas3D() {
           const seg = manualDocument.segments.find((s) => s.id === hit.id)
           if (seg) {
             createMidpoint(seg.startPointId, seg.endPointId)
-            setDraftOperation({ tool: 'midpoint', pointIds: [] })
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'midpoint', pointIds: [] })
           }
           return
         }
@@ -1176,7 +1356,7 @@ export function ManualCanvas3D() {
             setDraftOperation({ tool: 'midpoint', pointIds: [clickedPointId] })
           } else if (currentIds[0] !== clickedPointId) {
             createMidpoint(currentIds[0], clickedPointId)
-            setDraftOperation({ tool: 'midpoint', pointIds: [] })
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'midpoint', pointIds: [] })
           }
         }
         return
@@ -1206,12 +1386,12 @@ export function ManualCanvas3D() {
         }
         if (hit?.kind === 'segment') {
           createProjection(currentPointIds[0], hit.id, 'segment')
-          setDraftOperation({ tool: 'projection', pointIds: [] })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'projection', pointIds: [] })
           return
         }
         if (hit?.kind === 'polygon') {
           createProjection(currentPointIds[0], hit.id, 'polygon')
-          setDraftOperation({ tool: 'projection', pointIds: [] })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'projection', pointIds: [] })
           return
         }
         return
@@ -1228,7 +1408,7 @@ export function ManualCanvas3D() {
         } else if (currentIds[0] !== clickedPointId) {
           const sides = draftOperation?.radius ?? 5
           createRegularPolygon(currentIds[0], clickedPointId, sides)
-          setDraftOperation({ tool: 'regularPolygon', pointIds: [], radius: sides })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'regularPolygon', pointIds: [], radius: sides })
         }
         return
       }
@@ -1257,7 +1437,7 @@ export function ManualCanvas3D() {
             createSegment(allPts[1], allPts[2])
             createSegment(allPts[2], allPts[0])
             createPolygon(allPts)
-            setDraftOperation({ tool: 'specialTriangle', pointIds: [], height: typeCode })
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'specialTriangle', pointIds: [], height: typeCode })
           }
           return
         }
@@ -1267,7 +1447,7 @@ export function ManualCanvas3D() {
         } else if (currentIds[0] !== clickedPointId) {
           const anchor = draftOperation?.centerPointId ?? currentIds[0]
           createSpecialTriangle(type as any, currentIds[0], clickedPointId, anchor)
-          setDraftOperation({ tool: 'specialTriangle', pointIds: [], height: typeCode, centerPointId: clickedPointId })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'specialTriangle', pointIds: [], height: typeCode, centerPointId: clickedPointId })
         }
         return
       }
@@ -1286,7 +1466,7 @@ export function ManualCanvas3D() {
             setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [clickedPointId], height: typeCode })
           } else if (currentIds[0] !== clickedPointId) {
             createSpecialQuadrilateral(type, [currentIds[0], clickedPointId])
-            setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [], height: typeCode })
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [], height: typeCode })
           }
         } else {
           if (currentIds.length < 2) {
@@ -1295,7 +1475,7 @@ export function ManualCanvas3D() {
             }
           } else if (currentIds.length === 2 && !currentIds.includes(clickedPointId)) {
             createSpecialQuadrilateral(type, [...currentIds, clickedPointId])
-            setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [], height: typeCode })
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [], height: typeCode })
           }
         }
         return
@@ -1317,17 +1497,17 @@ export function ManualCanvas3D() {
             }
           } else if (currentIds.length === 2 && !currentIds.includes(clickedPointId)) {
             createCircle('threePoints', { sourcePointIds: [...currentIds, clickedPointId] })
-            setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation?.radius ?? 3 })
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation?.radius ?? 3 })
           }
         } else if (kind === 'centerRadius') {
           createCircle('centerRadius', { centerPointId: clickedPointId, radius: draftOperation?.radius ?? 3 })
-          setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation?.radius ?? 3 })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation?.radius ?? 3 })
         } else if (kind === 'centerPoint') {
           if (currentIds.length === 0) {
             setDraftOperation({ tool: 'circle', pointIds: [clickedPointId], height: kindCode, radius: draftOperation?.radius ?? 3 })
           } else if (currentIds[0] !== clickedPointId) {
             createCircle('centerPoint', { centerPointId: currentIds[0], radiusPointId: clickedPointId })
-            setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation?.radius ?? 3 })
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation?.radius ?? 3 })
           }
         }
         return
@@ -1336,7 +1516,7 @@ export function ManualCanvas3D() {
       if (activeTool === 'centroid') {
         if (hit?.kind === 'polygon') {
           createCentroid(hit.id)
-          setDraftOperation({ tool: 'centroid', pointIds: [] })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'centroid', pointIds: [] })
           return
         }
         const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
@@ -1353,7 +1533,7 @@ export function ManualCanvas3D() {
       if (activeTool === 'perpendicularBisector') {
         if (hit?.kind === 'segment') {
           createPerpendicularBisector(hit.id)
-          setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [] })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [] })
           return
         }
         const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
@@ -1363,7 +1543,7 @@ export function ManualCanvas3D() {
             const nextIds = [...currentIds, clickedPointId]
             if (nextIds.length === 2) {
               createPerpendicularBisector(undefined, nextIds[0], nextIds[1])
-              setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [] })
+              autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [] })
             } else {
               setDraftOperation({ tool: 'perpendicularBisector', pointIds: nextIds, segmentIds: [] })
             }
@@ -1380,7 +1560,7 @@ export function ManualCanvas3D() {
             const nextIds = [...currentIds, clickedPointId]
             if (nextIds.length === 3) {
               createAngleBisector(nextIds[0], nextIds[1], nextIds[2])
-              setDraftOperation({ tool: 'angleBisector', pointIds: [] })
+              autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'angleBisector', pointIds: [] })
             } else {
               setDraftOperation({ tool: 'angleBisector', pointIds: nextIds })
             }
@@ -1400,7 +1580,7 @@ export function ManualCanvas3D() {
         }
         if (hit?.kind === 'segment') {
           createParallelLine(currentPointIds[0], hit.id)
-          setDraftOperation({ tool: 'parallelLine', pointIds: [], segmentIds: [] })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'parallelLine', pointIds: [], segmentIds: [] })
         }
         return
       }
@@ -1416,7 +1596,7 @@ export function ManualCanvas3D() {
         }
         if (hit?.kind === 'segment') {
           createPerpendicularLine(currentPointIds[0], hit.id)
-          setDraftOperation({ tool: 'perpendicularLine', pointIds: [], segmentIds: [] })
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'perpendicularLine', pointIds: [], segmentIds: [] })
         }
         return
       }
@@ -1427,7 +1607,15 @@ export function ManualCanvas3D() {
         return { snapped: rawPos, guide: null }
       }
 
-      const threshold = 0.25 // Snapping distance threshold in 3D units
+      const getScreenDist = (p1: Vec3, p2: Vec3): number => {
+        const s1 = projectToScreen(p1)
+        const s2 = projectToScreen(p2)
+        if (!s1 || !s2) return Number.POSITIVE_INFINITY
+        return Math.hypot(s1.x - s2.x, s1.y - s2.y)
+      }
+
+      const smartGuidePixelThreshold = 12
+      const smartGuideFallbackThreshold = 0.08
 
       // 1. Check Parallelism & Perpendicularity first if drawing a segment
       if (draftOperation && (draftOperation.tool === 'segment' || draftOperation.tool === 'polygon')) {
@@ -1462,8 +1650,11 @@ export function ManualCanvas3D() {
                     posA[1] + t * uNorm[1],
                     posA[2] + t * uNorm[2],
                   ]
-                  const dist = Math.hypot(rawPos[0] - snapped[0], rawPos[1] - snapped[1], rawPos[2] - snapped[2])
-                  if (dist < threshold * 1.5) {
+                  const screenDist = getScreenDist(rawPos, snapped)
+                  const isClose = screenDist < smartGuidePixelThreshold ||
+                    (screenDist === Number.POSITIVE_INFINITY && Math.hypot(rawPos[0] - snapped[0], rawPos[1] - snapped[1], rawPos[2] - snapped[2]) < smartGuideFallbackThreshold * 1.5)
+
+                  if (isClose) {
                     const extent = 60
                     const start: Vec3 = [posA[0] - uNorm[0] * extent, posA[1] - uNorm[1] * extent, posA[2] - uNorm[2] * extent]
                     const end: Vec3 = [posA[0] + uNorm[0] * extent, posA[1] + uNorm[1] * extent, posA[2] + uNorm[2] * extent]
@@ -1483,8 +1674,11 @@ export function ManualCanvas3D() {
                     rawPos[1] - distToPlane * uNorm[1],
                     rawPos[2] - distToPlane * uNorm[2],
                   ]
-                  const dist = Math.hypot(rawPos[0] - snapped[0], rawPos[1] - snapped[1], rawPos[2] - snapped[2])
-                  if (dist < threshold * 1.5) {
+                  const screenDist = getScreenDist(rawPos, snapped)
+                  const isClose = screenDist < smartGuidePixelThreshold ||
+                    (screenDist === Number.POSITIVE_INFINITY && Math.hypot(rawPos[0] - snapped[0], rawPos[1] - snapped[1], rawPos[2] - snapped[2]) < smartGuideFallbackThreshold * 1.5)
+
+                  if (isClose) {
                     // Find a good line direction in the plane for representation
                     const projV = [snapped[0] - posA[0], snapped[1] - posA[1], snapped[2] - posA[2]] as Vec3
                     const projVLen = Math.hypot(projV[0], projV[1], projV[2])
@@ -1515,15 +1709,12 @@ export function ManualCanvas3D() {
         if (!posP) continue
 
         // Alignment X (same y and z or similar)
-        const dx = Math.abs(rawPos[0] - posP[0])
-        const dy = Math.abs(rawPos[1] - posP[1])
-        const dz = Math.abs(rawPos[2] - posP[2])
-
-        if (dx < threshold) {
-          const snapped: Vec3 = [posP[0], rawPos[1], rawPos[2]]
+        const snappedX: Vec3 = [posP[0], rawPos[1], rawPos[2]]
+        const screenDistX = getScreenDist(rawPos, snappedX)
+        if (screenDistX < smartGuidePixelThreshold || (screenDistX === Number.POSITIVE_INFINITY && Math.abs(rawPos[0] - posP[0]) < smartGuideFallbackThreshold)) {
           const extent = 60
           return {
-            snapped,
+            snapped: snappedX,
             guide: {
               start: [posP[0], rawPos[1] - extent, rawPos[2]],
               end: [posP[0], rawPos[1] + extent, rawPos[2]],
@@ -1532,11 +1723,13 @@ export function ManualCanvas3D() {
           }
         }
 
-        if (dy < threshold) {
-          const snapped: Vec3 = [rawPos[0], posP[1], rawPos[2]]
+        // Alignment Y
+        const snappedY: Vec3 = [rawPos[0], posP[1], rawPos[2]]
+        const screenDistY = getScreenDist(rawPos, snappedY)
+        if (screenDistY < smartGuidePixelThreshold || (screenDistY === Number.POSITIVE_INFINITY && Math.abs(rawPos[1] - posP[1]) < smartGuideFallbackThreshold)) {
           const extent = 60
           return {
-            snapped,
+            snapped: snappedY,
             guide: {
               start: [rawPos[0] - extent, posP[1], rawPos[2]],
               end: [rawPos[0] + extent, posP[1], rawPos[2]],
@@ -1545,11 +1738,13 @@ export function ManualCanvas3D() {
           }
         }
 
-        if (dz < threshold) {
-          const snapped: Vec3 = [rawPos[0], rawPos[1], posP[2]]
+        // Alignment Z
+        const snappedZ: Vec3 = [rawPos[0], rawPos[1], posP[2]]
+        const screenDistZ = getScreenDist(rawPos, snappedZ)
+        if (screenDistZ < smartGuidePixelThreshold || (screenDistZ === Number.POSITIVE_INFINITY && Math.abs(rawPos[2] - posP[2]) < smartGuideFallbackThreshold)) {
           const extent = 60
           return {
-            snapped,
+            snapped: snappedZ,
             guide: {
               start: [rawPos[0], rawPos[1], posP[2] - extent],
               end: [rawPos[0], rawPos[1], posP[2] + extent],
@@ -1562,7 +1757,7 @@ export function ManualCanvas3D() {
       return { snapped: rawPos, guide: null }
     }
 
-    const updatePointHighlight = (hoveredId?: string | null) => {
+    const updateEntityHighlight = (hoveredId?: string | null) => {
       pointMeshesRef.current.forEach(({ id, mesh }) => {
         const point = manualDerived.displayPoints.find((p) => p.id === id || p.sourceId === id)
         const isSelected = manualSelection?.kind === 'point' && (manualSelection.id === id || point?.sourceId === manualSelection.id)
@@ -1588,6 +1783,31 @@ export function ManualCanvas3D() {
           }
         }
       })
+
+      segmentMeshesRef.current.forEach(({ id, mesh }) => {
+        const segment = manualDerived.displaySegments.find((s) => s.id === id || s.sourceId === id)
+        const isSelected = manualSelection && 
+          ((manualSelection.kind === 'segment' && manualSelection.id === id) ||
+           (manualSelection.kind === 'polygon' && segment?.sourceKind === 'polygon' && manualSelection.id === id) ||
+           (manualSelection.kind === 'solid' && segment?.sourceKind === 'solid' && manualSelection.id === id))
+        const isHovered = id === hoveredId || segment?.sourceId === hoveredId
+        const isDraftSelected =
+          draftOperation &&
+          (draftOperation.segmentIds?.includes(id) ||
+           draftOperation.segmentIds?.includes(segment?.sourceId ?? '') ||
+           draftOperation.basePolygonId === id ||
+           draftOperation.basePolygonId === segment?.sourceId)
+        const mat = mesh.material as THREE.LineBasicMaterial
+        if (mat) {
+          if (isSelected) {
+            mat.color.set(colors.pointSelected)
+          } else if (isHovered || isDraftSelected) {
+            mat.color.set(colors.pointHovered)
+          } else {
+            mat.color.set(segment?.sourceKind === 'solid' ? colors.solid : colors.segment)
+          }
+        }
+      })
     }
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -1596,9 +1816,15 @@ export function ManualCanvas3D() {
       const snapTarget = getSnapTarget(event, snappedPlanePoint)
 
       // Hover point highlight
-      const hoveredId = snapTarget?.kind === 'point' ? snapTarget.pointId : null
-      hoveredPointIdRef.current = hoveredId
-      updatePointHighlight(hoveredId)
+      const hit = findIntersectionEntity(event)
+      let hoveredId = snapTarget?.kind === 'point' ? snapTarget.pointId : snapTarget?.kind === 'segment' ? snapTarget.segmentId : hit?.id ?? null
+      
+      if (interactionRef.current.creatingPointId && interactionRef.current.pointerDown?.didDrag) {
+        hoveredId = null
+      }
+      
+      hoveredEntityIdRef.current = hoveredId
+      updateEntityHighlight(hoveredId)
 
       let activePosition = snappedPlanePoint ?? snapTarget?.position ?? null
       let currentGuide: { start: Vec3; end: Vec3; label: string } | null = null
@@ -1787,6 +2013,40 @@ export function ManualCanvas3D() {
           snapTarget: activeSnapTarget,
         })
       }
+
+      if (draftOperation && !interactionRef.current.creatingPointId) {
+        if ((draftOperation.tool === 'pyramid' || draftOperation.tool === 'prism') && draftOperation.basePolygonId) {
+           const isSkew = draftOperation.tool === 'pyramid' ? !!draftOperation.apexPointId : !!draftOperation.topPointId;
+           if (!isSkew && activePosition) {
+             const basePolygon = manualDerived.displayPolygons.find((p) => p.sourceId === draftOperation.basePolygonId)
+             if (basePolygon && basePolygon.points.length >= 3) {
+               const normal = getPolygonNormal(basePolygon.points)
+               const center = polygonCenter(basePolygon.points)
+               const V = subVec3(activePosition, center)
+               let h = dotVec3(V, normal)
+               h = snapCoordinate(h)
+               if (h < 0.1) h = 0.1
+               if (draftOperation.height !== undefined && draftOperation.height !== h) {
+                  setDraftOperation({ ...draftOperation, height: h })
+               }
+             }
+           }
+        }
+        if ((draftOperation.tool === 'cone' || draftOperation.tool === 'cylinder') && draftOperation.baseCircleId) {
+             const baseCircle = manualDerived.displayCircles.find((c) => c.sourceId === draftOperation.baseCircleId)
+             if (baseCircle && activePosition) {
+               const normal = baseCircle.normal
+               const center = baseCircle.center
+               const V = subVec3(activePosition, center)
+               let h = dotVec3(V, normal)
+               h = snapCoordinate(h)
+               if (h < 0.1) h = 0.1
+               if (draftOperation.height !== h) {
+                  setDraftOperation({ ...draftOperation, height: h })
+               }
+             }
+        }
+      }
     }
 
     const handlePointerUp = (event: PointerEvent) => {
@@ -1799,8 +2059,8 @@ export function ManualCanvas3D() {
       interactionRef.current.pointerDown = null
       controls.enabled = true
       scheduleHoverPresentation(null)
-      hoveredPointIdRef.current = null
-      updatePointHighlight(null)
+      hoveredEntityIdRef.current = null
+      updateEntityHighlight(null)
       if (smartGuideMeshRef.current) {
         smartGuideMeshRef.current.visible = false
       }
@@ -1815,13 +2075,13 @@ export function ManualCanvas3D() {
             if (currentIds[0] !== creatingPointId) {
               createSegment(currentIds[0], creatingPointId)
             }
-            setDraftOperation({ tool: 'segment', pointIds: [] })
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'segment', pointIds: [] })
           }
         } else if (activeTool === 'polygon') {
           const currentIds = draftOperation?.tool === 'polygon' ? [...(draftOperation.pointIds ?? [])] : []
           if (currentIds.length >= 3 && currentIds[0] === creatingPointId) {
             createPolygon(currentIds)
-            setDraftOperation({ tool: 'polygon', pointIds: [] })
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'polygon', pointIds: [] })
           } else {
             if (currentIds[currentIds.length - 1] !== creatingPointId) {
               currentIds.push(creatingPointId)
@@ -1834,7 +2094,7 @@ export function ManualCanvas3D() {
           if (currentIds.length === 2) {
             const height = draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4
             createBox([currentIds[0], currentIds[1]], height)
-            setDraftOperation({ tool: 'box', pointIds: [], height })
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'box', pointIds: [], height })
           } else {
             setDraftOperation({
               tool: 'box',
@@ -1862,6 +2122,8 @@ export function ManualCanvas3D() {
               topPointId: creatingPointId,
             })
           }
+        } else if (activeTool === 'point') {
+          if (autoRevertToSelect) setActiveTool('select')
         }
         return
       }
@@ -1899,9 +2161,15 @@ export function ManualCanvas3D() {
       const isCircleClick = (activeTool === 'cone' || activeTool === 'cylinder') && hitEntity?.kind === 'circle'
       const isPolygonClick = (activeTool === 'pyramid' || activeTool === 'prism') && hitEntity?.kind === 'polygon'
 
+      const isSkewMode = (activeTool === 'pyramid' && draftOperation?.apexPointId) ||
+                         (activeTool === 'prism' && draftOperation?.topPointId);
+      
+      const isCreatingSkewApex = (activeTool === 'pyramid' || activeTool === 'prism') && 
+                                 draftOperation?.basePolygonId && isSkewMode;
+
       const shouldCreateAndDragPoint =
         activeTool !== 'select' &&
-        ['point', 'segment', 'polygon', 'box', 'sphere', 'cone', 'cylinder'].includes(activeTool) &&
+        (['point', 'segment', 'polygon', 'box', 'sphere', 'cone', 'cylinder'].includes(activeTool) || isCreatingSkewApex) &&
         (!snapTarget || snapTarget.kind !== 'point') &&
         !isCircleClick &&
         !isPolygonClick
@@ -1931,8 +2199,8 @@ export function ManualCanvas3D() {
 
     const handlePointerLeave = () => {
       scheduleHoverPresentation(null)
-      hoveredPointIdRef.current = null
-      updatePointHighlight(null)
+      hoveredEntityIdRef.current = null
+      updateEntityHighlight(null)
       if (smartGuideMeshRef.current) {
         smartGuideMeshRef.current.visible = false
       }
@@ -1955,11 +2223,11 @@ export function ManualCanvas3D() {
       if (event.key !== 'Enter') return
       if (draftOperation?.tool === 'polygon' && (draftOperation.pointIds?.length ?? 0) >= 3) {
         createPolygon(draftOperation.pointIds ?? [])
-        setDraftOperation({ tool: 'polygon', pointIds: [] })
+        autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'polygon', pointIds: [] })
       }
       if (draftOperation?.tool === 'box' && (draftOperation.pointIds?.length ?? 0) === 2 && draftOperation.height && draftOperation.height > 0) {
         createBox([draftOperation.pointIds![0], draftOperation.pointIds![1]], draftOperation.height)
-        setDraftOperation({ tool: 'box', pointIds: [], height: draftOperation.height })
+        autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'box', pointIds: [], height: draftOperation.height })
       }
       if ((draftOperation?.tool === 'pyramid' || draftOperation?.tool === 'prism') && draftOperation.basePolygonId && draftOperation.height && draftOperation.height > 0) {
         if (draftOperation.tool === 'pyramid') createPyramid(draftOperation.basePolygonId, draftOperation.height)
@@ -2072,6 +2340,14 @@ export function ManualCanvas3D() {
             <Eye size={18} />
             <span className="text-xs">{'Nh\u00e3n'}</span>
           </button>
+          <button
+            onClick={() => setShowGizmo(!showGizmo)}
+            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showGizmo ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
+            title="Ẩn/Hiện khối điều hướng"
+          >
+            <Compass size={18} />
+            <span className="text-xs">Điều hướng</span>
+          </button>
 
           <div className="w-px h-6 bg-border mx-2" />
           <button
@@ -2115,6 +2391,33 @@ export function ManualCanvas3D() {
           <span ref={hoverStatusRef}>Không bám</span>
         </div>
       </div>
+      {/* Navigation Gizmo (Blender Style) */}
+      {showGizmo && (
+        <div className="absolute top-24 right-6 z-40 w-[90px] h-[90px] flex items-center justify-center bg-card/65 backdrop-blur-md border border-border/40 rounded-full shadow-lg pointer-events-auto">
+          <svg width="90" height="90" viewBox="0 0 90 90" className="w-full h-full select-none">
+            <circle cx="45" cy="45" r="41" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-border/30" />
+            <circle cx="45" cy="45" r="7" fill="currentColor" className="text-border/25" />
+            {/* Axis lines - updated dynamically via JS refs */}
+            <line ref={gizmoXLineRef} x1="45" y1="45" x2="45" y2="45" stroke="#ef4444" strokeWidth="3.2" strokeLinecap="round" />
+            <line ref={gizmoYLineRef} x1="45" y1="45" x2="45" y2="45" stroke="#22c55e" strokeWidth="3.2" strokeLinecap="round" />
+            <line ref={gizmoZLineRef} x1="45" y1="45" x2="45" y2="45" stroke="#3b82f6" strokeWidth="3.2" strokeLinecap="round" />
+            {/* Axis End nodes */}
+            <g ref={gizmoXGroupRef} className="cursor-pointer select-none" onClick={() => handleAlignView('x')}>
+              <circle cx="45" cy="45" r="9.5" fill="#ef4444" stroke="#ffffff" strokeWidth="1" />
+              <text x="45" y="48.5" textAnchor="middle" fontSize="9.5" fontWeight="bold" fill="#ffffff" fontFamily="sans-serif">X</text>
+            </g>
+            <g ref={gizmoYGroupRef} className="cursor-pointer select-none" onClick={() => handleAlignView('y')}>
+              <circle cx="45" cy="45" r="9.5" fill="#22c55e" stroke="#ffffff" strokeWidth="1" />
+              <text x="45" y="48.5" textAnchor="middle" fontSize="9.5" fontWeight="bold" fill="#ffffff" fontFamily="sans-serif">Y</text>
+            </g>
+            <g ref={gizmoZGroupRef} className="cursor-pointer select-none" onClick={() => handleAlignView('z')}>
+              <circle cx="45" cy="45" r="9.5" fill="#3b82f6" stroke="#ffffff" strokeWidth="1" />
+              <text x="45" y="48.5" textAnchor="middle" fontSize="9.5" fontWeight="bold" fill="#ffffff" fontFamily="sans-serif">Z</text>
+            </g>
+          </svg>
+        </div>
+      )}
+
       <div className="absolute bottom-6 right-6 z-50 flex flex-col gap-3">
         <div className="flex flex-col bg-card/95 backdrop-blur-md border border-border rounded-xl shadow-lg overflow-hidden">
           <button onClick={() => handleZoom(0.82)} className="p-3 hover:bg-primary hover:text-primary-foreground border-b border-border text-muted-foreground transition-colors">

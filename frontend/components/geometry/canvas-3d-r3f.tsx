@@ -1,12 +1,12 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { useTheme } from 'next-themes'
 import { useGeometry } from './geometry-context'
-import { ZoomIn, ZoomOut, Layers, Crosshair, Eye, RefreshCcw, Scissors, Expand } from 'lucide-react'
+import { ZoomIn, ZoomOut, Layers, Crosshair, Eye, RefreshCcw, Scissors, Expand, Compass } from 'lucide-react'
 
 function getGeoColors(isDarkTheme: boolean) {
   if (isDarkTheme) {
@@ -19,7 +19,7 @@ function getGeoColors(isDarkTheme: boolean) {
       FACE: 0x818cf8,
       EDGE_SOLID: 0xe5e7eb,
       EDGE_DASHED: 0x9ca3af,
-      HIGHLIGHT: 0xfbbf24,
+      HIGHLIGHT: 0xfdba74,
       GRID: 0x374151,
       PLANE: 0x1f2937,
       LABEL: '#e5e7eb',
@@ -36,7 +36,7 @@ function getGeoColors(isDarkTheme: boolean) {
     FACE: 0x6671d1,
     EDGE_SOLID: 0x1a1a2e,
     EDGE_DASHED: 0x999999,
-    HIGHLIGHT: 0xff9f43,
+    HIGHLIGHT: 0xfdba74,
     GRID: 0xd0d0d0,
     PLANE: 0xcccccc,
     LABEL: '#1a1a2e',
@@ -62,6 +62,7 @@ interface TickData {
 
 export function Canvas3D() {
   const mountRef = useRef<HTMLDivElement>(null)
+  const [showGizmo, setShowGizmo] = useState(true)
   const { resolvedTheme } = useTheme()
   const isDarkTheme = resolvedTheme === 'dark'
   const GEO_COLORS = getGeoColors(isDarkTheme)
@@ -93,10 +94,66 @@ export function Canvas3D() {
   const controlsRef = useRef<OrbitControls | null>(null)
   const dynamicGroupRef = useRef<THREE.Group>(new THREE.Group())
 
+  // Navigation Gizmo SVG Refs
+  const gizmoXLineRef = useRef<SVGLineElement>(null)
+  const gizmoYLineRef = useRef<SVGLineElement>(null)
+  const gizmoZLineRef = useRef<SVGLineElement>(null)
+  const gizmoXGroupRef = useRef<SVGGElement>(null)
+  const gizmoYGroupRef = useRef<SVGGElement>(null)
+  const gizmoZGroupRef = useRef<SVGGElement>(null)
+
   const stateRefs = useRef({ showAxes, showGrid })
   useEffect(() => {
     stateRefs.current = { showAxes, showGrid }
   }, [showAxes, showGrid])
+
+  // Smoothly aligns camera to specific axes (X, Y, Z) with animation transition
+  const handleAlignView = useCallback((axis: 'x' | 'y' | 'z') => {
+    const cam = cameraRef.current
+    const controls = controlsRef.current
+    if (!cam || !controls) return
+
+    const target = controls.target
+    const dist = cam.position.distanceTo(target)
+
+    const duration = 400 // Animation duration in ms
+    const startTime = performance.now()
+
+    const startPos = cam.position.clone()
+    const endPos = new THREE.Vector3()
+
+    if (axis === 'z') {
+      endPos.set(target.x, target.y, target.z + dist)
+    } else if (axis === 'y') {
+      endPos.set(target.x, target.y - dist, target.z)
+    } else {
+      endPos.set(target.x + dist, target.y, target.z)
+    }
+
+    const animateTransition = (now: number) => {
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+
+      // easeInOutCubic easing
+      const t = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2
+
+      cam.position.lerpVectors(startPos, endPos, t)
+
+      if (axis === 'z') {
+        cam.up.set(0, 1, 0)
+      } else {
+        cam.up.set(0, 0, 1)
+      }
+
+      controls.update()
+
+      if (progress < 1) {
+        requestAnimationFrame(animateTransition)
+      }
+    }
+
+    requestAnimationFrame(animateTransition)
+  }, [])
 
   // Detect if cross-section splitting is available
   const hasSectionData = !!(geometryData?.sections?.length || geometryData?.clippingPlane)
@@ -190,7 +247,7 @@ export function Canvas3D() {
     const AXIS_LEN = 150
 
     const createAxis = (colorHex: number, dir: THREE.Vector3, labelStr: string) => {
-      const opacity = 0.5
+      const opacity = 0.75
       const lineProps = { color: colorHex, linewidth: 2, transparent: true, opacity, depthTest: false }
 
       if (labelStr === 'z') {
@@ -249,7 +306,7 @@ export function Canvas3D() {
         ticGeoPts.push(new THREE.Vector3(-tickLength, 0, 0), new THREE.Vector3(tickLength, 0, 0))
       }
       const tGeo = new THREE.BufferGeometry().setFromPoints(ticGeoPts)
-      const tMat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.5, depthTest: false })
+      const tMat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.75, depthTest: false })
 
       for (let i = -AXIS_LEN; i <= AXIS_LEN; i++) {
         if (i === 0) continue
@@ -299,6 +356,7 @@ export function Canvas3D() {
     let lastGridCenterX = -1
     let lastGridCenterY = -1
     let lastGridShow = true
+    let lastGridShowAxes = true
     let dynamicGrid: THREE.LineSegments | null = null
 
     // Animation Loop
@@ -360,17 +418,19 @@ export function Canvas3D() {
 
       // Update Dynamic Grid if bounds or step change
       const showGrid = stateRefs.current.showGrid
+      const showAxesState = stateRefs.current.showAxes
       const gridRadius = 40 // Total size 80x80
       const snapX = Math.round(centerX / step) * step
       const snapY = Math.round(centerY / step) * step
 
       const hasMoved = Math.abs(lastGridCenterX - snapX) > 0.001 || Math.abs(lastGridCenterY - snapY) > 0.001
 
-      if (lastGridStep !== step || hasMoved || lastGridShow !== showGrid) {
+      if (lastGridStep !== step || hasMoved || lastGridShow !== showGrid || lastGridShowAxes !== showAxesState) {
         lastGridStep = step
         lastGridCenterX = snapX
         lastGridCenterY = snapY
         lastGridShow = showGrid
+        lastGridShowAxes = showAxesState
 
         if (dynamicGrid) {
           envGroup.remove(dynamicGrid)
@@ -384,12 +444,12 @@ export function Canvas3D() {
 
           // Vertical lines (X constant)
           for (let x = snapX - gridRadius; x <= snapX + gridRadius; x += step) {
-            if (x === 0 || Math.abs(x) > AXIS_LEN) continue
+            if ((x === 0 && showAxesState) || Math.abs(x) > AXIS_LEN) continue
             gPts.push(new THREE.Vector3(x, snapY - gridRadius, gridZ), new THREE.Vector3(x, snapY + gridRadius, gridZ))
           }
           // Horizontal lines (Y constant)
           for (let y = snapY - gridRadius; y <= snapY + gridRadius; y += step) {
-            if (y === 0 || Math.abs(y) > AXIS_LEN) continue
+            if ((y === 0 && showAxesState) || Math.abs(y) > AXIS_LEN) continue
             gPts.push(new THREE.Vector3(snapX - gridRadius, y, gridZ), new THREE.Vector3(snapX + gridRadius, y, gridZ))
           }
 
@@ -404,6 +464,83 @@ export function Canvas3D() {
       basePlane.position.set(centerX, centerY, -0.002)
       basePlane.scale.set(gridRadius / 120, gridRadius / 120, 1)
       axesGroup.visible = stateRefs.current.showAxes
+
+      // Update Orientation Gizmo SVG lines and positions based on NDC projection for 100% canvas alignment
+      if (cameraRef.current) {
+        const cam = cameraRef.current
+        
+        // Project O and axes endpoints to NDC
+        const posO = new THREE.Vector3(0, 0, 0).project(cam)
+        const posX = new THREE.Vector3(1, 0, 0).project(cam)
+        const posY = new THREE.Vector3(0, 1, 0).project(cam)
+        const posZ = new THREE.Vector3(0, 0, 1).project(cam)
+
+        // Normalize 2D directions on screen
+        const dirX = new THREE.Vector2(posX.x - posO.x, posX.y - posO.y).normalize()
+        const dirY = new THREE.Vector2(posY.x - posO.x, posY.y - posO.y).normalize()
+        const dirZ = new THREE.Vector2(posZ.x - posO.x, posZ.y - posO.y).normalize()
+
+        const cx = 45
+        const cy = 45
+        const r = 26
+
+        // Compute 3D depth to camera to adjust scale and opacity
+        const distCam = cam.position.length()
+        const distX = cam.position.distanceTo(new THREE.Vector3(1, 0, 0))
+        const distY = cam.position.distanceTo(new THREE.Vector3(0, 1, 0))
+        const distZ = cam.position.distanceTo(new THREE.Vector3(0, 0, 1))
+
+        const depthX = distCam - distX
+        const depthY = distCam - distY
+        const depthZ = distCam - distZ
+
+        const scaleX = 1 + Math.max(-0.6, Math.min(0.6, depthX)) * 0.25
+        const scaleY = 1 + Math.max(-0.6, Math.min(0.6, depthY)) * 0.25
+        const scaleZ = 1 + Math.max(-0.6, Math.min(0.6, depthZ)) * 0.25
+
+        const opX = depthX < -0.3 ? 0.35 : (depthX < 0 ? 0.65 : 1)
+        const opY = depthY < -0.3 ? 0.35 : (depthY < 0 ? 0.65 : 1)
+        const opZ = depthZ < -0.3 ? 0.35 : (depthZ < 0 ? 0.65 : 1)
+
+        // X Axis (Red)
+        const x2 = cx + dirX.x * r
+        const y2 = cy - dirX.y * r
+        if (gizmoXLineRef.current) {
+          gizmoXLineRef.current.setAttribute('x2', x2.toString())
+          gizmoXLineRef.current.setAttribute('y2', y2.toString())
+          gizmoXLineRef.current.setAttribute('opacity', opX.toString())
+        }
+        if (gizmoXGroupRef.current) {
+          gizmoXGroupRef.current.setAttribute('transform', `translate(${dirX.x * r}, ${-dirX.y * r}) scale(${scaleX})`)
+          gizmoXGroupRef.current.setAttribute('opacity', opX.toString())
+        }
+
+        // Y Axis (Green)
+        const y2x = cx + dirY.x * r
+        const y2y = cy - dirY.y * r
+        if (gizmoYLineRef.current) {
+          gizmoYLineRef.current.setAttribute('x2', y2x.toString())
+          gizmoYLineRef.current.setAttribute('y2', y2y.toString())
+          gizmoYLineRef.current.setAttribute('opacity', opY.toString())
+        }
+        if (gizmoYGroupRef.current) {
+          gizmoYGroupRef.current.setAttribute('transform', `translate(${dirY.x * r}, ${-dirY.y * r}) scale(${scaleY})`)
+          gizmoYGroupRef.current.setAttribute('opacity', opY.toString())
+        }
+
+        // Z Axis (Blue)
+        const z2x = cx + dirZ.x * r
+        const z2y = cy - dirZ.y * r
+        if (gizmoZLineRef.current) {
+          gizmoZLineRef.current.setAttribute('x2', z2x.toString())
+          gizmoZLineRef.current.setAttribute('y2', z2y.toString())
+          gizmoZLineRef.current.setAttribute('opacity', opZ.toString())
+        }
+        if (gizmoZGroupRef.current) {
+          gizmoZGroupRef.current.setAttribute('transform', `translate(${dirZ.x * r}, ${-dirZ.y * r}) scale(${scaleZ})`)
+          gizmoZGroupRef.current.setAttribute('opacity', opZ.toString())
+        }
+      }
 
       renderer.render(scene, camera)
       labelRenderer.render(scene, camera)
@@ -640,7 +777,7 @@ export function Canvas3D() {
     // Draw Planes (faces)
     // Nếu đã có sections cắt khối: KHÔNG vẽ lại các mặt phẳng cắt vô hạn để chống rối,
     // NHƯNG VẪN VẼ các mặt của khối gốc (isSolidFace = true) để khối trông đặc hơn.
-    geometryData.planes?.forEach(p => {
+    geometryData.planes?.forEach((p, pIdx) => {
       if (hasSectionData && !p.isSolidFace) return
       if (!p.points) return
       const pNodes = p.points.map(name => nodes[name]).filter(Boolean)
@@ -668,7 +805,7 @@ export function Canvas3D() {
             opacity: p.opacity || 0.15,
             side: THREE.DoubleSide,
             polygonOffset: true,
-            polygonOffsetFactor: 1,
+            polygonOffsetFactor: 1 + pIdx * 0.1,
             polygonOffsetUnits: 1,
             clippingPlanes: bgClipPlanes,
           })
@@ -681,7 +818,7 @@ export function Canvas3D() {
             depthWrite: true,
             side: THREE.DoubleSide,
             polygonOffset: true,
-            polygonOffsetFactor: 1,
+            polygonOffsetFactor: 1 + pIdx * 0.1,
             polygonOffsetUnits: 1,
             clippingPlanes: bgClipPlanes,
           })
@@ -732,7 +869,7 @@ export function Canvas3D() {
               opacity: 0.3,
               side: THREE.DoubleSide,
               polygonOffset: true,
-              polygonOffsetFactor: -1,
+              polygonOffsetFactor: -1 - originalIdx * 0.1,
               polygonOffsetUnits: -1,
               clippingPlanes: bgClipPlanes,
             })
@@ -744,7 +881,8 @@ export function Canvas3D() {
             // Depth blocker
             const blockerMat = new THREE.MeshBasicMaterial({
               colorWrite: false, depthWrite: true, side: THREE.DoubleSide,
-              polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+              polygonOffset: true, polygonOffsetFactor: -1 - originalIdx * 0.1,
+              polygonOffsetUnits: -1,
               clippingPlanes: bgClipPlanes,
             })
             const blockerMesh = new THREE.Mesh(circleGeom.clone(), blockerMat)
@@ -811,7 +949,7 @@ export function Canvas3D() {
                 opacity: 0.3,
                 side: THREE.DoubleSide,
                 polygonOffset: true,
-                polygonOffsetFactor: -1,
+                polygonOffsetFactor: -1 - originalIdx * 0.1,
                 polygonOffsetUnits: -1,
                 clippingPlanes: bgClipPlanes,
               })
@@ -820,7 +958,8 @@ export function Canvas3D() {
               // Block depth
               const blockerMat = new THREE.MeshBasicMaterial({
                 colorWrite: false, depthWrite: true, side: THREE.DoubleSide,
-                polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+                polygonOffset: true, polygonOffsetFactor: -1 - originalIdx * 0.1,
+                polygonOffsetUnits: -1,
                 clippingPlanes: bgClipPlanes,
               })
               bitmaskGroups[bitStr].add(new THREE.Mesh(capGeom.clone(), blockerMat))
@@ -1085,6 +1224,14 @@ export function Canvas3D() {
             <Eye size={18} />
             <span className="text-xs">Nhãn</span>
           </button>
+          <button
+            onClick={() => setShowGizmo(!showGizmo)}
+            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showGizmo ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
+            title="Ẩn/Hiện khối điều hướng"
+          >
+            <Compass size={18} />
+            <span className="text-xs">Điều hướng</span>
+          </button>
 
           <div className="w-[1px] h-6 bg-border mx-2" />
           <button
@@ -1097,6 +1244,33 @@ export function Canvas3D() {
           </button>
         </div>
       </div>
+
+      {/* Navigation Gizmo (Blender Style) */}
+      {showGizmo && (
+        <div className="absolute top-24 right-6 z-40 w-[90px] h-[90px] flex items-center justify-center bg-card/65 backdrop-blur-md border border-border/40 rounded-full shadow-lg pointer-events-auto">
+          <svg width="90" height="90" viewBox="0 0 90 90" className="w-full h-full select-none">
+            <circle cx="45" cy="45" r="41" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-border/30" />
+            <circle cx="45" cy="45" r="7" fill="currentColor" className="text-border/25" />
+            {/* Axis lines - updated dynamically via JS refs */}
+            <line ref={gizmoXLineRef} x1="45" y1="45" x2="45" y2="45" stroke="#ef4444" strokeWidth="3.2" strokeLinecap="round" />
+            <line ref={gizmoYLineRef} x1="45" y1="45" x2="45" y2="45" stroke="#22c55e" strokeWidth="3.2" strokeLinecap="round" />
+            <line ref={gizmoZLineRef} x1="45" y1="45" x2="45" y2="45" stroke="#3b82f6" strokeWidth="3.2" strokeLinecap="round" />
+            {/* Axis End nodes */}
+            <g ref={gizmoXGroupRef} className="cursor-pointer select-none" onClick={() => handleAlignView('x')}>
+              <circle cx="45" cy="45" r="9.5" fill="#ef4444" stroke="#ffffff" strokeWidth="1" />
+              <text x="45" y="48.5" textAnchor="middle" fontSize="9.5" fontWeight="bold" fill="#ffffff" fontFamily="sans-serif">X</text>
+            </g>
+            <g ref={gizmoYGroupRef} className="cursor-pointer select-none" onClick={() => handleAlignView('y')}>
+              <circle cx="45" cy="45" r="9.5" fill="#22c55e" stroke="#ffffff" strokeWidth="1" />
+              <text x="45" y="48.5" textAnchor="middle" fontSize="9.5" fontWeight="bold" fill="#ffffff" fontFamily="sans-serif">Y</text>
+            </g>
+            <g ref={gizmoZGroupRef} className="cursor-pointer select-none" onClick={() => handleAlignView('z')}>
+              <circle cx="45" cy="45" r="9.5" fill="#3b82f6" stroke="#ffffff" strokeWidth="1" />
+              <text x="45" y="48.5" textAnchor="middle" fontSize="9.5" fontWeight="bold" fill="#ffffff" fontFamily="sans-serif">Z</text>
+            </g>
+          </svg>
+        </div>
+      )}
 
       {/* Zoom Controls */}
       <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-50">

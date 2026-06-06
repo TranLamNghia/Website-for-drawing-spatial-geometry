@@ -35,6 +35,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import { useGeometry } from './geometry-context'
 import type { ManualTool } from './manual-editor'
 
@@ -154,9 +156,15 @@ export function ManualLeftPanel({
     handleToolSelect(toolId as any)
   }
 
-  const {
-    activeTool,
-    setActiveTool,
+  const { 
+    activeTool, 
+    setActiveTool, 
+    undoManual, 
+    redoManual, 
+    canUndo, 
+    canRedo,
+    autoRevertToSelect,
+    setAutoRevertToSelect,
     manualSelection,
     setManualSelection,
     draftOperation,
@@ -327,6 +335,17 @@ export function ManualLeftPanel({
           <p className="mt-1 text-[11px] text-muted-foreground">
             Các công cụ được sắp xếp theo nhóm chức năng.
           </p>
+          <div className="relative z-10 mt-3 flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/30 p-2">
+            <Label htmlFor="auto-revert" className="cursor-pointer text-[11px] font-medium leading-none">
+              Tự động quay về Chọn
+            </Label>
+            <Switch
+              id="auto-revert"
+              checked={autoRevertToSelect}
+              onCheckedChange={(checked) => setAutoRevertToSelect(checked)}
+              className="scale-75 data-[state=checked]:bg-primary"
+            />
+          </div>
         </div>
         <div className="flex items-center gap-1.5">
           {activeTool !== 'select' && (

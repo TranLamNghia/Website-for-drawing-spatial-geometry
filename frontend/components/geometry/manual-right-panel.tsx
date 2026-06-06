@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Circle, Pentagon, PencilRuler, Pyramid, Save, Trash2, Triangle, Square, FlipHorizontal, FlipVertical } from 'lucide-react'
+import { Box, Circle, Pentagon, PencilRuler, Pyramid, Save, Trash2, Triangle, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useProjectStore } from '@/hooks/use-project-store'
@@ -415,8 +415,6 @@ function PolygonRow({
   selected,
   onSelect,
   onDelete,
-  onFlipHorizontal,
-  onFlipVertical,
   isSpecialShape,
 }: {
   polygon: ManualPolygon
@@ -426,8 +424,6 @@ function PolygonRow({
   selected: boolean
   onSelect: () => void
   onDelete: () => void
-  onFlipHorizontal: () => void
-  onFlipVertical: () => void
   isSpecialShape: boolean
 }) {
   return (
@@ -467,36 +463,6 @@ function PolygonRow({
           <Trash2 size={14} />
         </Button>
       </div>
-
-      {selected && isSpecialShape && (
-        <div className="flex items-center gap-2 border-t border-border/40 pt-2 px-1">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mr-auto">Thao tác hình phẳng:</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation()
-              onFlipHorizontal()
-            }}
-            className="h-7 gap-1 px-2 text-[11px] font-semibold hover:bg-primary/5 hover:text-primary transition-colors"
-          >
-            <FlipHorizontal size={12} />
-            Lật ngang
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation()
-              onFlipVertical()
-            }}
-            className="h-7 gap-1 px-2 text-[11px] font-semibold hover:bg-primary/5 hover:text-primary transition-colors"
-          >
-            <FlipVertical size={12} />
-            Lật dọc
-          </Button>
-        </div>
-      )}
     </div>
   )
 }
@@ -513,8 +479,6 @@ export function ManualRightPanel() {
     renameManualEntity,
     updateSegmentLength,
     updateCircleRadius,
-    flipPolygonVertical,
-    flipPolygonHorizontal,
     showAxes,
     showGrid,
     showLabels,
@@ -562,7 +526,7 @@ export function ManualRightPanel() {
   }, [manualDerived.displayPoints, manualDocument.solids, polygonPointMap])
 
   const totalEntities =
-    manualDocument.points.length +
+    manualDocument.points.filter(p => p.visible !== false).length +
     manualDocument.segments.length +
     manualDocument.polygons.length +
     manualDocument.solids.length +
@@ -610,7 +574,7 @@ export function ManualRightPanel() {
 
       <div className="mt-4 flex-1 overflow-y-auto pr-1">
         <div className="space-y-2.5">
-          {manualDocument.points.map((point) => {
+          {manualDocument.points.filter(p => p.visible !== false).map((point) => {
             const coords = manualDerived.pointPositions[point.id]
             if (!coords) return null
 
@@ -712,8 +676,6 @@ export function ManualRightPanel() {
                 selected={manualSelection?.kind === 'polygon' && manualSelection.id === polygon.id}
                 onSelect={() => setManualSelection({ kind: 'polygon', id: polygon.id })}
                 onDelete={() => removeManualEntity('polygon', polygon.id)}
-                onFlipHorizontal={() => flipPolygonHorizontal(polygon.id)}
-                onFlipVertical={() => flipPolygonVertical(polygon.id)}
                 isSpecialShape={true}
               />
             )

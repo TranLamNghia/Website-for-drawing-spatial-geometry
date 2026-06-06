@@ -165,6 +165,8 @@ interface GeometryContextType {
   resetManualDocument: () => void
   activeTool: ManualTool
   setActiveTool: (tool: ManualTool) => void
+  autoRevertToSelect: boolean
+  setAutoRevertToSelect: (v: boolean) => void
   manualSelection: ManualSelection
   setManualSelection: (selection: ManualSelection) => void
   draftOperation: ManualDraft | null
@@ -180,8 +182,6 @@ interface GeometryContextType {
   updatePointPosition: (pointId: string, position: Vec3, target?: ManualSnapTarget | null) => void
   updateSegmentLength: (segmentId: string, newLength: number) => void
   updateCircleRadius: (circleId: string, newRadius: number) => void
-  flipPolygonVertical: (polygonId: string) => void
-  flipPolygonHorizontal: (polygonId: string) => void
   saveManualState: () => void
   createMidpoint: (pointIdA: string, pointIdB: string) => string | null
   createIntersection: (segmentIdA: string, segmentIdB: string) => string | null
@@ -387,7 +387,6 @@ function deduplicateDocumentPoints(current: ManualDocument, next: ManualDocument
           targetSegmentId: newPt.targetSegmentId,
           targetPolygonId: newPt.targetPolygonId,
           t: newPt.t,
-          flip: newPt.flip,
           dependsOn: newPt.dependsOn,
           locked: newPt.locked,
           segmentId: newPt.segmentId,
@@ -438,9 +437,27 @@ function deduplicateDocumentPoints(current: ManualDocument, next: ManualDocument
   })
 
   result.segments = result.segments.map(s => {
+    const oldStartId = s.startPointId
+    const oldEndId = s.endPointId
+
     s.startPointId = replaceId(s.startPointId)
     s.endPointId = replaceId(s.endPointId)
     if (s.dependsOn) s.dependsOn = replaceIds(s.dependsOn)
+
+    if (s.startPointId !== oldStartId || s.endPointId !== oldEndId) {
+      const oldStartPt = next.points.find(p => p.id === oldStartId)
+      const oldEndPt = next.points.find(p => p.id === oldEndId)
+      const newStartPt = result.points.find(p => p.id === s.startPointId)
+      const newEndPt = result.points.find(p => p.id === s.endPointId)
+
+      if (oldStartPt && oldEndPt && newStartPt && newEndPt) {
+        const oldDefault1 = `${oldStartPt.label}${oldEndPt.label}`
+        const oldDefault2 = `${oldEndPt.label}${oldStartPt.label}`
+        if (!s.label || s.label === oldDefault1 || s.label === oldDefault2) {
+          s.label = `${newStartPt.label}${newEndPt.label}`
+        }
+      }
+    }
     return s
   })
 
@@ -542,8 +559,19 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     createEmptyManualDocument(),
   )
   const [manualSelection, setManualSelection] = useState<ManualSelection>(null)
-  const [activeTool, setActiveTool] = useState<ManualTool>('select')
+  const [activeToolState, setActiveToolState] = useState<ManualTool>('select')
+  const activeTool = activeToolState
+  const [autoRevertToSelect, setAutoRevertToSelect] = useState(true)
   const [draftOperation, setDraftOperation] = useState<ManualDraft | null>(null)
+  
+  const setActiveTool = useCallback((tool: ManualTool) => {
+    setActiveToolState(tool)
+    if (tool === 'select') {
+      setManualSelection(null)
+      setDraftOperation(null)
+    }
+  }, [setManualSelection, setDraftOperation])
+
   const [hoveredSnapTarget, setHoveredSnapTarget] = useState<ManualSnapTarget | null>(null)
   const [undoStack, setUndoStack] = useState<ManualDocument[]>([])
   const [redoStack, setRedoStack] = useState<ManualDocument[]>([])
@@ -1043,31 +1071,56 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const createSegment = useCallback(
     (startPointId: string, endPointId: string) => {
       if (startPointId === endPointId) return null
-      const nextId = createEntityId('segment')
-      const startLabel =
-        manualDocument.points.find((point) => point.id === startPointId)?.label ?? 'A'
-      const endLabel =
-        manualDocument.points.find((point) => point.id === endPointId)?.label ?? 'B'
-      const segment = {
-        id: nextId,
-        label: `${startLabel}${endLabel}`,
-        entityType: 'segment' as const,
-        startPointId,
-        endPointId,
-        createdByTool: 'segment' as const,
-        dependsOn: [startPointId, endPointId],
-        locked: false,
-        visible: true,
-        selectable: true,
+      
+      const existing = manualDocument.segments.find(
+        (s) =>
+          (s.startPointId === startPointId && s.endPointId === endPointId) ||
+          (s.startPointId === endPointId && s.endPointId === startPointId)
+      )
+      if (existing) {
+        setManualSelection({ kind: 'segment', id: existing.id })
+        return existing.id
       }
-      commitManualDocument((current) => ({
-        ...current,
-        segments: [...current.segments, segment],
-      }))
+
+      const nextId = createEntityId('segment')
+      commitManualDocument((current) => {
+        const doubleCheck = current.segments.find(
+          (s) =>
+            (s.startPointId === startPointId && s.endPointId === endPointId) ||
+            (s.startPointId === endPointId && s.endPointId === startPointId)
+        )
+        if (doubleCheck) {
+          return null
+        }
+
+        const startPoint = current.points.find((point) => point.id === startPointId)
+        const endPoint = current.points.find((point) => point.id === endPointId)
+        const startLabel = startPoint?.label ?? 'A'
+        const endLabel = endPoint?.label ?? 'B'
+
+        const segment = {
+          id: nextId,
+          label: `${startLabel}${endLabel}`,
+          entityType: 'segment' as const,
+          startPointId,
+          endPointId,
+          createdByTool: 'segment' as const,
+          dependsOn: [startPointId, endPointId],
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+
+        return {
+          ...current,
+          segments: [...current.segments, segment],
+        }
+      })
+
       setManualSelection({ kind: 'segment', id: nextId })
       return nextId
     },
-    [commitManualDocument, manualDocument.points],
+    [commitManualDocument, manualDocument.segments],
   )
 
   const createMidpoint = useCallback(
@@ -1524,15 +1577,18 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           allPointIds.push(pid)
         }
 
+        const allPointsList = [...current.points, ...generatedPoints]
         const generatedSegments: ManualSegment[] = []
         for (let i = 0; i < sides; i++) {
           const sid = createEntityId('segment')
           const startId = allPointIds[i]
           const endId = allPointIds[(i + 1) % sides]
+          const startLabel = allPointsList.find((p) => p.id === startId)?.label ?? 'A'
+          const endLabel = allPointsList.find((p) => p.id === endId)?.label ?? 'B'
 
           const seg: ManualSegment = {
             id: sid,
-            label: '',
+            label: `${startLabel}${endLabel}`,
             entityType: 'segment',
             startPointId: startId,
             endPointId: endId,
@@ -1587,9 +1643,11 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
 
         if (!segId && type === 'vuong') {
           segId = createEntityId('segment')
+          const startLabel = current.points.find((p) => p.id === pointIdA)?.label ?? 'A'
+          const endLabel = current.points.find((p) => p.id === pointIdB)?.label ?? 'B'
           const newSeg: ManualSegment = {
             id: segId,
-            label: '',
+            label: `${startLabel}${endLabel}`,
             entityType: 'segment',
             startPointId: pointIdA,
             endPointId: pointIdB,
@@ -1671,6 +1729,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         }
 
         const allPointIds = [pointIdA, pointIdB, cId]
+        const allPointsList = [...current.points, cPoint]
         const checkAndAddSegment = (p1: string, p2: string) => {
           const existing = current.segments.find(
             (s) => (s.startPointId === p1 && s.endPointId === p2)
@@ -1680,9 +1739,11 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
               || (s.startPointId === p2 && s.endPointId === p1)
           )
           if (!existing) {
+            const startLabel = allPointsList.find((p) => p.id === p1)?.label ?? 'A'
+            const endLabel = allPointsList.find((p) => p.id === p2)?.label ?? 'B'
             addedSegments.push({
               id: createEntityId('segment'),
-              label: '',
+              label: `${startLabel}${endLabel}`,
               entityType: 'segment',
               startPointId: p1,
               endPointId: p2,
@@ -2017,6 +2078,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           allPointIds = [pA, pB, pC, pD]
         }
 
+        const allPointsList = [...pointsList, ...generatedPoints]
         const sides = allPointIds.length
         for (let i = 0; i < sides; i++) {
           const startId = allPointIds[i]
@@ -2026,9 +2088,11 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
               || (s.startPointId === endId && s.endPointId === startId)
           )
           if (!existing) {
+            const startLabel = allPointsList.find((p) => p.id === startId)?.label ?? 'A'
+            const endLabel = allPointsList.find((p) => p.id === endId)?.label ?? 'B'
             generatedSegments.push({
               id: createEntityId('segment'),
-              label: '',
+              label: `${startLabel}${endLabel}`,
               entityType: 'segment',
               startPointId: startId,
               endPointId: endId,
@@ -2074,9 +2138,11 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       )
       if (uniqueIds.length < 3) return null
       const polygonId = createEntityId('polygon')
+      const numPoints = uniqueIds.length
+      const prefix = numPoints === 3 ? 'Tam giác' : numPoints === 4 ? 'Tứ giác' : 'Đa giác'
       const polygon = {
         id: polygonId,
-        label: `Đa giác ${manualDocument.polygons.length + 1}`,
+        label: `${prefix} ${manualDocument.polygons.length + 1}`,
         entityType: 'polygon' as const,
         pointIds: uniqueIds,
         createdByTool: 'polygon' as const,
@@ -2357,7 +2423,34 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       if (!nextLabel) return
       commitManualDocument((current) => {
         if (kind === 'point') {
-          return { ...current, points: mapEntities(current.points, id, (point) => ({ ...point, label: nextLabel })) }
+          const oldPoint = current.points.find((p) => p.id === id)
+          if (!oldPoint) return current
+          const oldLabel = oldPoint.label
+          const nextPoints = mapEntities(current.points, id, (point) => ({ ...point, label: nextLabel }))
+
+          const nextSegments = current.segments.map((seg) => {
+            if (seg.startPointId === id || seg.endPointId === id) {
+              const startP = nextPoints.find((p) => p.id === seg.startPointId)
+              const endP = nextPoints.find((p) => p.id === seg.endPointId)
+              if (startP && endP) {
+                const oldStartL = seg.startPointId === id ? oldLabel : startP.label
+                const oldEndL = seg.endPointId === id ? oldLabel : endP.label
+                const defaultLabel1 = `${oldStartL}${oldEndL}`
+                const defaultLabel2 = `${oldEndL}${oldStartL}`
+
+                if (!seg.label || seg.label === defaultLabel1 || seg.label === defaultLabel2) {
+                  return { ...seg, label: `${startP.label}${endP.label}` }
+                }
+              }
+            }
+            return seg
+          })
+
+          return {
+            ...current,
+            points: nextPoints,
+            segments: nextSegments,
+          }
         }
         if (kind === 'segment') {
           return { ...current, segments: mapEntities(current.segments, id, (segment) => ({ ...segment, label: nextLabel })) }
@@ -2459,129 +2552,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     setDraftOperation(null)
   }, [manualDocument])
 
-  const flipPolygonVertical = useCallback(
-    (polygonId: string) => {
-      saveManualState()
-      commitManualDocument((current) => {
-        const polygon = current.polygons.find((p) => p.id === polygonId)
-        if (!polygon || polygon.pointIds.length === 0) return current
 
-        const pointPositions = resolvePointPositions(current)
-        const validPoints = polygon.pointIds.map(id => pointPositions[id]).filter(Boolean) as Vec3[]
-        if (validPoints.length === 0) return current
-
-        // Calculate Centroid G
-        const Gx = validPoints.reduce((sum, p) => sum + p[0], 0) / validPoints.length
-        const Gy = validPoints.reduce((sum, p) => sum + p[1], 0) / validPoints.length
-        const Gz = validPoints.reduce((sum, p) => sum + p[2], 0) / validPoints.length
-
-        const pointIdsSet = new Set(polygon.pointIds)
-
-        return {
-          ...current,
-          points: current.points.map((p) => {
-            if (!pointIdsSet.has(p.id)) return p
-
-            // If it is a free point, reflect its y coordinate across Gy
-            const isFreePoint = p.pointKind === 'free' || !p.pointKind
-            if (isFreePoint) {
-              const oldPos = pointPositions[p.id] ?? p.position
-              return {
-                ...p,
-                position: [oldPos[0], 2 * Gy - oldPos[1], oldPos[2]] as Vec3,
-              }
-            }
-
-            // If it is a dependent shape point, invert its parameters to reflect geometrically
-            if (p.pointKind === 'specialShapeVertex') {
-              if (p.shapeType === 'rectangle_C') {
-                return { ...p, t: -(p.t ?? 4) }
-              }
-              if (
-                p.shapeType === ('square_C' as any) ||
-                p.shapeType === ('square_D' as any) ||
-                p.shapeType === ('rightIsosceles_C' as any) ||
-                p.shapeType === ('equilateral_C' as any)
-              ) {
-                return { ...p, flip: -(p.flip ?? 1) }
-              }
-              if (p.shapeType === 'rhombus_C') {
-                return { ...p, t: -(p.t ?? (Math.PI / 3)) }
-              }
-            }
-            if (p.pointKind === 'perpendicularLinePoint' || p.pointKind === 'bisectorLinePoint') {
-              return { ...p, t: -(p.t ?? 4) }
-            }
-
-            return p
-          }),
-        }
-      })
-    },
-    [commitManualDocument, saveManualState],
-  )
-
-  const flipPolygonHorizontal = useCallback(
-    (polygonId: string) => {
-      saveManualState()
-      commitManualDocument((current) => {
-        const polygon = current.polygons.find((p) => p.id === polygonId)
-        if (!polygon || polygon.pointIds.length === 0) return current
-
-        const pointPositions = resolvePointPositions(current)
-        const validPoints = polygon.pointIds.map(id => pointPositions[id]).filter(Boolean) as Vec3[]
-        if (validPoints.length === 0) return current
-
-        // Calculate Centroid G
-        const Gx = validPoints.reduce((sum, p) => sum + p[0], 0) / validPoints.length
-        const Gy = validPoints.reduce((sum, p) => sum + p[1], 0) / validPoints.length
-        const Gz = validPoints.reduce((sum, p) => sum + p[2], 0) / validPoints.length
-
-        const pointIdsSet = new Set(polygon.pointIds)
-
-        return {
-          ...current,
-          points: current.points.map((p) => {
-            if (!pointIdsSet.has(p.id)) return p
-
-            // If it is a free point, reflect its x coordinate across Gx
-            const isFreePoint = p.pointKind === 'free' || !p.pointKind
-            if (isFreePoint) {
-              const oldPos = pointPositions[p.id] ?? p.position
-              return {
-                ...p,
-                position: [2 * Gx - oldPos[0], oldPos[1], oldPos[2]] as Vec3,
-              }
-            }
-
-            // If it is a dependent shape point, invert its parameters to reflect geometrically
-            if (p.pointKind === 'specialShapeVertex') {
-              if (p.shapeType === 'rectangle_C') {
-                return { ...p, t: -(p.t ?? 4) }
-              }
-              if (
-                p.shapeType === ('square_C' as any) ||
-                p.shapeType === ('square_D' as any) ||
-                p.shapeType === ('rightIsosceles_C' as any) ||
-                p.shapeType === ('equilateral_C' as any)
-              ) {
-                return { ...p, flip: -(p.flip ?? 1) }
-              }
-              if (p.shapeType === 'rhombus_C') {
-                return { ...p, t: -(p.t ?? (Math.PI / 3)) }
-              }
-            }
-            if (p.pointKind === 'perpendicularLinePoint' || p.pointKind === 'bisectorLinePoint') {
-              return { ...p, t: -(p.t ?? 4) }
-            }
-
-            return p
-          }),
-        }
-      })
-    },
-    [commitManualDocument, saveManualState],
-  )
 
   const contextValue = useMemo(
     () => ({
@@ -2627,6 +2598,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       resetManualDocument,
       activeTool,
       setActiveTool,
+      autoRevertToSelect,
+      setAutoRevertToSelect,
       manualSelection,
       setManualSelection,
       draftOperation,
@@ -2642,8 +2615,6 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updatePointPosition,
       updateSegmentLength,
       updateCircleRadius,
-      flipPolygonVertical,
-      flipPolygonHorizontal,
       createSegment,
       createPolygon,
       createBox,
@@ -2672,6 +2643,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       activeTool,
+      autoRevertToSelect,
       bitmaskVisibility,
       cameraControls,
       cancelManualDraft,
@@ -2723,8 +2695,6 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updatePointPosition,
       updateSegmentLength,
       updateCircleRadius,
-      flipPolygonVertical,
-      flipPolygonHorizontal,
       validation,
       workspaceMode,
       saveManualState,

@@ -452,6 +452,28 @@ export function resolvePointPositions(document: ManualDocument) {
   const pointMap = new Map(document.points.map((point) => [point.id, point]))
   const positions: Record<string, Vec3> = {}
 
+  
+  const resolveSegmentEndpoints = (segId: string, visiting: Set<string>): [Vec3, Vec3] | null => {
+    const seg = document.segments.find((s) => s.id === segId)
+    if (seg) {
+      return [resolvePoint(seg.startPointId, visiting), resolvePoint(seg.endPointId, visiting)]
+    }
+    if (segId.includes('_edge_')) {
+      const match = segId.match(/^(.*)_edge_(\d+)$/)
+      if (match) {
+        const polyId = match[1]
+        const edgeIdx = parseInt(match[2], 10)
+        const poly = document.polygons.find(p => p.id === polyId)
+        if (poly && poly.pointIds.length > edgeIdx) {
+          const p1Id = poly.pointIds[edgeIdx]
+          const p2Id = poly.pointIds[(edgeIdx + 1) % poly.pointIds.length]
+          return [resolvePoint(p1Id, visiting), resolvePoint(p2Id, visiting)]
+        }
+      }
+    }
+    return null
+  }
+
   const resolvePoint = (pointId: string, visiting = new Set<string>()): Vec3 => {
     if (positions[pointId]) return positions[pointId]
     const point = pointMap.get(pointId)
@@ -460,10 +482,9 @@ export function resolvePointPositions(document: ManualDocument) {
     visiting.add(pointId)
 
     if (point.pointKind === 'segment' && point.segmentId) {
-      const segment = document.segments.find((candidate) => candidate.id === point.segmentId)
-      if (segment) {
-        const start = resolvePoint(segment.startPointId, visiting)
-        const end = resolvePoint(segment.endPointId, visiting)
+      const endpoints = resolveSegmentEndpoints(point.segmentId, visiting)
+      if (endpoints) {
+        const [start, end] = endpoints
         positions[pointId] = lerpVec3(start, end, point.t ?? 0.5)
         visiting.delete(pointId)
         return positions[pointId]
@@ -479,13 +500,11 @@ export function resolvePointPositions(document: ManualDocument) {
     }
 
     if (point.pointKind === 'intersection' && point.sourceSegmentIds) {
-      const segA = document.segments.find((s) => s.id === point.sourceSegmentIds![0])
-      const segB = document.segments.find((s) => s.id === point.sourceSegmentIds![1])
-      if (segA && segB) {
-        const a1 = resolvePoint(segA.startPointId, visiting)
-        const a2 = resolvePoint(segA.endPointId, visiting)
-        const b1 = resolvePoint(segB.startPointId, visiting)
-        const b2 = resolvePoint(segB.endPointId, visiting)
+      const epsA = resolveSegmentEndpoints(point.sourceSegmentIds![0], visiting)
+      const epsB = resolveSegmentEndpoints(point.sourceSegmentIds![1], visiting)
+      if (epsA && epsB) {
+        const [a1, a2] = epsA
+        const [b1, b2] = epsB
         const ix = lineLineIntersection3D(a1, a2, b1, b2)
         if (ix) {
           positions[pointId] = ix
@@ -497,11 +516,10 @@ export function resolvePointPositions(document: ManualDocument) {
 
     if (point.pointKind === 'projection' && point.sourcePointId) {
       if (point.targetSegmentId) {
-        const seg = document.segments.find((s) => s.id === point.targetSegmentId)
-        if (seg) {
+        const eps = resolveSegmentEndpoints(point.targetSegmentId, visiting)
+        if (eps) {
           const src = resolvePoint(point.sourcePointId, visiting)
-          const ls = resolvePoint(seg.startPointId, visiting)
-          const le = resolvePoint(seg.endPointId, visiting)
+          const [ls, le] = eps
           positions[pointId] = projectPointOnLine(src, ls, le)
           visiting.delete(pointId)
           return positions[pointId]
@@ -549,10 +567,9 @@ export function resolvePointPositions(document: ManualDocument) {
     }
 
     if (point.pointKind === 'perpendicularLinePoint' && point.sourceSegmentId && point.anchorPointId) {
-      const seg = document.segments.find((s) => s.id === point.sourceSegmentId)
-      if (seg) {
-        const posStart = resolvePoint(seg.startPointId, visiting)
-        const posEnd = resolvePoint(seg.endPointId, visiting)
+      const eps = resolveSegmentEndpoints(point.sourceSegmentId, visiting)
+      if (eps) {
+        const [posStart, posEnd] = eps
         const anchor = resolvePoint(point.anchorPointId, visiting)
         const E = subVec3(posEnd, posStart)
         const D: Vec3 = [-E[1], E[0], 0]
@@ -717,10 +734,9 @@ export function resolvePointPositions(document: ManualDocument) {
     }
 
     if (point.pointKind === 'parallelLinePoint' && point.anchorPointId && point.sourceSegmentId) {
-      const seg = document.segments.find((s) => s.id === point.sourceSegmentId)
-      if (seg) {
-        const posStart = resolvePoint(seg.startPointId, visiting)
-        const posEnd = resolvePoint(seg.endPointId, visiting)
+      const eps = resolveSegmentEndpoints(point.sourceSegmentId, visiting)
+      if (eps) {
+        const [posStart, posEnd] = eps
         const anchor = resolvePoint(point.anchorPointId, visiting)
 
         const E = subVec3(posEnd, posStart)
