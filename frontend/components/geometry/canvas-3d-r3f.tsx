@@ -123,7 +123,7 @@ export function Canvas3D() {
     const endPos = new THREE.Vector3()
 
     if (axis === 'z') {
-      endPos.set(target.x, target.y, target.z + dist)
+      endPos.set(target.x, target.y - 0.001, target.z + dist)
     } else if (axis === 'y') {
       endPos.set(target.x, target.y - dist, target.z)
     } else {
@@ -139,11 +139,7 @@ export function Canvas3D() {
 
       cam.position.lerpVectors(startPos, endPos, t)
 
-      if (axis === 'z') {
-        cam.up.set(0, 1, 0)
-      } else {
-        cam.up.set(0, 0, 1)
-      }
+      cam.up.set(0, 0, 1)
 
       controls.update()
 

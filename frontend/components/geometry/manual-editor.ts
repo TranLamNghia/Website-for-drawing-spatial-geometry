@@ -57,6 +57,7 @@ export interface ManualPoint extends ManualEntityMeta {
     | 'centroid'
     | 'angleBisectorPoint'
     | 'parallelLinePoint'
+    | 'solidVertex'
   position: Vec3
   segmentId?: string
   t?: number
@@ -78,6 +79,8 @@ export interface ManualPoint extends ManualEntityMeta {
     | 'equilateral_C'
     | 'square_C'
     | 'square_D'
+  solidId?: string
+  vertexIndex?: number
   flip?: number
 }
 
@@ -106,7 +109,7 @@ export interface ManualSolid extends ManualEntityMeta {
   solidType: 'box' | 'pyramid' | 'prism' | 'sphere' | 'cone' | 'cylinder'
   height?: number
   radius?: number
-  cornerPointIds?: [string, string]
+  cornerPointIds?: [string, string, string]
   basePolygonId?: string
   baseCircleId?: string
   centerPointId?: string
@@ -480,6 +483,67 @@ export function resolvePointPositions(document: ManualDocument) {
     if (!point) return [0, 0, 0]
     if (visiting.has(pointId)) return cloneVec3(point.position)
     visiting.add(pointId)
+
+    if (point.pointKind === 'solidVertex' && point.solidId && point.vertexIndex !== undefined) {
+      const solid = document.solids.find((s) => s.id === point.solidId)
+      if (solid) {
+        if (solid.solidType === 'box' && solid.cornerPointIds) {
+          const pA = resolvePoint(solid.cornerPointIds[0], visiting)
+          const pB = resolvePoint(solid.cornerPointIds[1], visiting)
+          const pC = solid.cornerPointIds[2] ? resolvePoint(solid.cornerPointIds[2], visiting) : pB
+          const baseA: Vec3 = [pA[0], pA[1], pA[2]]
+          const baseB: Vec3 = [pB[0], pB[1], pB[2]]
+          const baseC: Vec3 = [pC[0], pC[1], pC[2]]
+          const baseD: Vec3 = [pA[0] + pC[0] - pB[0], pA[1] + pC[1] - pB[1], pA[2] + pC[2] - pB[2]]
+          const h = solid.height ?? 4
+          const pts = [
+            baseA, baseB, baseC, baseD,
+            [baseA[0], baseA[1], baseA[2] + h],
+            [baseB[0], baseB[1], baseB[2] + h],
+            [baseC[0], baseC[1], baseC[2] + h],
+            [baseD[0], baseD[1], baseD[2] + h],
+          ]
+          positions[pointId] = pts[point.vertexIndex] as Vec3
+          visiting.delete(pointId)
+          return positions[pointId]
+        } else if (solid.solidType === 'pyramid' && solid.basePolygonId) {
+          const basePoly = document.polygons.find((p) => p.id === solid.basePolygonId)
+          if (basePoly) {
+            const basePoints = basePoly.pointIds.map((id) => resolvePoint(id, visiting))
+            const c = centroid(basePoints)
+            if (point.vertexIndex === 0) {
+              const hasApex = !!(solid.apexPointId && pointMap.has(solid.apexPointId))
+              const normal = getPolygonNormal(basePoints)
+              positions[pointId] = hasApex
+                ? resolvePoint(solid.apexPointId!, visiting)
+                : addVec3(c, scaleVec3(normal, solid.height ?? 4))
+            } else {
+              positions[pointId] = basePoints[point.vertexIndex - 1] as Vec3
+            }
+            visiting.delete(pointId)
+            return positions[pointId]
+          }
+        } else if (solid.solidType === 'prism' && solid.basePolygonId) {
+          const basePoly = document.polygons.find((p) => p.id === solid.basePolygonId)
+          if (basePoly) {
+            const basePoints = basePoly.pointIds.map((id) => resolvePoint(id, visiting))
+            const n = basePoints.length
+            if (point.vertexIndex < n) {
+              positions[pointId] = basePoints[point.vertexIndex] as Vec3
+            } else {
+              const hasTop = !!(solid.topPointId && pointMap.has(solid.topPointId))
+              const normal = getPolygonNormal(basePoints)
+              const topOffset = hasTop
+                ? subVec3(resolvePoint(solid.topPointId!, visiting), basePoints[0])
+                : scaleVec3(normal, solid.height ?? 4)
+              positions[pointId] = addVec3(basePoints[point.vertexIndex - n], topOffset) as Vec3
+            }
+            visiting.delete(pointId)
+            return positions[pointId]
+          }
+        }
+      }
+    }
 
     if (point.pointKind === 'segment' && point.segmentId) {
       const endpoints = resolveSegmentEndpoints(point.segmentId, visiting)
@@ -994,28 +1058,37 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
 
   document.solids.forEach((solid) => {
     if (solid.solidType === 'box' && solid.cornerPointIds) {
-      const first = pointPositions[solid.cornerPointIds[0]]
-      const third = pointPositions[solid.cornerPointIds[1]]
-      const firstPoint = pointMap.get(solid.cornerPointIds[0])
-      const thirdPoint = pointMap.get(solid.cornerPointIds[1])
-      if (!first || !third || !firstPoint || !thirdPoint) return
+      const posA = pointPositions[solid.cornerPointIds[0]]
+      const posB = pointPositions[solid.cornerPointIds[1]]
+      const posC = solid.cornerPointIds[2] ? pointPositions[solid.cornerPointIds[2]] : posB
+      
+      const ptA = pointMap.get(solid.cornerPointIds[0])
+      const ptB = pointMap.get(solid.cornerPointIds[1])
+      const ptC = solid.cornerPointIds[2] ? pointMap.get(solid.cornerPointIds[2]) : ptB
 
-      const baseA: Vec3 = [first[0], first[1], 0]
-      const baseB: Vec3 = [third[0], first[1], 0]
-      const baseC: Vec3 = [third[0], third[1], 0]
-      const baseD: Vec3 = [first[0], third[1], 0]
-      const topA: Vec3 = [baseA[0], baseA[1], solid.height ?? 0]
-      const topB: Vec3 = [baseB[0], baseB[1], solid.height ?? 0]
-      const topC: Vec3 = [baseC[0], baseC[1], solid.height ?? 0]
-      const topD: Vec3 = [baseD[0], baseD[1], solid.height ?? 0]
-      const labelA = firstPoint.label
-      let labelB = `${solid.label}B`
+      if (!posA || !posB || !posC || !ptA || !ptB || !ptC) return
+
+      const baseA: Vec3 = [posA[0], posA[1], posA[2]]
+      const baseB: Vec3 = [posB[0], posB[1], posB[2]]
+      const baseC: Vec3 = [posC[0], posC[1], posC[2]]
+      const baseD: Vec3 = [posA[0] + posC[0] - posB[0], posA[1] + posC[1] - posB[1], posA[2] + posC[2] - posB[2]]
+      
+      const h = solid.height ?? 4
+      const topA: Vec3 = [baseA[0], baseA[1], baseA[2] + h]
+      const topB: Vec3 = [baseB[0], baseB[1], baseB[2] + h]
+      const topC: Vec3 = [baseC[0], baseC[1], baseC[2] + h]
+      const topD: Vec3 = [baseD[0], baseD[1], baseD[2] + h]
+
+      const labelA = ptA.label
+      let labelB = ptB.label
+      let labelC = ptC.label
       let labelD = `${solid.label}D`
 
       // Smart distinct label assignment to avoid duplicates and preserve alphabet order
       const usedLabelsInDoc = new Set(document.points.map((p) => p.label))
       usedLabelsInDoc.add(labelA)
-      usedLabelsInDoc.add(thirdPoint.label)
+      usedLabelsInDoc.add(labelB)
+      usedLabelsInDoc.add(labelC)
 
       const getNextAvailableLetter = () => {
         for (let pass = 0; pass < 10; pass += 1) {
@@ -1030,48 +1103,24 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         return `P_${crypto.randomUUID().slice(0, 4)}`
       }
 
-      const codeA = labelA.charCodeAt(0)
-      if (labelA.length === 1 && codeA >= 65 && codeA <= 90) {
-        const candidateB = String.fromCharCode(((codeA - 65 + 1) % 26) + 65)
-        const candidateD = String.fromCharCode(((codeA - 65 + 3) % 26) + 65)
-
-        if (candidateB === thirdPoint.label || document.points.some((p) => p.label === candidateB)) {
-          labelB = getNextAvailableLetter()
-        } else {
-          labelB = candidateB
-          usedLabelsInDoc.add(labelB)
-        }
-
-        if (candidateD === thirdPoint.label || document.points.some((p) => p.label === candidateD)) {
-          labelD = getNextAvailableLetter()
-        } else {
-          labelD = candidateD
-          usedLabelsInDoc.add(labelD)
-        }
+      if (labelA === 'A' && labelB === 'B' && labelC === 'C' && !usedLabelsInDoc.has('D')) {
+        labelD = 'D'
+        usedLabelsInDoc.add('D')
       } else {
-        labelB = getNextAvailableLetter()
         labelD = getNextAvailableLetter()
       }
 
-      const baseLabels = [labelA, labelB, thirdPoint.label, labelD]
+      const baseLabels = [labelA, labelB, labelC, labelD]
       const topLabels = baseLabels.map((label) => `${label}'`)
       const allPoints = [baseA, baseB, baseC, baseD, topA, topB, topC, topD]
       const allLabels = [...baseLabels, ...topLabels]
 
       allPoints.forEach((point, index) => pushGeometryPoint(geometry, allLabels[index], point))
 
+      // We no longer push to displayPoints here because box vertices are stored in document.points
+      // and pushed in document.points.forEach with their correct generated flag.
       allPoints.forEach((point, index) => {
-        const isCorner = index === 0 || index === 2
-        displayPoints.push({
-          id: isCorner ? (index === 0 ? solid.cornerPointIds![0] : solid.cornerPointIds![1]) : `${solid.id}_point_${index}`,
-          label: allLabels[index],
-          position: point,
-          sourceKind: isCorner ? 'point' : 'solid',
-          sourceId: isCorner ? (index === 0 ? solid.cornerPointIds![0] : solid.cornerPointIds![1]) : solid.id,
-          selectable: true,
-          generated: !isCorner,
-          visible: solid.visible,
-        })
+        // Just push to geometry to ensure they exist for drawing edges/faces
       })
 
       const edgePairs = [

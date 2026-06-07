@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Circle, Pentagon, PencilRuler, Pyramid, Save, Trash2, Triangle, Square } from 'lucide-react'
+import { Box, Circle, Pentagon, ChevronRight, PencilRuler, Pyramid, Save, Trash2, Triangle, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useProjectStore } from '@/hooks/use-project-store'
@@ -11,6 +11,7 @@ import {
   ManualPolygon,
   ManualSegment,
   ManualSolid,
+  ManualCircle,
   serializeManualProject,
 } from './manual-editor'
 
@@ -183,6 +184,8 @@ function ObjectRow({
   selected,
   onSelect,
   onDelete,
+  onUpdateHeight,
+  heightVal,
 }: {
   typeLabel: string
   icon: React.ReactNode
@@ -191,7 +194,24 @@ function ObjectRow({
   selected: boolean
   onSelect: () => void
   onDelete: () => void
+  onUpdateHeight?: (newHeight: number) => void
+  heightVal?: number
 }) {
+  const [heightDraft, setHeightDraft] = useState(heightVal ? heightVal.toString() : '')
+
+  useEffect(() => {
+    if (heightVal !== undefined) setHeightDraft(heightVal.toString())
+  }, [heightVal])
+
+  const commitHeight = () => {
+    const numeric = Number(heightDraft)
+    if (Number.isFinite(numeric) && numeric > 0 && onUpdateHeight && heightVal !== undefined) {
+      onUpdateHeight(numeric)
+    }
+  }
+
+  const isEditable = onUpdateHeight !== undefined && heightVal !== undefined
+
   return (
     <div
       className={`grid grid-cols-[80px_88px_minmax(0,1fr)_36px] items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-all ${
@@ -227,6 +247,21 @@ function ObjectRow({
       >
         <Trash2 size={14} />
       </Button>
+
+      {isEditable && (
+        <div className="col-span-full mt-1.5 flex flex-wrap items-center gap-2 rounded bg-background/50 p-2 shadow-inner">
+          <label className="text-[11px] font-medium text-muted-foreground">Chi\u1ec1u cao:</label>
+          <input
+            type="number"
+            step="0.5"
+            className="h-6 w-16 rounded border bg-background px-1.5 text-[11px] font-semibold tracking-tight outline-none focus:border-primary/50"
+            value={heightDraft}
+            onChange={(e) => setHeightDraft(e.target.value)}
+            onBlur={commitHeight}
+            onKeyDown={(e) => e.key === 'Enter' && commitHeight()}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -478,6 +513,7 @@ export function ManualRightPanel() {
     updatePointPosition,
     renameManualEntity,
     updateSegmentLength,
+    updateSolidHeight,
     updateCircleRadius,
     showAxes,
     showGrid,
@@ -485,8 +521,15 @@ export function ManualRightPanel() {
   } = useGeometry()
   const { addProject } = useProjectStore()
 
-  const [projectName, setProjectName] = useState('B\u1ea3n v\u1ebd t\u1ef1 v\u1ebd')
+  const [projectName, setProjectName] = useState('Bản vẽ tự vẽ')
   const [isSaving, setIsSaving] = useState(false)
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    points: true,
+    segments: true,
+    polygons: true,
+    solids: true,
+  })
 
   const pointLabelMap = useMemo(() => {
     return Object.fromEntries(
@@ -566,15 +609,22 @@ export function ManualRightPanel() {
               {'Hi\u1ec3n th\u1ecb lo\u1ea1i \u0111\u1ed1i t\u01b0\u1ee3ng, t\u00ean v\u00e0 d\u1eef li\u1ec7u h\u00ecnh h\u1ecdc.'}
             </p>
           </div>
-          <div className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground">
-            {totalEntities} {'m\u1ee5c'}
-          </div>
         </div>
       </div>
 
       <div className="mt-4 flex-1 overflow-y-auto pr-1">
-        <div className="space-y-2.5">
-          {manualDocument.points.filter(p => p.visible !== false).map((point) => {
+        <div className="space-y-3">
+          <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
+            <button
+              onClick={() => setOpenGroups({ ...openGroups, points: !openGroups.points })}
+              className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
+            >
+              <span>Điểm</span>
+              <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.points ? 'rotate-90' : ''}`} />
+            </button>
+            {openGroups.points && (
+              <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
+                {manualDocument.points.filter(p => p.visible !== false).map((point) => {
             const coords = manualDerived.pointPositions[point.id]
             if (!coords) return null
 
@@ -591,8 +641,21 @@ export function ManualRightPanel() {
               />
             )
           })}
+              </div>
+            )}
+          </div>
 
-          {manualDocument.segments.map((segment: ManualSegment) => {
+          <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
+            <button
+              onClick={() => setOpenGroups({ ...openGroups, segments: !openGroups.segments })}
+              className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
+            >
+              <span>Đoạn thẳng và đường thẳng</span>
+              <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.segments ? 'rotate-90' : ''}`} />
+            </button>
+            {openGroups.segments && (
+              <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
+                {manualDocument.segments.map((segment: ManualSegment) => {
             let typeLabel = '\u0110o\u1ea1n'
             let values = [
               pointLabelMap[segment.startPointId] ?? segment.startPointId,
@@ -661,8 +724,21 @@ export function ManualRightPanel() {
               />
             )
           })}
+              </div>
+            )}
+          </div>
 
-          {manualDocument.polygons.map((polygon: ManualPolygon) => {
+          <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
+            <button
+              onClick={() => setOpenGroups({ ...openGroups, polygons: !openGroups.polygons })}
+              className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
+            >
+              <span>Mặt phẳng</span>
+              <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.polygons ? 'rotate-90' : ''}`} />
+            </button>
+            {openGroups.polygons && (
+              <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
+                {manualDocument.polygons.map((polygon: ManualPolygon) => {
             const numPoints = polygon.pointIds.length
             const typeLabel = numPoints === 3 ? 'Tam giác' : numPoints === 4 ? 'Tứ giác' : 'Đa giác'
             const IconComponent = numPoints === 3 ? Triangle : numPoints === 4 ? Square : Pentagon
@@ -680,8 +756,21 @@ export function ManualRightPanel() {
               />
             )
           })}
+              </div>
+            )}
+          </div>
 
-          {manualDocument.solids.map((solid: ManualSolid) => (
+          <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
+            <button
+              onClick={() => setOpenGroups({ ...openGroups, solids: !openGroups.solids })}
+              className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
+            >
+              <span>Khối</span>
+              <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.solids ? 'rotate-90' : ''}`} />
+            </button>
+            {openGroups.solids && (
+              <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
+                {manualDocument.solids.map((solid: ManualSolid) => (
             <ObjectRow
               key={solid.id}
               typeLabel={getSolidDisplayName(solid, manualDerived.pointPositions)}
@@ -691,16 +780,18 @@ export function ManualRightPanel() {
               selected={manualSelection?.kind === 'solid' && manualSelection.id === solid.id}
               onSelect={() => setManualSelection({ kind: 'solid', id: solid.id })}
               onDelete={() => removeManualEntity('solid', solid.id)}
+              onUpdateHeight={solid.height !== undefined ? (newH) => updateSolidHeight(solid.id, newH) : undefined}
+              heightVal={solid.height}
             />
           ))}
 
-          {manualDocument.circles?.map((circle) => {
+          {manualDocument.circles?.map((circle: ManualCircle) => {
             const centerLabel = circle.centerPointId ? pointLabelMap[circle.centerPointId] ?? '?' : '?'
             const radiusPointLabel = circle.radiusPointId ? pointLabelMap[circle.radiusPointId] ?? '?' : '?'
             let desc = ''
             let isEditable = false
             if (circle.circleKind === 'threePoints') {
-              const labels = circle.sourcePointIds?.map((pid) => pointLabelMap[pid] ?? '?') ?? []
+              const labels = circle.sourcePointIds?.map((pid: string) => pointLabelMap[pid] ?? '?') ?? []
               desc = `Qua ${labels.join(', ')}`
             } else if (circle.circleKind === 'centerRadius') {
               desc = `Tâm ${centerLabel}`
@@ -721,6 +812,9 @@ export function ManualRightPanel() {
               />
             )
           })}
+              </div>
+            )}
+          </div>
 
           {totalEntities === 0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-background/75 px-6 py-12 text-center">

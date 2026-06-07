@@ -265,7 +265,7 @@ export function ManualCanvas3D() {
     const endPos = new THREE.Vector3()
 
     if (axis === 'z') {
-      endPos.set(target.x, target.y, target.z + dist)
+      endPos.set(target.x, target.y - 0.001, target.z + dist)
     } else if (axis === 'y') {
       endPos.set(target.x, target.y - dist, target.z)
     } else {
@@ -281,11 +281,7 @@ export function ManualCanvas3D() {
 
       cam.position.lerpVectors(startPos, endPos, t)
 
-      if (axis === 'z') {
-        cam.up.set(0, 1, 0)
-      } else {
-        cam.up.set(0, 0, 1)
-      }
+      cam.up.set(0, 0, 1)
 
       controls.update()
 
@@ -434,6 +430,18 @@ export function ManualCanvas3D() {
     )
     raycasterRef.current.setFromCamera(pointer, camera)
     const intersections = raycasterRef.current.intersectObjects(dynamicGroupRef.current.children, true)
+    
+    // Prioritize points
+    for (const intersection of intersections) {
+      const data = intersection.object.userData?.entity as InteractiveHit | undefined
+      if (data?.kind === 'point') return data
+    }
+    // Then segments
+    for (const intersection of intersections) {
+      const data = intersection.object.userData?.entity as InteractiveHit | undefined
+      if (data?.kind === 'segment') return data
+    }
+    // Then polygons/solids/circles
     for (const intersection of intersections) {
       const data = intersection.object.userData?.entity as InteractiveHit | undefined
       if (data) return data
@@ -1238,15 +1246,15 @@ export function ManualCanvas3D() {
         const materializedPointId = createPointFromTarget(snapTarget, fallbackPosition)
         if (!materializedPointId) return
         const currentIds = draftOperation?.tool === 'box' ? [...(draftOperation.pointIds ?? [])] : []
-        if (currentIds.length < 2) currentIds.push(materializedPointId)
-        if (currentIds.length === 2) {
+        if (currentIds.length < 3) currentIds.push(materializedPointId)
+        if (currentIds.length === 3) {
           const height = draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4
-          createBox([currentIds[0], currentIds[1]], height)
+          createBox([currentIds[0], currentIds[1], currentIds[2]], height)
           autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'box', pointIds: [], height })
         } else {
           setDraftOperation({
             tool: 'box',
-            pointIds: currentIds.slice(0, 2),
+            pointIds: currentIds.slice(0, 3),
             height: draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4,
           })
         }
@@ -2090,15 +2098,15 @@ export function ManualCanvas3D() {
           }
         } else if (activeTool === 'box') {
           const currentIds = draftOperation?.tool === 'box' ? [...(draftOperation.pointIds ?? [])] : []
-          if (currentIds.length < 2) currentIds.push(creatingPointId)
-          if (currentIds.length === 2) {
+          if (currentIds.length < 3) currentIds.push(creatingPointId)
+          if (currentIds.length === 3) {
             const height = draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4
-            createBox([currentIds[0], currentIds[1]], height)
+            createBox([currentIds[0], currentIds[1], currentIds[2]], height)
             autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'box', pointIds: [], height })
           } else {
             setDraftOperation({
               tool: 'box',
-              pointIds: currentIds.slice(0, 2),
+              pointIds: currentIds.slice(0, 3),
               height: draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4,
             })
           }
@@ -2225,8 +2233,8 @@ export function ManualCanvas3D() {
         createPolygon(draftOperation.pointIds ?? [])
         autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'polygon', pointIds: [] })
       }
-      if (draftOperation?.tool === 'box' && (draftOperation.pointIds?.length ?? 0) === 2 && draftOperation.height && draftOperation.height > 0) {
-        createBox([draftOperation.pointIds![0], draftOperation.pointIds![1]], draftOperation.height)
+      if (draftOperation?.tool === 'box' && (draftOperation.pointIds?.length ?? 0) === 3 && draftOperation.height && draftOperation.height > 0) {
+        createBox([draftOperation.pointIds![0], draftOperation.pointIds![1], draftOperation.pointIds![2]], draftOperation.height)
         autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'box', pointIds: [], height: draftOperation.height })
       }
       if ((draftOperation?.tool === 'pyramid' || draftOperation?.tool === 'prism') && draftOperation.basePolygonId && draftOperation.height && draftOperation.height > 0) {

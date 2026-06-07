@@ -181,6 +181,7 @@ interface GeometryContextType {
   createPointFromTarget: (target: ManualSnapTarget | null, fallback: Vec3) => string | null
   updatePointPosition: (pointId: string, position: Vec3, target?: ManualSnapTarget | null) => void
   updateSegmentLength: (segmentId: string, newLength: number) => void
+  updateSolidHeight: (solidId: string, newHeight: number) => void
   updateCircleRadius: (circleId: string, newRadius: number) => void
   saveManualState: () => void
   createMidpoint: (pointIdA: string, pointIdB: string) => string | null
@@ -193,7 +194,7 @@ interface GeometryContextType {
   createPerpendicularLine: (pointId: string, segmentId: string) => string | null
   createSegment: (startPointId: string, endPointId: string) => string | null
   createPolygon: (pointIds: string[]) => string | null
-  createBox: (cornerPointIds: [string, string], height: number) => string | null
+  createBox: (cornerPointIds: [string, string, string], height: number) => string | null
   createPyramid: (basePolygonId: string, height: number, apexPointId?: string) => string | null
   createPrism: (basePolygonId: string, height: number, topPointId?: string) => string | null
   createSphere: (centerPointId: string, radius: number, radiusPointId?: string) => string | null
@@ -469,7 +470,7 @@ function deduplicateDocumentPoints(current: ManualDocument, next: ManualDocument
 
   result.solids = result.solids.map(solid => {
     if (solid.cornerPointIds) {
-      solid.cornerPointIds = [replaceId(solid.cornerPointIds[0]), replaceId(solid.cornerPointIds[1])]
+      solid.cornerPointIds = solid.cornerPointIds.map(replaceId) as [string, string, string]
     }
     if (solid.centerPointId) solid.centerPointId = replaceId(solid.centerPointId)
     if (solid.apexPointId) solid.apexPointId = replaceId(solid.apexPointId)
@@ -1008,6 +1009,26 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
+        if (point.pointKind === 'solidVertex' && point.solidId && point.vertexIndex !== undefined) {
+          const solid = current.solids.find((s) => s.id === point.solidId)
+          if (solid && solid.solidType === 'box' && solid.cornerPointIds) {
+            if (point.vertexIndex >= 4) {
+              const resolved = resolvePointPositions(current)
+              const oldResolved = resolved[pointId]
+              if (oldResolved) {
+                const deltaZ = position[2] - oldResolved[2]
+                const newHeight = Math.max(0.1, (solid.height ?? 4) + deltaZ)
+                return {
+                  ...current,
+                  solids: current.solids.map((s) => (s.id === solid.id ? { ...s, height: newHeight } : s)),
+                }
+              }
+            } else {
+              return current
+            }
+          }
+        }
+
         const nextPosition = target?.position ?? position
         return {
           ...current,
@@ -1017,6 +1038,16 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           })),
         }
       }, true)
+    },
+    [commitManualDocument],
+  )
+
+  const updateSolidHeight = useCallback(
+    (solidId: string, newHeight: number) => {
+      commitManualDocument((current) => {
+        const nextSolids = current.solids.map((s) => (s.id === solidId ? { ...s, height: newHeight } : s))
+        return { ...current, solids: nextSolids }
+      })
     },
     [commitManualDocument],
   )
@@ -2162,26 +2193,111 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   )
 
   const createBox = useCallback(
-    (cornerPointIds: [string, string], height: number) => {
+    (cornerPointIds: [string, string, string], height: number) => {
       if (height <= 0) return null
       const solidId = createEntityId('solid')
-      const solid: ManualSolid = {
-        id: solidId,
-        label: `Hộp ${manualDocument.solids.length + 1}`,
-        entityType: 'solid',
-        solidType: 'box',
-        height,
-        cornerPointIds,
-        createdByTool: 'box',
-        dependsOn: [...cornerPointIds],
-        locked: false,
-        visible: true,
-        selectable: true,
-      }
-      commitManualDocument((current) => ({
-        ...current,
-        solids: [...current.solids, solid],
-      }))
+
+      commitManualDocument((current) => {
+        const p0 = current.points.find(p => p.id === cornerPointIds[0])
+        const p1 = current.points.find(p => p.id === cornerPointIds[1])
+        const p2 = current.points.find(p => p.id === cornerPointIds[2])
+        if (!p0 || !p1 || !p2) return current
+
+        const solid: ManualSolid = {
+          id: solidId,
+          label: `Hộp ${current.solids.length + 1}`,
+          entityType: 'solid',
+          solidType: 'box',
+          height,
+          cornerPointIds,
+          createdByTool: 'box',
+          dependsOn: [...cornerPointIds],
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+
+        const newPoints: ManualPoint[] = []
+        const baseA = p0.label
+        const baseB = p1.label
+        const baseC = p2.label
+        
+        const usedLabels = new Set(current.points.map(p => p.label))
+        usedLabels.add(baseA)
+        usedLabels.add(baseB)
+        usedLabels.add(baseC)
+        const getNextLabel = () => {
+           for (let i = 0; i < 26; i++) {
+              const ch = String.fromCharCode(65 + i)
+              if (!usedLabels.has(ch) && ch !== 'S' && ch !== 'I' && ch !== 'O') {
+                 usedLabels.add(ch)
+                 return ch
+              }
+           }
+           const next = `P${usedLabels.size}`
+           usedLabels.add(next)
+           return next
+        }
+
+        let baseD = 'D'
+        if (baseA === 'A' && baseB === 'B' && baseC === 'C' && !usedLabels.has('D')) {
+           usedLabels.add('D')
+        } else {
+           baseD = getNextLabel()
+        }
+
+        const pts = [baseA, baseB, baseC, baseD, `${baseA}'`, `${baseB}'`, `${baseC}'`, `${baseD}'`]
+        const ptIds = [p0.id, p1.id, p2.id, '', '', '', '', '']
+
+        for (let i = 0; i < 8; i++) {
+          if (i !== 0 && i !== 1 && i !== 2) {
+            const pid = createEntityId('point')
+            ptIds[i] = pid
+            newPoints.push({
+              id: pid,
+              label: pts[i],
+              entityType: 'point',
+              pointKind: 'solidVertex',
+              solidId: solid.id,
+              vertexIndex: i,
+              position: [0, 0, 0], // calculated by resolvePointPositions
+              createdByTool: 'box',
+              dependsOn: [solid.id],
+              locked: false,
+              visible: true,
+              selectable: true,
+            })
+          }
+        }
+
+        const E = subVec3(p1.position, p0.position)
+        const D_vec: Vec3 = [-E[1], E[0], 0]
+        const lenD = Math.hypot(D_vec[0], D_vec[1])
+        const D_norm = lenD > 1e-9 ? scaleVec3(D_vec, 1 / lenD) : ([0, 1, 0] as Vec3)
+        const proj = subVec3(p2.position, p1.position)
+        const tVal = dotVec3(proj, D_norm)
+
+        const pointsList = current.points.map((p) => {
+          if (p.id === p2.id) {
+            return {
+              ...p,
+              pointKind: 'specialShapeVertex' as const,
+              shapeType: 'rectangle_C' as any,
+              sourcePointIds: [p0.id, p1.id],
+              dependsOn: [p0.id, p1.id],
+              t: tVal,
+              locked: false,
+            } as ManualPoint
+          }
+          return p
+        })
+
+        return {
+          ...current,
+          solids: [...current.solids, solid],
+          points: [...pointsList, ...newPoints],
+        }
+      })
       setManualSelection({ kind: 'solid', id: solidId })
       return solidId
     },
@@ -2614,6 +2730,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       createPointFromTarget,
       updatePointPosition,
       updateSegmentLength,
+      updateSolidHeight,
       updateCircleRadius,
       createSegment,
       createPolygon,
@@ -2694,6 +2811,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       undoStack.length,
       updatePointPosition,
       updateSegmentLength,
+      updateSolidHeight,
       updateCircleRadius,
       validation,
       workspaceMode,
