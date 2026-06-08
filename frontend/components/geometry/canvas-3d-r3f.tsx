@@ -4,9 +4,10 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
+import { ViewHelper } from 'three/examples/jsm/helpers/ViewHelper.js'
 import { useTheme } from 'next-themes'
 import { useGeometry } from './geometry-context'
-import { ZoomIn, ZoomOut, Layers, Crosshair, Eye, RefreshCcw, Scissors, Expand, Compass } from 'lucide-react'
+import { Layers, Crosshair, Eye, RefreshCcw, Scissors, Expand, Compass } from 'lucide-react'
 
 function getGeoColors(isDarkTheme: boolean) {
   if (isDarkTheme) {
@@ -94,18 +95,14 @@ export function Canvas3D() {
   const controlsRef = useRef<OrbitControls | null>(null)
   const dynamicGroupRef = useRef<THREE.Group>(new THREE.Group())
 
-  // Navigation Gizmo SVG Refs
-  const gizmoXLineRef = useRef<SVGLineElement>(null)
-  const gizmoYLineRef = useRef<SVGLineElement>(null)
-  const gizmoZLineRef = useRef<SVGLineElement>(null)
-  const gizmoXGroupRef = useRef<SVGGElement>(null)
-  const gizmoYGroupRef = useRef<SVGGElement>(null)
-  const gizmoZGroupRef = useRef<SVGGElement>(null)
+  // Navigation Gizmo (Three.js ViewHelper)
+  const viewHelperRef = useRef<ViewHelper | null>(null)
+  const viewHelperTimerRef = useRef<THREE.Timer | null>(null)
 
-  const stateRefs = useRef({ showAxes, showGrid })
+  const stateRefs = useRef({ showAxes, showGrid, showGizmo })
   useEffect(() => {
-    stateRefs.current = { showAxes, showGrid }
-  }, [showAxes, showGrid])
+    stateRefs.current = { showAxes, showGrid, showGizmo }
+  }, [showAxes, showGrid, showGizmo])
 
   // Smoothly aligns camera to specific axes (X, Y, Z) with animation transition
   const handleAlignView = useCallback((axis: 'x' | 'y' | 'z') => {
@@ -204,6 +201,48 @@ export function Canvas3D() {
     controls.maxDistance = 150.0
     controls.target.set(0, 0, 0)
     controlsRef.current = controls
+
+    const viewHelper = new ViewHelper(camera, renderer.domElement)
+    // Position at the bottom right where zoom controls used to be
+    viewHelper.location = { top: null, right: 24, bottom: 24, left: null } as any
+    viewHelper.setLabels('x', 'y', 'z')
+    viewHelper.setLabelStyle('bold 24px sans-serif', '#ffffff')
+    
+    // Scale the entire gizmo up by 1.3x
+    viewHelper.scale.set(1.3, 1.3, 1.3)
+    
+    // Hide the black dots (negative axes sprites)
+    viewHelper.children.forEach((child) => {
+      if (child.userData.type && child.userData.type.startsWith('neg')) {
+        child.visible = false
+      }
+    })
+
+    // Create a perfectly circular background texture using Canvas API
+    const canvas = document.createElement('canvas')
+    canvas.width = 128
+    canvas.height = 128
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      ctx.beginPath()
+      ctx.arc(64, 64, 64, 0, 2 * Math.PI)
+      ctx.fillStyle = 'rgba(0,0,0,1)'
+      ctx.fill()
+    }
+    const bgTexture = new THREE.CanvasTexture(canvas)
+    const bgMat = new THREE.SpriteMaterial({ map: bgTexture, color: 0x000000, transparent: true, opacity: 0.35, depthTest: false })
+    const bgSprite = new THREE.Sprite(bgMat)
+    // Scale background to 2.6.
+    // World scale = 1.3 * 2.6 = 3.38 (radius 1.69).
+    // Radius 1.69 > 1.3 (label distance), so it encapsulates labels without clipping the [-2, 2] frustum!
+    bgSprite.scale.set(2.6, 2.6, 1)
+    bgSprite.center.set(0.5, 0.5) // Center the origin
+    bgSprite.renderOrder = -1 // Render behind the axes
+    viewHelper.add(bgSprite)
+
+    viewHelperRef.current = viewHelper
+    viewHelperTimerRef.current = new THREE.Timer()
+    viewHelperTimerRef.current.connect(document)
 
     // Ambient Lighting
     scene.add(new THREE.AmbientLight(0xffffff, 1.2))
@@ -461,84 +500,24 @@ export function Canvas3D() {
       basePlane.scale.set(gridRadius / 120, gridRadius / 120, 1)
       axesGroup.visible = stateRefs.current.showAxes
 
-      // Update Orientation Gizmo SVG lines and positions based on NDC projection for 100% canvas alignment
-      if (cameraRef.current) {
-        const cam = cameraRef.current
-        
-        // Extract camera rotation to transform world axes to camera space
-        const rotationMatrix = new THREE.Matrix4().extractRotation(cam.matrixWorldInverse)
-        const xAxis = new THREE.Vector3(1, 0, 0).applyMatrix4(rotationMatrix)
-        const yAxis = new THREE.Vector3(0, 1, 0).applyMatrix4(rotationMatrix)
-        const zAxis = new THREE.Vector3(0, 0, 1).applyMatrix4(rotationMatrix)
-
-        // Calculate 2D directions on screen. SVG Y is down, so invert the camera-space Y.
-        const dirX = new THREE.Vector2(xAxis.x, -xAxis.y)
-        const dirY = new THREE.Vector2(yAxis.x, -yAxis.y)
-        const dirZ = new THREE.Vector2(zAxis.x, -zAxis.y)
-        
-        if (dirX.lengthSq() > 0.001) dirX.normalize()
-        if (dirY.lengthSq() > 0.001) dirY.normalize()
-        if (dirZ.lengthSq() > 0.001) dirZ.normalize()
-
-        const cx = 45
-        const cy = 45
-        const r = 26
-
-        // Camera space looks down -Z. Z-depth determines distance relative to the camera.
-        const depthX = xAxis.z
-        const depthY = yAxis.z
-        const depthZ = zAxis.z
-
-        const scaleX = 1 + Math.max(-0.6, Math.min(0.6, depthX)) * 0.25
-        const scaleY = 1 + Math.max(-0.6, Math.min(0.6, depthY)) * 0.25
-        const scaleZ = 1 + Math.max(-0.6, Math.min(0.6, depthZ)) * 0.25
-
-        const opX = depthX < -0.3 ? 0.35 : (depthX < 0 ? 0.65 : 1)
-        const opY = depthY < -0.3 ? 0.35 : (depthY < 0 ? 0.65 : 1)
-        const opZ = depthZ < -0.3 ? 0.35 : (depthZ < 0 ? 0.65 : 1)
-
-        // X Axis (Red)
-        const x2 = cx + dirX.x * r
-        const y2 = cy - dirX.y * r
-        if (gizmoXLineRef.current) {
-          gizmoXLineRef.current.setAttribute('x2', x2.toString())
-          gizmoXLineRef.current.setAttribute('y2', y2.toString())
-          gizmoXLineRef.current.setAttribute('opacity', opX.toString())
-        }
-        if (gizmoXGroupRef.current) {
-          gizmoXGroupRef.current.setAttribute('transform', `translate(${dirX.x * r}, ${-dirX.y * r}) scale(${scaleX})`)
-          gizmoXGroupRef.current.setAttribute('opacity', opX.toString())
-        }
-
-        // Y Axis (Green)
-        const y2x = cx + dirY.x * r
-        const y2y = cy - dirY.y * r
-        if (gizmoYLineRef.current) {
-          gizmoYLineRef.current.setAttribute('x2', y2x.toString())
-          gizmoYLineRef.current.setAttribute('y2', y2y.toString())
-          gizmoYLineRef.current.setAttribute('opacity', opY.toString())
-        }
-        if (gizmoYGroupRef.current) {
-          gizmoYGroupRef.current.setAttribute('transform', `translate(${dirY.x * r}, ${-dirY.y * r}) scale(${scaleY})`)
-          gizmoYGroupRef.current.setAttribute('opacity', opY.toString())
-        }
-
-        // Z Axis (Blue)
-        const z2x = cx + dirZ.x * r
-        const z2y = cy - dirZ.y * r
-        if (gizmoZLineRef.current) {
-          gizmoZLineRef.current.setAttribute('x2', z2x.toString())
-          gizmoZLineRef.current.setAttribute('y2', z2y.toString())
-          gizmoZLineRef.current.setAttribute('opacity', opZ.toString())
-        }
-        if (gizmoZGroupRef.current) {
-          gizmoZGroupRef.current.setAttribute('transform', `translate(${dirZ.x * r}, ${-dirZ.y * r}) scale(${scaleZ})`)
-          gizmoZGroupRef.current.setAttribute('opacity', opZ.toString())
-        }
-      }
-
       renderer.render(scene, camera)
       labelRenderer.render(scene, camera)
+
+      // ViewHelper animates camera on click and renders gizmo overlay
+      if (viewHelperRef.current && viewHelperTimerRef.current) {
+        viewHelperTimerRef.current.update()
+        const delta = viewHelperTimerRef.current.getDelta()
+        viewHelperRef.current.center.copy(controls.target)
+        if (viewHelperRef.current.animating) {
+          viewHelperRef.current.update(delta)
+        }
+        if (stateRefs.current.showGizmo) {
+          const autoClear = renderer.autoClear
+          renderer.autoClear = false
+          viewHelperRef.current.render(renderer)
+          renderer.autoClear = autoClear
+        }
+      }
     }
     animate()
 
@@ -586,8 +565,15 @@ export function Canvas3D() {
         controls.update()
       }
     }
+    const handlePointerUp = (event: PointerEvent) => {
+      if (viewHelperRef.current && stateRefs.current.showGizmo) {
+        // Handle ViewHelper clicks
+        viewHelperRef.current.handleClick(event)
+      }
+    }
     
     renderer.domElement.addEventListener('dblclick', handleDoubleClick)
+    renderer.domElement.addEventListener('pointerup', handlePointerUp)
 
     if (container) {
       resizeObserver.observe(container)
@@ -595,11 +581,20 @@ export function Canvas3D() {
 
     return () => {
       renderer.domElement.removeEventListener('dblclick', handleDoubleClick)
+      renderer.domElement.removeEventListener('pointerup', handlePointerUp)
       resizeObserver.disconnect()
       cancelAnimationFrame(frameId)
       if (container) {
         if (renderer.domElement.parentNode) container.removeChild(renderer.domElement)
         if (labelRenderer.domElement.parentNode) container.removeChild(labelRenderer.domElement)
+      }
+      if (viewHelperRef.current) {
+        viewHelperRef.current.dispose()
+        viewHelperRef.current = null
+      }
+      if (viewHelperTimerRef.current) {
+        viewHelperTimerRef.current.dispose()
+        viewHelperTimerRef.current = null
       }
       renderer.dispose()
       labelRenderer.setSize(0, 0) // Force some internal cleanup
@@ -1199,14 +1194,6 @@ export function Canvas3D() {
     return () => clearGroup(group)
   }, [geometryData, showLabels, highlightedEdges, isDarkTheme, bitmaskVisibility, explodeAmount, orderedSectionIds])
 
-  const handleZoom = (dir: number) => {
-    if (cameraRef.current && controlsRef.current) {
-      const cam = cameraRef.current
-      cam.position.sub(controlsRef.current.target).multiplyScalar(dir > 0 ? 0.8 : 1.2).add(controlsRef.current.target)
-      controlsRef.current.update()
-    }
-  }
-
   const handleResetCamera = () => {
     if (cameraRef.current && controlsRef.current) {
       const controls = controlsRef.current
@@ -1274,40 +1261,7 @@ export function Canvas3D() {
         </div>
       </div>
 
-      {/* Navigation Gizmo (Blender Style) */}
-      {showGizmo && (
-        <div className="absolute top-24 right-6 z-40 w-[90px] h-[90px] flex items-center justify-center bg-card/65 backdrop-blur-md border border-border/40 rounded-full shadow-lg pointer-events-auto">
-          <svg width="90" height="90" viewBox="0 0 90 90" className="w-full h-full select-none">
-            <circle cx="45" cy="45" r="41" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-border/30" />
-            <circle cx="45" cy="45" r="7" fill="currentColor" className="text-border/25" />
-            {/* Axis lines - updated dynamically via JS refs */}
-            <line ref={gizmoXLineRef} x1="45" y1="45" x2="45" y2="45" stroke="#ef4444" strokeWidth="3.2" strokeLinecap="round" />
-            <line ref={gizmoYLineRef} x1="45" y1="45" x2="45" y2="45" stroke="#22c55e" strokeWidth="3.2" strokeLinecap="round" />
-            <line ref={gizmoZLineRef} x1="45" y1="45" x2="45" y2="45" stroke="#3b82f6" strokeWidth="3.2" strokeLinecap="round" />
-            {/* Axis End nodes */}
-            <g ref={gizmoXGroupRef} className="cursor-pointer select-none" onClick={() => handleAlignView('x')}>
-              <circle cx="45" cy="45" r="9.5" fill="#ef4444" stroke="#ffffff" strokeWidth="1" />
-              <text x="45" y="48.5" textAnchor="middle" fontSize="9.5" fontWeight="bold" fill="#ffffff" fontFamily="sans-serif">X</text>
-            </g>
-            <g ref={gizmoYGroupRef} className="cursor-pointer select-none" onClick={() => handleAlignView('y')}>
-              <circle cx="45" cy="45" r="9.5" fill="#22c55e" stroke="#ffffff" strokeWidth="1" />
-              <text x="45" y="48.5" textAnchor="middle" fontSize="9.5" fontWeight="bold" fill="#ffffff" fontFamily="sans-serif">Y</text>
-            </g>
-            <g ref={gizmoZGroupRef} className="cursor-pointer select-none" onClick={() => handleAlignView('z')}>
-              <circle cx="45" cy="45" r="9.5" fill="#3b82f6" stroke="#ffffff" strokeWidth="1" />
-              <text x="45" y="48.5" textAnchor="middle" fontSize="9.5" fontWeight="bold" fill="#ffffff" fontFamily="sans-serif">Z</text>
-            </g>
-          </svg>
-        </div>
-      )}
-
-      {/* Zoom Controls */}
-      <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-50">
-        <div className="flex flex-col bg-card/95 backdrop-blur-md border border-border rounded-xl shadow-lg overflow-hidden">
-          <button onClick={() => handleZoom(1)} className="p-3 hover:bg-primary hover:text-primary-foreground border-b border-border text-muted-foreground transition-colors"><ZoomIn size={20} /></button>
-          <button onClick={() => handleZoom(-1)} className="p-3 hover:bg-primary hover:text-primary-foreground text-muted-foreground transition-colors"><ZoomOut size={20} /></button>
-        </div>
-      </div>
+      {/* Navigation Gizmo (Three.js ViewHelper - rendered inside WebGL canvas, initialized in useEffect below) */}
     </div>
   )
 }
