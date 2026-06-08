@@ -69,8 +69,10 @@ const TOOLS: Array<{
   { id: 'angleBisector', label: 'Tia phân giác', icon: Scissors, group: '2d_special' },
   { id: 'parallelLine', label: 'Đ.song song', icon: Equal, group: '2d_special' },
   { id: 'perpendicularLine', label: 'Đ.vuông góc', icon: CornerDownRight, group: '2d_special' },
-  { id: 'box', label: 'Hình hộp', icon: Square },
+  { id: 'box', label: 'Hình hộp CN', icon: Square },
+  { id: 'cube', label: 'Hình lập phương', icon: Box },
   { id: 'pyramid', label: 'Hình chóp', icon: Pyramid },
+  { id: 'regularPyramid', label: 'Hình chóp đều', icon: Pyramid },
   { id: 'prism', label: 'Lăng trụ', icon: Box },
   { id: 'sphere', label: 'Hình cầu', icon: Circle },
   { id: 'cone', label: 'Hình nón', icon: Cone },
@@ -101,7 +103,7 @@ const CATEGORIES = [
   {
     id: 'solids',
     label: 'Hình khối 3D',
-    tools: ['box', 'pyramid', 'prism', 'sphere', 'cone', 'cylinder']
+    tools: ['box', 'cube', 'pyramid', 'regularPyramid', 'prism', 'sphere', 'cone', 'cylinder']
   }
 ]
 
@@ -193,8 +195,8 @@ export function ManualLeftPanel({
       return
     }
 
-    if (tool === 'box') {
-      setDraftOperation({ tool: 'box', pointIds: [], height: 4 })
+    if (tool === 'box' || tool === 'cube') {
+      setDraftOperation({ tool, pointIds: [], height: 4 })
       return
     }
 
@@ -208,7 +210,7 @@ export function ManualLeftPanel({
       return
     }
 
-    if (tool === 'pyramid' || tool === 'prism') {
+    if (tool === 'pyramid' || tool === 'prism' || tool === 'regularPyramid') {
       setDraftOperation({
         tool,
         basePolygonId: manualSelection?.kind === 'polygon' ? manualSelection.id : null,

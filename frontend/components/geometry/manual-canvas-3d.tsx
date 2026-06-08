@@ -197,7 +197,9 @@ export function ManualCanvas3D() {
     createSegment,
     createPolygon,
     createBox,
+    createCube,
     createPyramid,
+    createRegularPyramid,
     createPrism,
     createSphere,
     createCone,
@@ -948,6 +950,16 @@ export function ManualCanvas3D() {
           id: polygon.sourceId,
         } satisfies InteractiveHit
         group.add(mesh)
+        const blockerMaterial = new THREE.MeshBasicMaterial({
+          colorWrite: false,
+          depthWrite: true,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: 1 + pIdx * 0.1,
+          polygonOffsetUnits: 1,
+        })
+        const blockerMesh = new THREE.Mesh(faceGeometry, blockerMaterial)
+        group.add(blockerMesh)
       })
 
     manualDerived.displaySegments
@@ -978,6 +990,18 @@ export function ManualCanvas3D() {
         } satisfies InteractiveHit
         group.add(line)
         segmentMeshesRef.current.push({ id: segment.sourceId, mesh: line })
+        
+        const dashedMaterial = new THREE.LineDashedMaterial({
+          color: isSelected ? colors.pointSelected : (segment.sourceKind === 'solid' ? colors.solid : colors.segment),
+          dashSize: 0.15,
+          gapSize: 0.1,
+          depthFunc: THREE.GreaterDepth,
+          transparent: true,
+          opacity: 0.5,
+        })
+        const dashedMesh = new THREE.Line(geometry, dashedMaterial)
+        dashedMesh.computeLineDistances()
+        group.add(dashedMesh)
       })
 
     manualDerived.displayPoints
@@ -1014,6 +1038,17 @@ export function ManualCanvas3D() {
         }
         group.add(mesh)
         pointMeshesRef.current.push({ id: point.id, mesh })
+
+        const fadedMaterial = new THREE.MeshBasicMaterial({
+          color: pointColor,
+          depthFunc: THREE.GreaterDepth,
+          transparent: true,
+          opacity: 0.25,
+        })
+        const fadedMesh = new THREE.Mesh(pointGeometry, fadedMaterial)
+        fadedMesh.position.set(point.position[0], point.position[1], point.position[2])
+        group.add(fadedMesh)
+        pointMeshesRef.current.push({ id: point.id, mesh: fadedMesh })
 
         if (showLabels) {
           const element = document.createElement('div')
@@ -1261,15 +1296,35 @@ export function ManualCanvas3D() {
         return
       }
 
-      // Click 2 for Pyramid / Prism
-      if ((activeTool === 'pyramid' || activeTool === 'prism') && draftOperation?.basePolygonId) {
+      if (activeTool === 'cube' && fallbackPosition) {
+        const materializedPointId = createPointFromTarget(snapTarget, fallbackPosition)
+        if (!materializedPointId) return
+        const currentIds = draftOperation?.tool === 'cube' ? [...(draftOperation.pointIds ?? [])] : []
+        if (currentIds.length < 2) currentIds.push(materializedPointId)
+        if (currentIds.length === 2) {
+          createCube(currentIds[0], currentIds[1])
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'cube', pointIds: [] })
+        } else {
+          setDraftOperation({
+            tool: 'cube',
+            pointIds: currentIds.slice(0, 2)
+          })
+        }
+        return
+      }
+
+      // Click 2 for Pyramid / Prism / RegularPyramid
+      if ((activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid') && draftOperation?.basePolygonId) {
         const isSkew = activeTool === 'pyramid' ? !!draftOperation.apexPointId : !!draftOperation.topPointId;
         
         if (isSkew) {
           if (snapTarget?.kind === 'point' && snapTarget.pointId) {
-            if (activeTool === 'pyramid') createPyramid(draftOperation.basePolygonId, 0, snapTarget.pointId);
-            if (activeTool === 'prism') createPrism(draftOperation.basePolygonId, 0, snapTarget.pointId);
-            autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null);
+            const id = activeTool === 'pyramid'
+              ? createPyramid(draftOperation.basePolygonId, 0, snapTarget.pointId)
+              : createPrism(draftOperation.basePolygonId, 0, snapTarget.pointId);
+            if (id) {
+              autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null);
+            }
             return;
           }
         } else {
@@ -1284,15 +1339,23 @@ export function ManualCanvas3D() {
               )
             }
           }
-          if (activeTool === 'pyramid') createPyramid(draftOperation.basePolygonId, heightToUse);
-          if (activeTool === 'prism') createPrism(draftOperation.basePolygonId, heightToUse);
-          autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null);
+          const id = activeTool === 'pyramid'
+            ? createPyramid(draftOperation.basePolygonId, heightToUse)
+            : createPrism(draftOperation.basePolygonId, heightToUse);
+          if (id) {
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null);
+          }
           return;
         }
       }
 
-      // Click 1 for Pyramid / Prism
-      if ((activeTool === 'pyramid' || activeTool === 'prism') && hit?.kind === 'polygon') {
+      // Click 1 for Pyramid / Prism / RegularPyramid
+      if ((activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid') && hit?.kind === 'polygon') {
+        if (activeTool === 'regularPyramid') {
+          const id = createRegularPyramid(hit.id)
+          if (id) autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null)
+          return
+        }
         setManualSelection(hit)
         setDraftOperation({
           tool: activeTool,
@@ -2110,6 +2173,18 @@ export function ManualCanvas3D() {
               height: draftOperation?.tool === 'box' ? draftOperation.height ?? 4 : 4,
             })
           }
+        } else if (activeTool === 'cube') {
+          const currentIds = draftOperation?.tool === 'cube' ? [...(draftOperation.pointIds ?? [])] : []
+          if (currentIds.length < 2) currentIds.push(creatingPointId)
+          if (currentIds.length === 2) {
+            createCube(currentIds[0], currentIds[1])
+            autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'cube', pointIds: [] })
+          } else {
+            setDraftOperation({
+              tool: 'cube',
+              pointIds: currentIds.slice(0, 2)
+            })
+          }
         } else if (['sphere', 'cone', 'cylinder'].includes(activeTool)) {
           setDraftOperation({
             ...draftOperation,
@@ -2118,17 +2193,17 @@ export function ManualCanvas3D() {
           })
         } else if (activeTool === 'pyramid') {
           if (draftOperation?.tool === 'pyramid' && draftOperation.basePolygonId) {
-            setDraftOperation({
-              ...draftOperation,
-              apexPointId: creatingPointId,
-            })
+            const id = createPyramid(draftOperation.basePolygonId, 0, creatingPointId)
+            if (id) {
+              autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null)
+            }
           }
         } else if (activeTool === 'prism') {
           if (draftOperation?.tool === 'prism' && draftOperation.basePolygonId) {
-            setDraftOperation({
-              ...draftOperation,
-              topPointId: creatingPointId,
-            })
+            const id = createPrism(draftOperation.basePolygonId, 0, creatingPointId)
+            if (id) {
+              autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null)
+            }
           }
         } else if (activeTool === 'point') {
           if (autoRevertToSelect) setActiveTool('select')
@@ -2167,9 +2242,9 @@ export function ManualCanvas3D() {
 
       const hitEntity = findIntersectionEntity(event)
       const isCircleClick = (activeTool === 'cone' || activeTool === 'cylinder') && hitEntity?.kind === 'circle'
-      const isPolygonClick = (activeTool === 'pyramid' || activeTool === 'prism') && hitEntity?.kind === 'polygon'
+      const isPolygonClick = (activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid') && hitEntity?.kind === 'polygon'
 
-      const isSkewMode = (activeTool === 'pyramid' && draftOperation?.apexPointId) ||
+      const isSkewMode = (activeTool === 'pyramid') ||
                          (activeTool === 'prism' && draftOperation?.topPointId);
       
       const isCreatingSkewApex = (activeTool === 'pyramid' || activeTool === 'prism') && 
@@ -2177,7 +2252,7 @@ export function ManualCanvas3D() {
 
       const shouldCreateAndDragPoint =
         activeTool !== 'select' &&
-        (['point', 'segment', 'polygon', 'box', 'sphere', 'cone', 'cylinder'].includes(activeTool) || isCreatingSkewApex) &&
+        (['point', 'segment', 'polygon', 'box', 'cube', 'sphere', 'cone', 'cylinder'].includes(activeTool) || isCreatingSkewApex) &&
         (!snapTarget || snapTarget.kind !== 'point') &&
         !isCircleClick &&
         !isPolygonClick
@@ -2238,8 +2313,27 @@ export function ManualCanvas3D() {
         autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'box', pointIds: [], height: draftOperation.height })
       }
       if ((draftOperation?.tool === 'pyramid' || draftOperation?.tool === 'prism') && draftOperation.basePolygonId && draftOperation.height && draftOperation.height > 0) {
-        if (draftOperation.tool === 'pyramid') createPyramid(draftOperation.basePolygonId, draftOperation.height)
-        if (draftOperation.tool === 'prism') createPrism(draftOperation.basePolygonId, draftOperation.height)
+        let id = null
+        if (draftOperation.tool === 'pyramid') id = createPyramid(draftOperation.basePolygonId, draftOperation.height)
+        if (draftOperation.tool === 'prism') id = createPrism(draftOperation.basePolygonId, draftOperation.height)
+        if (id) autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null)
+      }
+      if (draftOperation?.tool === 'regularPyramid' && draftOperation.basePolygonId) {
+        const id = createRegularPyramid(draftOperation.basePolygonId)
+        if (id) autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null)
+      }
+      if (draftOperation?.tool === 'sphere' && draftOperation.centerPointId && draftOperation.radius && draftOperation.radius > 0) {
+        const id = createSphere(draftOperation.centerPointId, draftOperation.radius)
+        if (id) autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null)
+      }
+      if ((draftOperation?.tool === 'cone' || draftOperation?.tool === 'cylinder') && draftOperation.baseCircleId && draftOperation.height && draftOperation.height > 0) {
+        const circle = manualDerived.displayCircles.find(c => c.sourceId === draftOperation.baseCircleId)
+        if (circle) {
+          let id = null
+          if (draftOperation.tool === 'cone') id = createCone(draftOperation.baseCircleId, circle.radius, draftOperation.height, draftOperation.baseCircleId)
+          if (draftOperation.tool === 'cylinder') id = createCylinder(draftOperation.baseCircleId, circle.radius, draftOperation.height, draftOperation.baseCircleId)
+          if (id) autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null)
+        }
       }
     }
 
@@ -2261,10 +2355,12 @@ export function ManualCanvas3D() {
     canRedo,
     canUndo,
     createBox,
+    createCube,
     createPointFromTarget,
     createPolygon,
     createPrism,
     createPyramid,
+    createRegularPyramid,
     createSegment,
     draftOperation,
     manualDerived,
@@ -2382,18 +2478,22 @@ export function ManualCanvas3D() {
                   : activeTool === 'polygon'
                     ? '\u0110a gi\u00e1c'
                     : activeTool === 'box'
-                      ? 'H\u00ecnh h\u1ed9p'
-                      : activeTool === 'pyramid'
-                        ? 'H\u00ecnh ch\u00f3p'
-                        : activeTool === 'prism'
-                          ? 'L\u0103ng tr\u1ee5'
-                          : activeTool === 'sphere'
-                            ? 'H\u00ecnh c\u1ea7u'
-                            : activeTool === 'cone'
-                              ? 'H\u00ecnh n\u00f3n'
-                              : activeTool === 'cylinder'
-                                ? 'H\u00ecnh tr\u1ee5'
-                                : 'Ch\u1ecdn'}
+                      ? 'Hình hộp'
+                    : activeTool === 'cube'
+                      ? 'Lập phương'
+                    : activeTool === 'pyramid'
+                      ? 'Hình chóp'
+                    : activeTool === 'regularPyramid'
+                      ? 'Chóp đều'
+                    : activeTool === 'prism'
+                      ? 'Lăng trụ'
+                    : activeTool === 'sphere'
+                      ? 'Hình cầu'
+                    : activeTool === 'cone'
+                      ? 'Hình nón'
+                    : activeTool === 'cylinder'
+                      ? 'Hình trụ'
+                      : 'Chọn'}
           </span>
           <span className="text-border">{'\u2022'}</span>
           <span ref={hoverStatusRef}>Không bám</span>

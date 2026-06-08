@@ -65,6 +65,8 @@ function PointRow({
   onDelete,
   onApply,
   onRename,
+  onUpdateT,
+  tVal,
 }: {
   point: ManualPoint
   coords: [number, number, number]
@@ -73,6 +75,8 @@ function PointRow({
   onDelete: () => void
   onApply: (coords: [number, number, number]) => void
   onRename: (newLabel: string) => void
+  onUpdateT?: (val: number) => void
+  tVal?: number
 }) {
   const [cx, cy, cz] = coords
   const [isFocused, setIsFocused] = useState(false)
@@ -114,64 +118,88 @@ function PointRow({
 
   return (
     <div
-      className={`grid grid-cols-[80px_34px_minmax(0,1fr)_36px] items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-all ${
+      className={`group flex flex-col rounded-xl border transition-all ${
         selected
           ? 'border-primary/35 bg-primary/10 shadow-sm'
           : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
       }`}
     >
-      <button onClick={onSelect} className="text-left">
-        <TypePill icon={<Circle size={13} fill="currentColor" />} label={'\u0110i\u1ec3m'} />
-      </button>
+      <div className="grid grid-cols-[80px_34px_minmax(0,1fr)_36px] items-center gap-2.5 px-2.5 py-2">
+        <button onClick={onSelect} className="text-left">
+          <TypePill icon={<Circle size={13} fill="currentColor" />} label={'\u0110i\u1ec3m'} />
+        </button>
 
-      <Input
-        value={labelDraft}
-        onChange={(event) => setLabelDraft(event.target.value)}
-        onBlur={commitLabel}
-        onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
-        onClick={onSelect}
-        className="h-7 border-none bg-transparent p-0 text-left text-[15px] font-semibold tracking-tight focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:bg-background/80 truncate w-full"
-        title="Click để đổi tên điểm"
-      />
+        <Input
+          value={labelDraft}
+          onChange={(event) => setLabelDraft(event.target.value)}
+          onBlur={commitLabel}
+          onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
+          onClick={onSelect}
+          className="h-7 border-none bg-transparent p-0 text-left text-[15px] font-semibold tracking-tight focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:bg-background/80 truncate w-full"
+          title="Click để đổi tên điểm"
+        />
 
-      <div className="grid min-w-0 grid-cols-3 gap-1.5">
-        <Input
-          value={isFocused ? draft.x : formatCoord(cx)}
-          onFocus={handleFocus}
-          onChange={(event) => setDraft((current) => ({ ...current, x: event.target.value }))}
-          onBlur={commit}
-          onKeyDown={(event) => event.key === 'Enter' && commit()}
-          placeholder="x"
-          className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
-        />
-        <Input
-          value={isFocused ? draft.y : formatCoord(cy)}
-          onFocus={handleFocus}
-          onChange={(event) => setDraft((current) => ({ ...current, y: event.target.value }))}
-          onBlur={commit}
-          onKeyDown={(event) => event.key === 'Enter' && commit()}
-          placeholder="y"
-          className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
-        />
-        <Input
-          value={isFocused ? draft.z : formatCoord(cz)}
-          onFocus={handleFocus}
-          onChange={(event) => setDraft((current) => ({ ...current, z: event.target.value }))}
-          onBlur={commit}
-          onKeyDown={(event) => event.key === 'Enter' && commit()}
-          placeholder="z"
-          className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
-        />
+        <div className="grid min-w-0 grid-cols-3 gap-1.5">
+          <Input
+            value={isFocused ? draft.x : formatCoord(cx)}
+            onFocus={handleFocus}
+            onChange={(event) => setDraft((current) => ({ ...current, x: event.target.value }))}
+            onBlur={commit}
+            onKeyDown={(event) => event.key === 'Enter' && commit()}
+            placeholder="x"
+            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
+          />
+          <Input
+            value={isFocused ? draft.y : formatCoord(cy)}
+            onFocus={handleFocus}
+            onChange={(event) => setDraft((current) => ({ ...current, y: event.target.value }))}
+            onBlur={commit}
+            onKeyDown={(event) => event.key === 'Enter' && commit()}
+            placeholder="y"
+            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
+          />
+          <Input
+            value={isFocused ? draft.z : formatCoord(cz)}
+            onFocus={handleFocus}
+            onChange={(event) => setDraft((current) => ({ ...current, z: event.target.value }))}
+            onBlur={commit}
+            onKeyDown={(event) => event.key === 'Enter' && commit()}
+            placeholder="z"
+            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
+          />
+        </div>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          className="p-1 rounded-md text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+          title="Xóa điểm"
+        >
+          <Trash2 size={12} />
+        </button>
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-lg border border-border/70"
-        onClick={onDelete}
-      >
-        <Trash2 size={14} />
-      </Button>
+      {selected && onUpdateT !== undefined && (
+        <div className="mt-2 pl-6 pr-2 py-2 border-t border-border/50 bg-muted/20">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[10px] text-muted-foreground uppercase font-semibold">Tỷ lệ trên đoạn thẳng</span>
+            <span className="text-[10px] font-mono font-medium text-primary">{(tVal ?? 0.5).toFixed(2)}</span>
+          </div>
+          <div className="flex gap-2 items-center">
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={tVal ?? 0.5}
+              onChange={(e) => onUpdateT(parseFloat(e.target.value))}
+              className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -515,6 +543,7 @@ export function ManualRightPanel() {
     updateSegmentLength,
     updateSolidHeight,
     updateCircleRadius,
+    updatePointT,
     showAxes,
     showGrid,
     showLabels,
@@ -638,6 +667,8 @@ export function ManualRightPanel() {
                 onDelete={() => removeManualEntity('point', point.id)}
                 onApply={(nextCoords) => updatePointPosition(point.id, nextCoords)}
                 onRename={(newLabel) => renameManualEntity('point', point.id, newLabel)}
+                onUpdateT={(point.pointKind === 'segment' || point.pointKind === 'midpoint') ? (newT) => updatePointT(point.id, newT) : undefined}
+                tVal={point.t}
               />
             )
           })}

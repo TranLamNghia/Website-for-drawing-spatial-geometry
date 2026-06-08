@@ -1,6 +1,7 @@
 'use client'
 
 import React, { createContext, useCallback, useContext, useMemo, useState, useRef, useEffect } from 'react'
+import { toast } from 'sonner'
 import {
   buildManualDerived,
   createEmptyManualDocument,
@@ -19,6 +20,9 @@ import {
   nextPointLabel,
   resolvePointPositions,
   Vec3,
+  centroid,
+  getPolygonNormal,
+  distance,
 } from './manual-editor'
 
 export interface Point3D {
@@ -180,6 +184,7 @@ interface GeometryContextType {
   cancelManualDraft: () => void
   createPointFromTarget: (target: ManualSnapTarget | null, fallback: Vec3) => string | null
   updatePointPosition: (pointId: string, position: Vec3, target?: ManualSnapTarget | null) => void
+  updatePointT: (pointId: string, t: number) => void
   updateSegmentLength: (segmentId: string, newLength: number) => void
   updateSolidHeight: (solidId: string, newHeight: number) => void
   updateCircleRadius: (circleId: string, newRadius: number) => void
@@ -194,8 +199,10 @@ interface GeometryContextType {
   createPerpendicularLine: (pointId: string, segmentId: string) => string | null
   createSegment: (startPointId: string, endPointId: string) => string | null
   createPolygon: (pointIds: string[]) => string | null
-  createBox: (cornerPointIds: [string, string, string], height: number) => string | null
+  createBox: (cornerPointIds: string[], height: number) => string | null
+  createCube: (pointIdA: string, pointIdB: string) => string | null
   createPyramid: (basePolygonId: string, height: number, apexPointId?: string) => string | null
+  createRegularPyramid: (basePolygonId: string) => string | null
   createPrism: (basePolygonId: string, height: number, topPointId?: string) => string | null
   createSphere: (centerPointId: string, radius: number, radiusPointId?: string) => string | null
   createCone: (centerPointId: string, radius: number, height: number, baseCircleId?: string) => string | null
@@ -232,6 +239,33 @@ interface GeometryContextType {
     kind: 'point' | 'segment' | 'polygon' | 'solid' | 'circle',
     id: string,
   ) => void
+}
+
+const isPointCoplanarWithPolygon = (pointId: string, polygonId: string, doc: ManualDocument) => {
+  const poly = doc.polygons.find(p => p.id === polygonId)
+  if (!poly || poly.pointIds.length < 3) return false
+  const resolved = resolvePointPositions(doc)
+  const p0 = resolved[poly.pointIds[0]]
+  const p1 = resolved[poly.pointIds[1]]
+  const p2 = resolved[poly.pointIds[2]]
+  const target = resolved[pointId]
+  if (!p0 || !p1 || !p2 || !target) return false
+
+  const v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]
+  const v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]]
+  const normal = [
+    v1[1]*v2[2] - v1[2]*v2[1],
+    v1[2]*v2[0] - v1[0]*v2[2],
+    v1[0]*v2[1] - v1[1]*v2[0]
+  ]
+  const len = Math.hypot(normal[0], normal[1], normal[2])
+  if (len < 1e-9) return false
+  
+  const n = [normal[0]/len, normal[1]/len, normal[2]/len]
+  const vTarget = [target[0] - p0[0], target[1] - p0[1], target[2] - p0[2]]
+  const dot = Math.abs(vTarget[0]*n[0] + vTarget[1]*n[1] + vTarget[2]*n[2])
+  
+  return dot < 1e-4
 }
 
 const GeometryContext = createContext<GeometryContextType | undefined>(undefined)
@@ -656,61 +690,85 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const updatePointPosition = useCallback(
     (pointId: string, position: Vec3, target?: ManualSnapTarget | null) => {
       commitManualDocument((current) => {
-        if (pointId.includes('_point_')) {
-          const parts = pointId.split('_point_')
-          const solidId = parts[0]
-          const index = parseInt(parts[1], 10)
+        const point = current.points.find((candidate) => candidate.id === pointId)
+        if (!point || point.locked) return current
 
-          const solid = current.solids.find((s) => s.id === solidId)
-          if (solid && solid.solidType === 'box' && solid.cornerPointIds) {
-            const p1Id = solid.cornerPointIds[0]
-            const p2Id = solid.cornerPointIds[1]
-            const p1 = current.points.find((p) => p.id === p1Id)
-            const p2 = current.points.find((p) => p.id === p2Id)
-            if (!p1 || !p2) return null
+        // Handle dragging solid vertices
+        if (point.pointKind === 'solidVertex' && point.solidId) {
+          const solid = current.solids.find((s) => s.id === point.solidId)
+          if (solid) {
+            if (solid.solidType === 'cube' && solid.cornerPointIds) {
+              const index = point.vertexIndex ?? 0
+              if (index < 4) return current
 
-            let nextPoints = [...current.points]
-            let nextHeight = solid.height ?? 4
-            const [newX, newY, newZ] = position
+              const p1Id = solid.cornerPointIds[0]
+              const p2Id = solid.cornerPointIds[1]
+              const p1 = current.points.find((p) => p.id === p1Id)
+              const p2 = current.points.find((p) => p.id === p2Id)
+              if (!p1 || !p2) return current
 
-            if (index === 1 || index === 5) {
-              nextPoints = current.points.map((p) => {
-                if (p.id === p2Id) return { ...p, position: [newX, p.position[1], p.position[2]] }
-                if (p.id === p1Id) return { ...p, position: [p.position[0], newY, p.position[2]] }
-                return p
-              })
-            } else if (index === 3 || index === 7) {
-              nextPoints = current.points.map((p) => {
-                if (p.id === p1Id) return { ...p, position: [newX, p.position[1], p.position[2]] }
-                if (p.id === p2Id) return { ...p, position: [p.position[0], newY, p.position[2]] }
-                return p
-              })
-            } else if (index === 0 || index === 4) {
-              nextPoints = current.points.map((p) => {
-                if (p.id === p1Id) return { ...p, position: [newX, newY, p.position[2]] }
-                return p
-              })
-            } else if (index === 2 || index === 6) {
-              nextPoints = current.points.map((p) => {
-                if (p.id === p2Id) return { ...p, position: [newX, newY, p.position[2]] }
-                return p
-              })
+              const resolved = resolvePointPositions(current)
+              const oldResolved = resolved[pointId]
+              if (oldResolved) {
+                const baseA = resolved[p1Id]
+                if (!baseA) return current
+                const oldHeight = Math.hypot(p2.position[0] - p1.position[0], p2.position[1] - p1.position[1], p2.position[2] - p1.position[2])
+                const deltaZ = position[2] - oldResolved[2]
+                const newHeight = Math.max(0.1, oldHeight + deltaZ)
+                const scale = oldHeight > 1e-9 ? newHeight / oldHeight : 1
+
+                return {
+                  ...current,
+                  points: current.points.map((p) => {
+                    if (p.id === p2Id) {
+                      return {
+                        ...p,
+                        position: [
+                          p1.position[0] + (p2.position[0] - p1.position[0]) * scale,
+                          p1.position[1] + (p2.position[1] - p1.position[1]) * scale,
+                          p1.position[2] + (p2.position[2] - p1.position[2]) * scale,
+                        ],
+                      }
+                    }
+                    return p
+                  }),
+                }
+              }
+              return current
             }
-
-            if (index >= 4) {
-              nextHeight = Math.max(0.1, newZ)
-            }
-
-            return {
-              ...current,
-              points: nextPoints,
-              solids: current.solids.map((s) => s.id === solidId ? { ...s, height: nextHeight } : s)
+            if (solid.solidType === 'box' && solid.cornerPointIds) {
+              const index = point.vertexIndex ?? 0
+              if (index < 4) return current
+              
+              const resolved = resolvePointPositions(current)
+              const oldResolved = resolved[pointId]
+              if (oldResolved) {
+                const deltaZ = position[2] - oldResolved[2]
+                const newHeight = Math.max(0.1, (solid.height ?? 4) + deltaZ)
+                return {
+                  ...current,
+                  solids: current.solids.map((s) => (s.id === solid.id ? { ...s, height: newHeight } : s)),
+                }
+              }
+              return current
+            } else if (solid.solidType === 'regularPyramid') {
+               const resolved = resolvePointPositions(current)
+               const basePolygon = current.polygons.find((p) => p.id === solid.basePolygonId)
+               if (basePolygon && point.vertexIndex === 0) {
+                 const basePoints = basePolygon.pointIds.map((id) => resolved[id]).filter(Boolean) as Vec3[]
+                 const c = centroid(basePoints)
+                 const normal = getPolygonNormal(basePoints)
+                 // Project position onto the normal passing through centroid
+                 const v = subVec3(position, c)
+                 const nextHeight = Math.max(0.1, dotVec3(v, normal))
+                 return {
+                    ...current,
+                    solids: current.solids.map((s) => s.id === solid.id ? { ...s, height: nextHeight } : s)
+                 }
+               }
             }
           }
         }
-
-        const point = current.points.find((candidate) => candidate.id === pointId)
-        if (!point || point.locked) return null
 
         if (point.pointKind === 'segment' && point.segmentId) {
           const segment = current.segments.find(
@@ -1009,25 +1067,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        if (point.pointKind === 'solidVertex' && point.solidId && point.vertexIndex !== undefined) {
-          const solid = current.solids.find((s) => s.id === point.solidId)
-          if (solid && solid.solidType === 'box' && solid.cornerPointIds) {
-            if (point.vertexIndex >= 4) {
-              const resolved = resolvePointPositions(current)
-              const oldResolved = resolved[pointId]
-              if (oldResolved) {
-                const deltaZ = position[2] - oldResolved[2]
-                const newHeight = Math.max(0.1, (solid.height ?? 4) + deltaZ)
-                return {
-                  ...current,
-                  solids: current.solids.map((s) => (s.id === solid.id ? { ...s, height: newHeight } : s)),
-                }
-              }
-            } else {
-              return current
-            }
-          }
-        }
+
 
         const nextPosition = target?.position ?? position
         return {
@@ -1051,6 +1091,21 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     },
     [commitManualDocument],
   )
+
+  const updatePointT = useCallback((pointId: string, t: number) => {
+    commitManualDocument((current) => {
+      const point = current.points.find((p) => p.id === pointId)
+      if (!point || (point.pointKind !== 'segment' && point.pointKind !== 'midpoint')) return null
+      
+      const newKind = 'segment' // Change to segment in case it was a midpoint so it persists the `t`
+      return {
+        ...current,
+        points: current.points.map((p) =>
+          p.id === pointId ? { ...p, t: Math.max(0, Math.min(1, t)), pointKind: newKind, sourcePointIds: p.sourcePointIds, segmentId: p.segmentId } : p
+        ),
+      }
+    })
+  }, [commitManualDocument])
 
   const updateSegmentLength = useCallback(
     (segmentId: string, newLength: number) => {
@@ -2193,7 +2248,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   )
 
   const createBox = useCallback(
-    (cornerPointIds: [string, string, string], height: number) => {
+    (cornerPointIds: string[], height: number) => {
       if (height <= 0) return null
       const solidId = createEntityId('solid')
 
@@ -2304,9 +2359,110 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     [commitManualDocument, manualDocument.solids.length],
   )
 
+  const createCube = useCallback(
+    (pointIdA: string, pointIdB: string) => {
+      saveManualState()
+      const solidId = createEntityId('solid')
+
+      commitManualDocument((current) => {
+        const p0 = current.points.find(p => p.id === pointIdA)
+        const p1 = current.points.find(p => p.id === pointIdB)
+        if (!p0 || !p1) return current
+
+        const solid: ManualSolid = {
+          id: solidId,
+          label: `Hộp ${current.solids.length + 1}`,
+          entityType: 'solid',
+          solidType: 'cube',
+          cornerPointIds: [pointIdA, pointIdB],
+          createdByTool: 'cube',
+          dependsOn: [pointIdA, pointIdB],
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+
+        const newPoints: ManualPoint[] = []
+        const baseA = p0.label
+        const baseB = p1.label
+        
+        const usedLabels = new Set(current.points.map(p => p.label))
+        usedLabels.add(baseA)
+        usedLabels.add(baseB)
+        const getNextLabel = () => {
+           for (let i = 0; i < 26; i++) {
+              const ch = String.fromCharCode(65 + i)
+              if (!usedLabels.has(ch) && ch !== 'S' && ch !== 'I' && ch !== 'O') {
+                 usedLabels.add(ch)
+                 return ch
+              }
+           }
+           const next = `P${usedLabels.size}`
+           usedLabels.add(next)
+           return next
+        }
+
+        let baseC = 'C'
+        if (baseA === 'A' && baseB === 'B' && !usedLabels.has('C')) {
+           usedLabels.add('C')
+        } else {
+           baseC = getNextLabel()
+        }
+
+        let baseD = 'D'
+        if (baseA === 'A' && baseB === 'B' && baseC === 'C' && !usedLabels.has('D')) {
+           usedLabels.add('D')
+        } else {
+           baseD = getNextLabel()
+        }
+
+        const pts = [baseA, baseB, baseC, baseD, `${baseA}'`, `${baseB}'`, `${baseC}'`, `${baseD}'`]
+        const ptIds = [p0.id, p1.id, '', '', '', '', '', '']
+
+        for (let i = 0; i < 8; i++) {
+          if (i !== 0 && i !== 1) {
+            const pid = createEntityId('point')
+            ptIds[i] = pid
+            newPoints.push({
+              id: pid,
+              label: pts[i],
+              entityType: 'point',
+              pointKind: 'solidVertex',
+              solidId: solid.id,
+              vertexIndex: i,
+              position: [0, 0, 0], // calculated by resolvePointPositions
+              createdByTool: 'cube',
+              dependsOn: [solid.id],
+              locked: false,
+              visible: true,
+              selectable: true,
+            })
+          }
+        }
+
+        return {
+          ...current,
+          solids: [...current.solids, solid],
+          points: [...current.points, ...newPoints],
+        }
+      })
+      setManualSelection({ kind: 'solid', id: solidId })
+      return solidId
+    },
+    [commitManualDocument, manualDocument.solids.length],
+  )
+
   const createPyramid = useCallback(
     (basePolygonId: string, height: number, apexPointId?: string) => {
       if (height <= 0 && !apexPointId) return null
+      
+      if (apexPointId && apexPointId !== 'auto_generate') {
+        if (isPointCoplanarWithPolygon(apexPointId, basePolygonId, manualDocument)) {
+          toast.error('Đỉnh chóp không được nằm trên cùng mặt phẳng với mặt đáy.')
+          return null
+        }
+      }
+
       saveManualState()
 
       const solidId = createEntityId('solid')
@@ -2373,9 +2529,100 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     [commitManualDocument, manualDocument, saveManualState],
   )
 
+  const createRegularPyramid = useCallback(
+    (basePolygonId: string) => {
+      saveManualState()
+      const solidId = createEntityId('solid')
+
+      commitManualDocument((current) => {
+        const poly = current.polygons.find(p => p.id === basePolygonId)
+        if (!poly) return current
+
+        const solid: ManualSolid = {
+          id: solidId,
+          label: `Chóp ${current.solids.length + 1}`,
+          entityType: 'solid',
+          solidType: 'regularPyramid',
+          basePolygonId,
+          createdByTool: 'regularPyramid',
+          dependsOn: [basePolygonId],
+          height: 4, // Default height
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+
+        const newPoints: ManualPoint[] = []
+        const resolved = resolvePointPositions(current)
+        const basePoints = poly.pointIds.map((id) => resolved[id]).filter(Boolean) as Vec3[]
+        
+        if (basePoints.length >= 3) {
+           const c = centroid(basePoints)
+           const normal = getPolygonNormal(basePoints)
+           const height = solid.height!
+           const apexPos: Vec3 = [c[0] + normal[0] * height, c[1] + normal[1] * height, c[2] + normal[2] * height]
+           
+           const existingPoint = current.points.find(p => {
+              const pos = resolved[p.id]
+              return pos && distance(pos, apexPos) < 1e-4
+           })
+           
+           if (existingPoint) {
+              solid.apexPointId = existingPoint.id
+           } else {
+              const apexId = createEntityId('point')
+              const usedLabels = new Set(current.points.map(p => p.label))
+              let apexLabel = 'S'
+              if (usedLabels.has('S')) {
+                for (let i = 0; i < 10; i++) {
+                   if (!usedLabels.has(`S${i}`)) {
+                      apexLabel = `S${i}`
+                      break
+                   }
+                }
+              }
+
+              solid.apexPointId = apexId
+              newPoints.push({
+                 id: apexId,
+                 label: apexLabel,
+                 entityType: 'point',
+                 pointKind: 'solidVertex',
+                 solidId: solid.id,
+                 vertexIndex: 0,
+                 position: [0, 0, 0], // dynamically resolved
+                 createdByTool: 'regularPyramid',
+                 dependsOn: [solid.id],
+                 locked: false,
+                 visible: true,
+                 selectable: true,
+              })
+           }
+        }
+
+        return {
+          ...current,
+          solids: [...current.solids, solid],
+          points: [...current.points, ...newPoints],
+        }
+      })
+      setManualSelection({ kind: 'solid', id: solidId })
+      return solidId
+    },
+    [commitManualDocument, saveManualState],
+  )
+
   const createPrism = useCallback(
     (basePolygonId: string, height: number, topPointId?: string) => {
       if (height <= 0 && !topPointId) return null
+      
+      if (topPointId && topPointId !== 'auto_generate') {
+        if (isPointCoplanarWithPolygon(topPointId, basePolygonId, manualDocument)) {
+          toast.error('Đỉnh nắp không được nằm trên cùng mặt phẳng với mặt đáy.')
+          return null
+        }
+      }
+
       saveManualState()
 
       const solidId = createEntityId('solid')
@@ -2729,13 +2976,16 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       cancelManualDraft,
       createPointFromTarget,
       updatePointPosition,
+      updatePointT,
       updateSegmentLength,
       updateSolidHeight,
       updateCircleRadius,
       createSegment,
       createPolygon,
       createBox,
+      createCube,
       createPyramid,
+      createRegularPyramid,
       createPrism,
       createSphere,
       createCone,
@@ -2765,10 +3015,12 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       cameraControls,
       cancelManualDraft,
       createBox,
+      createCube,
       createPointFromTarget,
       createPolygon,
       createPrism,
       createPyramid,
+      createRegularPyramid,
       createSegment,
       createSphere,
       createCone,
@@ -2810,6 +3062,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       undoManual,
       undoStack.length,
       updatePointPosition,
+      updatePointT,
       updateSegmentLength,
       updateSolidHeight,
       updateCircleRadius,

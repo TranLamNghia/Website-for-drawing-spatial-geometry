@@ -10,7 +10,9 @@ export type ManualTool =
   | 'segment'
   | 'polygon'
   | 'box'
+  | 'cube'
   | 'pyramid'
+  | 'regularPyramid'
   | 'prism'
   | 'sphere'
   | 'cone'
@@ -106,10 +108,10 @@ export interface ManualCircle extends ManualEntityMeta {
 
 export interface ManualSolid extends ManualEntityMeta {
   entityType: 'solid'
-  solidType: 'box' | 'pyramid' | 'prism' | 'sphere' | 'cone' | 'cylinder'
+  solidType: 'box' | 'cube' | 'pyramid' | 'regularPyramid' | 'prism' | 'sphere' | 'cone' | 'cylinder'
   height?: number
   radius?: number
-  cornerPointIds?: [string, string, string]
+  cornerPointIds?: string[]
   basePolygonId?: string
   baseCircleId?: string
   centerPointId?: string
@@ -274,7 +276,7 @@ function lerpVec3(a: Vec3, b: Vec3, t: number): Vec3 {
   ]
 }
 
-function distance(a: Vec3, b: Vec3) {
+export function distance(a: Vec3, b: Vec3) {
   return Math.sqrt(
     (a[0] - b[0]) ** 2 +
       (a[1] - b[1]) ** 2 +
@@ -361,7 +363,7 @@ export function circleThreePoints3D(a: Vec3, b: Vec3, c: Vec3): { center: Vec3; 
   return { center, radius, normal }
 }
 
-function centroid(points: Vec3[]): Vec3 {
+export function centroid(points: Vec3[]): Vec3 {
   if (!points.length) return [0, 0, 0]
   const total = points.reduce<Vec3>(
     (acc, point) => addVec3(acc, point),
@@ -506,6 +508,48 @@ export function resolvePointPositions(document: ManualDocument) {
           positions[pointId] = pts[point.vertexIndex] as Vec3
           visiting.delete(pointId)
           return positions[pointId]
+        } else if (solid.solidType === 'cube' && solid.cornerPointIds) {
+          const pA = resolvePoint(solid.cornerPointIds[0], visiting)
+          const pB = resolvePoint(solid.cornerPointIds[1], visiting)
+          const baseA: Vec3 = [pA[0], pA[1], pA[2]]
+          const baseB: Vec3 = [pB[0], pB[1], pB[2]]
+          
+          const E = [baseB[0] - baseA[0], baseB[1] - baseA[1], baseB[2] - baseA[2]]
+          const D_vec: Vec3 = [-E[1], E[0], 0]
+          const lenD = Math.hypot(D_vec[0], D_vec[1])
+          const lenE = Math.hypot(E[0], E[1], E[2])
+          const D_norm = lenD > 1e-9 ? [D_vec[0]/lenD, D_vec[1]/lenD, 0] as Vec3 : [0, 1, 0] as Vec3
+          
+          const baseD: Vec3 = [baseA[0] + D_norm[0] * lenE, baseA[1] + D_norm[1] * lenE, baseA[2]]
+          const baseC: Vec3 = [baseB[0] + D_norm[0] * lenE, baseB[1] + D_norm[1] * lenE, baseB[2]]
+          const h = lenE
+          const pts = [
+            baseA, baseB, baseC, baseD,
+            [baseA[0], baseA[1], baseA[2] + h],
+            [baseB[0], baseB[1], baseB[2] + h],
+            [baseC[0], baseC[1], baseC[2] + h],
+            [baseD[0], baseD[1], baseD[2] + h],
+          ]
+          positions[pointId] = pts[point.vertexIndex] as Vec3
+          visiting.delete(pointId)
+          return positions[pointId]
+        } else if (solid.solidType === 'regularPyramid' && solid.basePolygonId) {
+          const basePoly = document.polygons.find((p) => p.id === solid.basePolygonId)
+          if (basePoly) {
+            const basePoints = basePoly.pointIds.map((id) => resolvePoint(id, visiting))
+            const c = centroid(basePoints)
+            if (point.vertexIndex === 0) {
+              const normal = getPolygonNormal(basePoints)
+              const h = solid.height ?? 4
+              positions[pointId] = [
+                c[0] + normal[0] * h,
+                c[1] + normal[1] * h,
+                c[2] + normal[2] * h
+              ]
+              visiting.delete(pointId)
+              return positions[pointId]
+            }
+          }
         } else if (solid.solidType === 'pyramid' && solid.basePolygonId) {
           const basePoly = document.polygons.find((p) => p.id === solid.basePolygonId)
           if (basePoly) {
@@ -868,7 +912,7 @@ function pushGeometryPlane(
   })
 }
 
-function getPolygonNormal(points: Vec3[]): Vec3 {
+export function getPolygonNormal(points: Vec3[]): Vec3 {
   if (points.length < 3) return [0, 0, 1]
   const v1 = subVec3(points[1], points[0])
   const v2 = subVec3(points[2], points[0])
@@ -1057,23 +1101,41 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
   })
 
   document.solids.forEach((solid) => {
-    if (solid.solidType === 'box' && solid.cornerPointIds) {
+    if ((solid.solidType === 'box' || solid.solidType === 'cube') && solid.cornerPointIds) {
       const posA = pointPositions[solid.cornerPointIds[0]]
       const posB = pointPositions[solid.cornerPointIds[1]]
-      const posC = solid.cornerPointIds[2] ? pointPositions[solid.cornerPointIds[2]] : posB
       
       const ptA = pointMap.get(solid.cornerPointIds[0])
       const ptB = pointMap.get(solid.cornerPointIds[1])
-      const ptC = solid.cornerPointIds[2] ? pointMap.get(solid.cornerPointIds[2]) : ptB
 
-      if (!posA || !posB || !posC || !ptA || !ptB || !ptC) return
+      if (!posA || !posB || !ptA || !ptB) return
 
-      const baseA: Vec3 = [posA[0], posA[1], posA[2]]
-      const baseB: Vec3 = [posB[0], posB[1], posB[2]]
-      const baseC: Vec3 = [posC[0], posC[1], posC[2]]
-      const baseD: Vec3 = [posA[0] + posC[0] - posB[0], posA[1] + posC[1] - posB[1], posA[2] + posC[2] - posB[2]]
+      let baseA: Vec3 = [posA[0], posA[1], posA[2]]
+      let baseB: Vec3 = [posB[0], posB[1], posB[2]]
+      let baseC: Vec3, baseD: Vec3, h: number
+      let ptC = solid.cornerPointIds[2] ? pointMap.get(solid.cornerPointIds[2]) : ptB
       
-      const h = solid.height ?? 4
+      if (solid.solidType === 'cube') {
+        const E = [baseB[0] - baseA[0], baseB[1] - baseA[1], baseB[2] - baseA[2]]
+        const D_vec: Vec3 = [-E[1], E[0], 0]
+        const lenD = Math.hypot(D_vec[0], D_vec[1])
+        const lenE = Math.hypot(E[0], E[1], E[2])
+        const D_norm = lenD > 1e-9 ? [D_vec[0]/lenD, D_vec[1]/lenD, 0] as Vec3 : [0, 1, 0] as Vec3
+        
+        baseD = [baseA[0] + D_norm[0] * lenE, baseA[1] + D_norm[1] * lenE, baseA[2]]
+        baseC = [baseB[0] + D_norm[0] * lenE, baseB[1] + D_norm[1] * lenE, baseB[2]]
+        h = lenE
+        // Find C label generated by context
+        const generatedC = document.points.find(p => p.solidId === solid.id && p.vertexIndex === 2)
+        if (generatedC) ptC = generatedC
+      } else {
+        const posC = solid.cornerPointIds[2] ? pointPositions[solid.cornerPointIds[2]] : posB
+        if (!posC) return
+        baseC = [posC[0], posC[1], posC[2]]
+        baseD = [posA[0] + posC[0] - posB[0], posA[1] + posC[1] - posB[1], posA[2] + posC[2] - posB[2]]
+        h = solid.height ?? 4
+      }
+
       const topA: Vec3 = [baseA[0], baseA[1], baseA[2] + h]
       const topB: Vec3 = [baseB[0], baseB[1], baseB[2] + h]
       const topC: Vec3 = [baseC[0], baseC[1], baseC[2] + h]
@@ -1081,7 +1143,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
 
       const labelA = ptA.label
       let labelB = ptB.label
-      let labelC = ptC.label
+      let labelC = ptC?.label ?? `${solid.label}C`
       let labelD = `${solid.label}D`
 
       // Smart distinct label assignment to avoid duplicates and preserve alphabet order
@@ -1092,7 +1154,8 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
 
       const getNextAvailableLetter = () => {
         for (let pass = 0; pass < 10; pass += 1) {
-          for (const letter of LETTERS) {
+          for (let i = 0; i < 26; i++) {
+            const letter = String.fromCharCode(65 + i)
             const candidate = pass === 0 ? letter : `${letter}${pass}`
             if (!usedLabelsInDoc.has(candidate)) {
               usedLabelsInDoc.add(candidate)
@@ -1103,11 +1166,15 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         return `P_${crypto.randomUUID().slice(0, 4)}`
       }
 
-      if (labelA === 'A' && labelB === 'B' && labelC === 'C' && !usedLabelsInDoc.has('D')) {
+      const generatedD = document.points.find(p => p.solidId === solid.id && p.vertexIndex === 3)
+      if (generatedD) {
+        labelD = generatedD.label
+        usedLabelsInDoc.add(labelD)
+      } else if (labelA === 'A' && labelB === 'B' && labelC === 'C' && !usedLabelsInDoc.has('D')) {
         labelD = 'D'
         usedLabelsInDoc.add('D')
       } else {
-        labelD = getNextAvailableLetter()
+        labelD = 'D' // Simplify since generated point logic already assigns unique labels
       }
 
       const baseLabels = [labelA, labelB, labelC, labelD]
@@ -1172,12 +1239,12 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       const depth = Math.abs(baseD[1] - baseA[1])
       const baseArea = width * depth
       solidInfo[solid.id] = {
-        solidType: 'box',
+        solidType: solid.solidType === 'cube' ? 'cube' : 'box',
         baseLabel: baseLabels.join(', '),
-        height: round(Math.abs(solid.height ?? 0)),
+        height: round(Math.abs(h)),
         baseArea: round(baseArea),
-        volume: round(baseArea * Math.abs(solid.height ?? 0)),
-        formula: `V = S_đáy * h = ${round(baseArea)} * ${round(Math.abs(solid.height ?? 0))}`,
+        volume: round(baseArea * Math.abs(h)),
+        formula: `V = S_đáy * h = ${round(baseArea)} * ${round(Math.abs(h))}`,
         vertexCount: 8,
         faceCount: 6,
       }
@@ -1198,7 +1265,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     const baseArea = polygonArea2D(basePoints)
     const center = centroid(basePoints)
 
-    if (solid.solidType === 'pyramid') {
+    if (solid.solidType === 'pyramid' || solid.solidType === 'regularPyramid') {
       const hasApex = !!(solid.apexPointId && pointPositions[solid.apexPointId])
       const normal = getPolygonNormal(basePoints)
       const apex: Vec3 = hasApex
@@ -1264,15 +1331,28 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
 
       const distVec = subVec3(apex, basePoints[0])
       const resolvedHeight = Math.abs(dotVec3(distVec, normal))
-      solidInfo[solid.id] = {
-        solidType: 'pyramid',
-        baseLabel: basePolygon.label,
-        height: round(resolvedHeight),
-        baseArea: round(baseArea),
-        volume: round((baseArea * resolvedHeight) / 3),
-        formula: `V = S_đáy * h / 3 = ${round(baseArea)} * ${round(resolvedHeight)} / 3`,
-        vertexCount: basePoints.length + 1,
-        faceCount: basePoints.length + 1,
+      if (solid.solidType === 'regularPyramid') {
+        solidInfo[solid.id] = {
+          solidType: 'regularPyramid',
+          baseLabel: `${apexLabel} - ${basePolygon.label}`, // Đỉnh: S - Đáy: ABCD
+          height: round(resolvedHeight),
+          baseArea: round(baseArea),
+          volume: round((baseArea * resolvedHeight) / 3),
+          formula: `V = S_đáy * h / 3 = ${round(baseArea)} * ${round(resolvedHeight)} / 3`,
+          vertexCount: basePoints.length + 1,
+          faceCount: basePoints.length + 1,
+        }
+      } else {
+        solidInfo[solid.id] = {
+          solidType: 'pyramid',
+          baseLabel: basePolygon.label,
+          height: round(resolvedHeight),
+          baseArea: round(baseArea),
+          volume: round((baseArea * resolvedHeight) / 3),
+          formula: `V = S_đáy * h / 3 = ${round(baseArea)} * ${round(resolvedHeight)} / 3`,
+          vertexCount: basePoints.length + 1,
+          faceCount: basePoints.length + 1,
+        }
       }
       return
     }
