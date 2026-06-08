@@ -200,7 +200,7 @@ export function Canvas3D() {
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
-    controls.minDistance = 2.0
+    controls.minDistance = 0.1
     controls.maxDistance = 150.0
     controls.target.set(0, 0, 0)
     controlsRef.current = controls
@@ -440,12 +440,12 @@ export function Canvas3D() {
 
           // Vertical lines (X constant)
           for (let x = snapX - gridRadius; x <= snapX + gridRadius; x += step) {
-            if ((x === 0 && showAxesState) || Math.abs(x) > AXIS_LEN) continue
+            if (x === 0 && showAxesState) continue
             gPts.push(new THREE.Vector3(x, snapY - gridRadius, gridZ), new THREE.Vector3(x, snapY + gridRadius, gridZ))
           }
           // Horizontal lines (Y constant)
           for (let y = snapY - gridRadius; y <= snapY + gridRadius; y += step) {
-            if ((y === 0 && showAxesState) || Math.abs(y) > AXIS_LEN) continue
+            if (y === 0 && showAxesState) continue
             gPts.push(new THREE.Vector3(snapX - gridRadius, y, gridZ), new THREE.Vector3(snapX + gridRadius, y, gridZ))
           }
 
@@ -465,30 +465,29 @@ export function Canvas3D() {
       if (cameraRef.current) {
         const cam = cameraRef.current
         
-        // Project O and axes endpoints to NDC
-        const posO = new THREE.Vector3(0, 0, 0).project(cam)
-        const posX = new THREE.Vector3(1, 0, 0).project(cam)
-        const posY = new THREE.Vector3(0, 1, 0).project(cam)
-        const posZ = new THREE.Vector3(0, 0, 1).project(cam)
+        // Extract camera rotation to transform world axes to camera space
+        const rotationMatrix = new THREE.Matrix4().extractRotation(cam.matrixWorldInverse)
+        const xAxis = new THREE.Vector3(1, 0, 0).applyMatrix4(rotationMatrix)
+        const yAxis = new THREE.Vector3(0, 1, 0).applyMatrix4(rotationMatrix)
+        const zAxis = new THREE.Vector3(0, 0, 1).applyMatrix4(rotationMatrix)
 
-        // Normalize 2D directions on screen
-        const dirX = new THREE.Vector2(posX.x - posO.x, posX.y - posO.y).normalize()
-        const dirY = new THREE.Vector2(posY.x - posO.x, posY.y - posO.y).normalize()
-        const dirZ = new THREE.Vector2(posZ.x - posO.x, posZ.y - posO.y).normalize()
+        // Calculate 2D directions on screen. SVG Y is down, so invert the camera-space Y.
+        const dirX = new THREE.Vector2(xAxis.x, -xAxis.y)
+        const dirY = new THREE.Vector2(yAxis.x, -yAxis.y)
+        const dirZ = new THREE.Vector2(zAxis.x, -zAxis.y)
+        
+        if (dirX.lengthSq() > 0.001) dirX.normalize()
+        if (dirY.lengthSq() > 0.001) dirY.normalize()
+        if (dirZ.lengthSq() > 0.001) dirZ.normalize()
 
         const cx = 45
         const cy = 45
         const r = 26
 
-        // Compute 3D depth to camera to adjust scale and opacity
-        const distCam = cam.position.length()
-        const distX = cam.position.distanceTo(new THREE.Vector3(1, 0, 0))
-        const distY = cam.position.distanceTo(new THREE.Vector3(0, 1, 0))
-        const distZ = cam.position.distanceTo(new THREE.Vector3(0, 0, 1))
-
-        const depthX = distCam - distX
-        const depthY = distCam - distY
-        const depthZ = distCam - distZ
+        // Camera space looks down -Z. Z-depth determines distance relative to the camera.
+        const depthX = xAxis.z
+        const depthY = yAxis.z
+        const depthZ = zAxis.z
 
         const scaleX = 1 + Math.max(-0.6, Math.min(0.6, depthX)) * 0.25
         const scaleY = 1 + Math.max(-0.6, Math.min(0.6, depthY)) * 0.25
@@ -557,11 +556,45 @@ export function Canvas3D() {
         }
       }
     })
+
+    const handleDoubleClick = (event: MouseEvent) => {
+      if (!camera || !controls || !dynamicGroupRef.current) return
+      
+      const rect = renderer.domElement.getBoundingClientRect()
+      if (!rect) return
+      
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      
+      const raycaster = new THREE.Raycaster()
+      raycaster.params.Line = { threshold: 0.18 }
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera)
+      const intersects = raycaster.intersectObjects(dynamicGroupRef.current.children, true)
+      
+      const targetPoint = new THREE.Vector3()
+      if (intersects.length > 0) {
+        targetPoint.copy(intersects[0].point)
+      } else {
+        const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
+        raycaster.ray.intersectPlane(plane, targetPoint)
+      }
+      
+      if (targetPoint) {
+        const offset = new THREE.Vector3().subVectors(targetPoint, controls.target)
+        camera.position.add(offset)
+        controls.target.copy(targetPoint)
+        controls.update()
+      }
+    }
+    
+    renderer.domElement.addEventListener('dblclick', handleDoubleClick)
+
     if (container) {
       resizeObserver.observe(container)
     }
 
     return () => {
+      renderer.domElement.removeEventListener('dblclick', handleDoubleClick)
       resizeObserver.disconnect()
       cancelAnimationFrame(frameId)
       if (container) {

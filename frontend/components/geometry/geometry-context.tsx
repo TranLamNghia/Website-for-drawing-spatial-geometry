@@ -536,7 +536,7 @@ function resolvePointPlacement(
       label: nextPointLabel(document),
       entityType: 'point',
       pointKind: 'segment',
-      position: fallback,
+      position: target.position ?? fallback,
       segmentId: target.segmentId,
       t: target.t ?? 0.5,
       createdByTool: 'point',
@@ -779,9 +779,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           const start = resolved[segment.startPointId]
           const end = resolved[segment.endPointId]
           if (!start || !end) return null
-          const dx = end[0] - start[0]
-          const dy = end[1] - start[1]
-          const lengthSquared = dx * dx + dy * dy
+          const v = subVec3(end, start)
+          const lengthSquared = v[0] * v[0] + v[1] * v[1] + v[2] * v[2]
           const nextT =
             target?.kind === 'segment' && target.segmentId === point.segmentId
               ? target.t ?? point.t ?? 0.5
@@ -791,7 +790,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
                     1,
                     Math.max(
                       0,
-                      ((position[0] - start[0]) * dx + (position[1] - start[1]) * dy) /
+                      ((position[0] - start[0]) * v[0] + (position[1] - start[1]) * v[1] + (position[2] - start[2]) * v[2]) /
                         lengthSquared,
                     ),
                   )

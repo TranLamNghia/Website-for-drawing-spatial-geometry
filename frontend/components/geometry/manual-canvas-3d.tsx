@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
@@ -50,34 +51,6 @@ function getColors(isDark: boolean) {
   }
 }
 
-function lineClosestPoint(point: Vec3, start: Vec3, end: Vec3) {
-  const dx = end[0] - start[0]
-  const dy = end[1] - start[1]
-  const lengthSquared = dx * dx + dy * dy
-  if (lengthSquared === 0) return { t: 0, position: start }
-  const t = Math.min(
-    1,
-    Math.max(0, ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / lengthSquared),
-  )
-  return {
-    t,
-    position: [
-      start[0] + dx * t,
-      start[1] + (end[1] - start[1]) * t,
-      start[2] + (end[2] - start[2]) * t,
-    ] as Vec3,
-  }
-}
-
-function polygonCenter(points: Vec3[]) {
-  if (!points.length) return [0, 0, 0] as Vec3
-  const total = points.reduce<Vec3>(
-    (acc, point) => [acc[0] + point[0], acc[1] + point[1], acc[2] + point[2]],
-    [0, 0, 0],
-  )
-  return [total[0] / points.length, total[1] / points.length, total[2] / points.length] as Vec3
-}
-
 function snapCoordinate(v: number): number {
   if (isNaN(v)) return v
   return Math.round(v * 10) / 10
@@ -113,6 +86,64 @@ function scaleVec3(vec: Vec3, scalar: number): Vec3 {
 
 function dotVec3(a: Vec3, b: Vec3): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+function closestPointOnSegmentToRay(
+  rayOrigin: THREE.Vector3,
+  rayDir: THREE.Vector3,
+  start: Vec3,
+  end: Vec3
+) {
+  const v: Vec3 = [end[0] - start[0], end[1] - start[1], end[2] - start[2]]
+  const w: Vec3 = [start[0] - rayOrigin.x, start[1] - rayOrigin.y, start[2] - rayOrigin.z]
+  const d: Vec3 = [rayDir.x, rayDir.y, rayDir.z]
+  
+  const a = v[0] * v[0] + v[1] * v[1] + v[2] * v[2] // ||v||^2
+  const b = v[0] * d[0] + v[1] * d[1] + v[2] * d[2] // v . d
+  const c = w[0] * v[0] + w[1] * v[1] + w[2] * v[2] // w . v
+  const dVal = w[0] * d[0] + w[1] * d[1] + w[2] * d[2] // w . d
+  
+  const denom = a - b * b
+  let t = 0
+  if (Math.abs(denom) > 1e-9) {
+    t = (b * dVal - c) / denom
+  }
+  t = Math.max(0, Math.min(1, t))
+  
+  const pos: Vec3 = [
+    start[0] + t * v[0],
+    start[1] + t * v[1],
+    start[2] + t * v[2]
+  ]
+  return { position: pos, t }
+}
+
+function closestHeightFromRay(
+  rayOrigin: THREE.Vector3,
+  rayDir: THREE.Vector3,
+  center: Vec3,
+  normal: Vec3
+): number {
+  const w: Vec3 = [center[0] - rayOrigin.x, center[1] - rayOrigin.y, center[2] - rayOrigin.z]
+  const d: Vec3 = [rayDir.x, rayDir.y, rayDir.z]
+  
+  const b = normal[0] * d[0] + normal[1] * d[1] + normal[2] * d[2] // normal . d
+  const c = w[0] * normal[0] + w[1] * normal[1] + w[2] * normal[2] // w . normal
+  const dVal = w[0] * d[0] + w[1] * d[1] + w[2] * d[2] // w . d
+  
+  const denom = 1 - b * b
+  if (Math.abs(denom) < 1e-9) return 4 // fallback if ray is parallel to normal
+  
+  return (b * dVal - c) / denom
+}
+
+function polygonCenter(points: Vec3[]) {
+  if (!points.length) return [0, 0, 0] as Vec3
+  const total = points.reduce<Vec3>(
+    (acc, point) => [acc[0] + point[0], acc[1] + point[1], acc[2] + point[2]],
+    [0, 0, 0],
+  )
+  return [total[0] / points.length, total[1] / points.length, total[2] / points.length] as Vec3
 }
 
 function crossVec3(a: Vec3, b: Vec3): Vec3 {
@@ -267,7 +298,7 @@ export function ManualCanvas3D() {
     const endPos = new THREE.Vector3()
 
     if (axis === 'z') {
-      endPos.set(target.x, target.y - 0.001, target.z + dist)
+      endPos.set(target.x, target.y, target.z + dist)
     } else if (axis === 'y') {
       endPos.set(target.x, target.y - dist, target.z)
     } else {
@@ -282,11 +313,9 @@ export function ManualCanvas3D() {
       const t = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2
 
       cam.position.lerpVectors(startPos, endPos, t)
-
+      cam.lookAt(target)
       cam.up.set(0, 0, 1)
-
       controls.update()
-
       if (progress < 1) {
         requestAnimationFrame(animateTransition)
       }
@@ -295,16 +324,26 @@ export function ManualCanvas3D() {
     requestAnimationFrame(animateTransition)
   }, [])
 
+  const getCameraRay = (event: PointerEvent | MouseEvent) => {
+    const camera = cameraRef.current
+    const renderer = rendererRef.current
+    if (!camera || !renderer) return null
+    const rect = renderer.domElement.getBoundingClientRect()
+    const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+    const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+    raycasterRef.current.setFromCamera(new THREE.Vector2(x, y), camera)
+    return raycasterRef.current.ray
+  }
+
   const projectToScreen = (world: Vec3) => {
     const camera = cameraRef.current
     const container = mountRef.current
-    if (!camera || !container) return null
-    const vector = new THREE.Vector3(world[0], world[1], world[2]).project(camera)
-    const rect = container.getBoundingClientRect()
-    return {
-      x: ((vector.x + 1) / 2) * rect.width,
-      y: ((-vector.y + 1) / 2) * rect.height,
-    }
+    if (!camera || !container) return { x: 0, y: 0 }
+
+    const temp = new THREE.Vector3(...world).project(camera)
+    const x = (temp.x * 0.5 + 0.5) * container.clientWidth
+    const y = (-temp.y * 0.5 + 0.5) * container.clientHeight
+    return { x, y }
   }
 
   const getPlaneIntersection = (
@@ -312,20 +351,41 @@ export function ManualCanvas3D() {
     plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
   ) => {
     const camera = cameraRef.current
-    const container = mountRef.current
-    if (!camera || !container) return null
-    const rect = container.getBoundingClientRect()
-    const mouse = new THREE.Vector2(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1,
-    )
-    raycasterRef.current.setFromCamera(mouse, camera)
+    const renderer = rendererRef.current
+    if (!camera || !renderer) return null
+
+    const rect = renderer.domElement.getBoundingClientRect()
+    const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+    const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+
+    raycasterRef.current.setFromCamera(new THREE.Vector2(x, y), camera)
     const target = new THREE.Vector3()
-    if (!raycasterRef.current.ray.intersectPlane(plane, target)) return null
-    return [target.x, target.y, target.z] as Vec3
+    if (raycasterRef.current.ray.intersectPlane(plane, target)) {
+      return [target.x, target.y, target.z] as Vec3
+    }
+    return null
   }
 
-  const getSnapTarget = (event: PointerEvent | MouseEvent, planePoint: Vec3 | null) => {
+  const findIntersectionEntity = (event: PointerEvent | MouseEvent): InteractiveHit | null => {
+    const camera = cameraRef.current
+    const renderer = rendererRef.current
+    if (!camera || !renderer) return null
+
+    const rect = renderer.domElement.getBoundingClientRect()
+    const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+    const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+
+    raycasterRef.current.setFromCamera(new THREE.Vector2(x, y), camera)
+    const intersects = raycasterRef.current.intersectObjects(dynamicGroupRef.current.children, true)
+    for (const intersect of intersects) {
+      if (intersect.object.userData && intersect.object.userData.entity) {
+        return intersect.object.userData.entity as InteractiveHit
+      }
+    }
+    return null
+  }
+
+  const getSnapTarget = (event: PointerEvent | MouseEvent, planePoint: Vec3 | null): ManualSnapTarget | null => {
     const pointCandidates = manualDerived.displayPoints
       .filter((point) => point.visible && point.selectable)
       .map((point) => ({
@@ -338,7 +398,7 @@ export function ManualCanvas3D() {
       .filter((segment) => segment.visible)
       .map((displaySegment) => ({
         segmentId: displaySegment.id,
-        label: '', // Polygon edges won't show labels in snap info, which is fine
+        label: '',
         start: displaySegment.start,
         end: displaySegment.end,
       }))
@@ -356,7 +416,7 @@ export function ManualCanvas3D() {
         distance: evaluateTarget(candidate.position),
         target: {
           kind: 'point' as const,
-          label: `\u0110i\u1ec3m ${candidate.label}`,
+          label: `Điểm ${candidate.label}`,
           pointId: candidate.pointId,
           position: candidate.position,
         },
@@ -374,11 +434,14 @@ export function ManualCanvas3D() {
           (candidate.start[1] + candidate.end[1]) / 2,
           (candidate.start[2] + candidate.end[2]) / 2,
         ]
+        const startLabel = manualDerived.displayPoints.find((p) => p.id === candidate.segmentId.split('_')[0] || p.sourceId === candidate.segmentId.split('_')[0])?.label ?? ''
+        const endLabel = manualDerived.displayPoints.find((p) => p.id === candidate.segmentId.split('_')[1] || p.sourceId === candidate.segmentId.split('_')[1])?.label ?? ''
+        const label = startLabel && endLabel ? `Trung điểm ${startLabel}${endLabel}` : 'Trung điểm'
         return {
           distance: evaluateTarget(midpoint),
           target: {
             kind: 'midpoint' as const,
-            label: `Trung \u0111i\u1ec3m ${candidate.label}`,
+            label,
             segmentId: candidate.segmentId,
             position: midpoint,
             t: 0.5,
@@ -391,98 +454,69 @@ export function ManualCanvas3D() {
       return bestMidpoint.target
     }
 
-    if (!planePoint) return null
-
-    const bestSegment = segmentCandidates
-      .map((candidate) => {
-        const projection = lineClosestPoint(planePoint, candidate.start, candidate.end)
-        return {
-          distance: evaluateTarget(projection.position),
-          target: {
-            kind: 'segment' as const,
-            label: `\u0110i\u1ec3m thu\u1ed9c ${candidate.label}`,
-            segmentId: candidate.segmentId,
-            position: projection.position,
-            t: projection.t,
-          },
-        }
-      })
-      .sort((left, right) => left.distance - right.distance)[0]
-
-    if (snapEnabled && bestSegment && bestSegment.distance <= snapThreshold) {
-      return bestSegment.target
-    }
-
-    return {
-      kind: 'workplane' as const,
-      label: 'M\u1eb7t ph\u1eb3ng \u0111\u00e1y z = 0',
-      position: planePoint,
-    }
-  }
-
-  const findIntersectionEntity = (event: PointerEvent | MouseEvent): InteractiveHit | null => {
     const camera = cameraRef.current
-    const container = mountRef.current
-    const scene = sceneRef.current
-    if (!camera || !container || !scene) return null
-    const rect = container.getBoundingClientRect()
-    const pointer = new THREE.Vector2(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1,
-    )
-    raycasterRef.current.setFromCamera(pointer, camera)
-    const intersections = raycasterRef.current.intersectObjects(dynamicGroupRef.current.children, true)
-    
-    // Prioritize points
-    for (const intersection of intersections) {
-      const data = intersection.object.userData?.entity as InteractiveHit | undefined
-      if (data?.kind === 'point') return data
+    if (camera && snapEnabled) {
+      const ray = getCameraRay(event)
+      if (ray) {
+        const segmentSnaps = segmentCandidates.map((candidate) => {
+          const { position, t } = closestPointOnSegmentToRay(ray.origin, ray.direction, candidate.start, candidate.end)
+          const distance = evaluateTarget(position)
+          const startLabel = manualDerived.displayPoints.find((p) => p.id === candidate.segmentId.split('_')[0] || p.sourceId === candidate.segmentId.split('_')[0])?.label ?? ''
+          const endLabel = manualDerived.displayPoints.find((p) => p.id === candidate.segmentId.split('_')[1] || p.sourceId === candidate.segmentId.split('_')[1])?.label ?? ''
+          const label = startLabel && endLabel ? `Thuộc ${startLabel}${endLabel}` : 'Thuộc đoạn thẳng'
+          return {
+            distance,
+            target: {
+              kind: 'segment' as const,
+              label,
+              segmentId: candidate.segmentId,
+              position,
+              t,
+            },
+          }
+        })
+        const bestSegment = segmentSnaps.sort((left, right) => left.distance - right.distance)[0]
+        if (bestSegment && bestSegment.distance <= snapThreshold) {
+          return bestSegment.target
+        }
+      }
     }
-    // Then segments
-    for (const intersection of intersections) {
-      const data = intersection.object.userData?.entity as InteractiveHit | undefined
-      if (data?.kind === 'segment') return data
+
+    if (planePoint) {
+      return {
+        kind: 'workplane' as const,
+        label: `Mặt phẳng đáy`,
+        position: planePoint,
+      }
     }
-    // Then polygons/solids/circles
-    for (const intersection of intersections) {
-      const data = intersection.object.userData?.entity as InteractiveHit | undefined
-      if (data) return data
-    }
+
     return null
   }
 
   const applyHoverPresentation = (target: ManualSnapTarget | null) => {
-    const hoverMarker = hoverMarkerRef.current
-    const hoverHud = hoverHudRef.current
-    const hoverStatus = hoverStatusRef.current
-
-    if (hoverStatus) {
-      hoverStatus.textContent = target?.label ?? 'KhÃ´ng bÃ¡m'
-    }
-
+    const hud = hoverHudRef.current
+    const status = hoverStatusRef.current
+    if (!hud || !status) return
     if (!target) {
-      if (hoverMarker) hoverMarker.visible = false
-      if (hoverHud) hoverHud.style.opacity = '0'
+      hud.style.display = 'none'
+      if (hoverMarkerRef.current) hoverMarkerRef.current.visible = false
       return
     }
-
-    if (hoverMarker) {
-      hoverMarker.position.set(target.position[0], target.position[1], target.position[2])
-      hoverMarker.visible = true
-    }
-
+    hud.style.display = 'block'
+    status.textContent = `${target.label} ${formatHoverCoords(target.position)}`
     const screen = projectToScreen(target.position)
-    if (!hoverHud || !screen) return
-
-    hoverHud.textContent = formatHoverCoords(target.position)
-    hoverHud.style.opacity = '1'
-    hoverHud.style.transform = `translate(${screen.x + 16}px, ${screen.y - 14}px)`
+    hud.style.left = `${screen.x + 12}px`
+    hud.style.top = `${screen.y + 12}px`
+    if (hoverMarkerRef.current) {
+      hoverMarkerRef.current.position.set(...target.position)
+      hoverMarkerRef.current.visible = true
+    }
   }
 
   const scheduleHoverPresentation = (target: ManualSnapTarget | null) => {
     pendingHoverTargetRef.current = target
-    if (hoverRafRef.current != null) return
-    hoverRafRef.current = window.requestAnimationFrame(() => {
+    if (hoverRafRef.current !== null) return
+    hoverRafRef.current = requestAnimationFrame(() => {
       hoverRafRef.current = null
       applyHoverPresentation(pendingHoverTargetRef.current)
     })
@@ -491,10 +525,9 @@ export function ManualCanvas3D() {
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
-    container.innerHTML = ''
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(colors.background)
+    scene.background = new THREE.Color(resolvedTheme === 'dark' ? 0x111827 : 0xffffff)
     sceneRef.current = scene
 
     const camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.1, 800)
@@ -520,7 +553,7 @@ export function ManualCanvas3D() {
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
-    controls.minDistance = 4
+    controls.minDistance = 0.1
     controls.maxDistance = 120
     controls.target.set(0, 0, 0)
     controlsRef.current = controls
@@ -767,12 +800,12 @@ export function ManualCanvas3D() {
           const gridZ = -0.001
 
           for (let x = snapX - gridRadius; x <= snapX + gridRadius; x += step) {
-            if ((x === 0 && showAxesState) || Math.abs(x) > axisLength) continue
+            if (x === 0 && showAxesState) continue
             gridPoints.push(new THREE.Vector3(x, snapY - gridRadius, gridZ), new THREE.Vector3(x, snapY + gridRadius, gridZ))
           }
 
           for (let y = snapY - gridRadius; y <= snapY + gridRadius; y += step) {
-            if ((y === 0 && showAxesState) || Math.abs(y) > axisLength) continue
+            if (y === 0 && showAxesState) continue
             gridPoints.push(new THREE.Vector3(snapX - gridRadius, y, gridZ), new THREE.Vector3(snapX + gridRadius, y, gridZ))
           }
 
@@ -792,30 +825,29 @@ export function ManualCanvas3D() {
       if (cameraRef.current) {
         const cam = cameraRef.current
         
-        // Project O and axes endpoints to NDC
-        const posO = new THREE.Vector3(0, 0, 0).project(cam)
-        const posX = new THREE.Vector3(1, 0, 0).project(cam)
-        const posY = new THREE.Vector3(0, 1, 0).project(cam)
-        const posZ = new THREE.Vector3(0, 0, 1).project(cam)
+        // Extract camera rotation to transform world axes to camera space
+        const rotationMatrix = new THREE.Matrix4().extractRotation(cam.matrixWorldInverse)
+        const xAxis = new THREE.Vector3(1, 0, 0).applyMatrix4(rotationMatrix)
+        const yAxis = new THREE.Vector3(0, 1, 0).applyMatrix4(rotationMatrix)
+        const zAxis = new THREE.Vector3(0, 0, 1).applyMatrix4(rotationMatrix)
 
-        // Normalize 2D directions on screen
-        const dirX = new THREE.Vector2(posX.x - posO.x, posX.y - posO.y).normalize()
-        const dirY = new THREE.Vector2(posY.x - posO.x, posY.y - posO.y).normalize()
-        const dirZ = new THREE.Vector2(posZ.x - posO.x, posZ.y - posO.y).normalize()
+        // Calculate 2D directions on screen. SVG Y is down, so invert the camera-space Y.
+        const dirX = new THREE.Vector2(xAxis.x, -xAxis.y)
+        const dirY = new THREE.Vector2(yAxis.x, -yAxis.y)
+        const dirZ = new THREE.Vector2(zAxis.x, -zAxis.y)
+        
+        if (dirX.lengthSq() > 0.001) dirX.normalize()
+        if (dirY.lengthSq() > 0.001) dirY.normalize()
+        if (dirZ.lengthSq() > 0.001) dirZ.normalize()
 
         const cx = 45
         const cy = 45
         const r = 26
 
-        // Compute 3D depth to camera to adjust scale and opacity
-        const distCam = cam.position.length()
-        const distX = cam.position.distanceTo(new THREE.Vector3(1, 0, 0))
-        const distY = cam.position.distanceTo(new THREE.Vector3(0, 1, 0))
-        const distZ = cam.position.distanceTo(new THREE.Vector3(0, 0, 1))
-
-        const depthX = distCam - distX
-        const depthY = distCam - distY
-        const depthZ = distCam - distZ
+        // Camera space looks down -Z. Z-depth determines distance relative to the camera.
+        const depthX = xAxis.z
+        const depthY = yAxis.z
+        const depthZ = zAxis.z
 
         const scaleX = 1 + Math.max(-0.6, Math.min(0.6, depthX)) * 0.25
         const scaleY = 1 + Math.max(-0.6, Math.min(0.6, depthY)) * 0.25
@@ -1885,10 +1917,11 @@ export function ManualCanvas3D() {
       const planePoint = getPlaneIntersection(event)
       const snappedPlanePoint = planePoint ? snapPosition(planePoint) : null
       const snapTarget = getSnapTarget(event, snappedPlanePoint)
+      const ray = getCameraRay(event)
 
       // Hover point highlight
       const hit = findIntersectionEntity(event)
-      let hoveredId = snapTarget?.kind === 'point' ? snapTarget.pointId : snapTarget?.kind === 'segment' ? snapTarget.segmentId : hit?.id ?? null
+      let hoveredId: string | null = (snapTarget?.kind === 'point' ? snapTarget.pointId : snapTarget?.kind === 'segment' ? snapTarget.segmentId : hit?.id) ?? null
       
       if (interactionRef.current.creatingPointId && interactionRef.current.pointerDown?.didDrag) {
         hoveredId = null
@@ -2085,16 +2118,15 @@ export function ManualCanvas3D() {
         })
       }
 
-      if (draftOperation && !interactionRef.current.creatingPointId) {
+      if (draftOperation && !interactionRef.current.creatingPointId && ray) {
         if ((draftOperation.tool === 'pyramid' || draftOperation.tool === 'prism') && draftOperation.basePolygonId) {
            const isSkew = draftOperation.tool === 'pyramid' ? !!draftOperation.apexPointId : !!draftOperation.topPointId;
-           if (!isSkew && activePosition) {
+           if (!isSkew) {
              const basePolygon = manualDerived.displayPolygons.find((p) => p.sourceId === draftOperation.basePolygonId)
              if (basePolygon && basePolygon.points.length >= 3) {
                const normal = getPolygonNormal(basePolygon.points)
                const center = polygonCenter(basePolygon.points)
-               const V = subVec3(activePosition, center)
-               let h = dotVec3(V, normal)
+               let h = closestHeightFromRay(ray.origin, ray.direction, center, normal)
                h = snapCoordinate(h)
                if (h < 0.1) h = 0.1
                if (draftOperation.height !== undefined && draftOperation.height !== h) {
@@ -2105,11 +2137,10 @@ export function ManualCanvas3D() {
         }
         if ((draftOperation.tool === 'cone' || draftOperation.tool === 'cylinder') && draftOperation.baseCircleId) {
              const baseCircle = manualDerived.displayCircles.find((c) => c.sourceId === draftOperation.baseCircleId)
-             if (baseCircle && activePosition) {
+             if (baseCircle) {
                const normal = baseCircle.normal
                const center = baseCircle.center
-               const V = subVec3(activePosition, center)
-               let h = dotVec3(V, normal)
+               let h = closestHeightFromRay(ray.origin, ray.direction, center, normal)
                h = snapCoordinate(h)
                if (h < 0.1) h = 0.1
                if (draftOperation.height !== h) {
@@ -2337,13 +2368,45 @@ export function ManualCanvas3D() {
       }
     }
 
+    const handleDoubleClick = (event: MouseEvent) => {
+      const camera = cameraRef.current
+      const controls = controlsRef.current
+      if (!camera || !controls || !dynamicGroupRef.current) return
+      
+      const rect = renderer.domElement.getBoundingClientRect()
+      if (!rect) return
+      
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      
+      raycasterRef.current.setFromCamera(new THREE.Vector2(x, y), camera)
+      const intersects = raycasterRef.current.intersectObjects(dynamicGroupRef.current.children, true)
+      
+      const targetPoint = new THREE.Vector3()
+      if (intersects.length > 0) {
+        targetPoint.copy(intersects[0].point)
+      } else {
+        const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
+        raycasterRef.current.ray.intersectPlane(plane, targetPoint)
+      }
+      
+      if (targetPoint) {
+        const offset = new THREE.Vector3().subVectors(targetPoint, controls.target)
+        camera.position.add(offset)
+        controls.target.copy(targetPoint)
+        controls.update()
+      }
+    }
+
     renderer.domElement.addEventListener('pointerdown', handlePointerDown)
+    renderer.domElement.addEventListener('dblclick', handleDoubleClick)
     renderer.domElement.addEventListener('pointermove', handlePointerMove)
     renderer.domElement.addEventListener('pointerleave', handlePointerLeave)
     window.addEventListener('pointerup', handlePointerUp)
     window.addEventListener('keydown', handleKeyDown)
     return () => {
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
+      renderer.domElement.removeEventListener('dblclick', handleDoubleClick)
       renderer.domElement.removeEventListener('pointermove', handlePointerMove)
       renderer.domElement.removeEventListener('pointerleave', handlePointerLeave)
       window.removeEventListener('pointerup', handlePointerUp)

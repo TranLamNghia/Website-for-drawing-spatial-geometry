@@ -236,7 +236,17 @@ export function ManualLeftSubPanel() {
             {activeTool === 'pyramid' && '1. Click chọn một Đa giác làm mặt đáy.\n2. Thiết lập chiều cao, hoặc chọn một Điểm làm đỉnh (Apex).'}
             {activeTool === 'regularPyramid' && 'Click chọn một Đa giác làm mặt đáy. Hệ thống sẽ tự động dựng hình với đỉnh hình chóp nằm trên đường thẳng vuông góc với mặt đáy tại trọng tâm.'}
             {activeTool === 'cube' && 'Click chọn lần lượt 2 điểm (A, B) để tạo hình lập phương. Hệ thống sẽ tự động dựng hình với cạnh là khoảng cách giữa 2 điểm.'}
-            {activeTool === 'prism' && '1. Click chọn một Đa giác làm mặt đáy.\n2. Thiết lập chiều cao, hoặc chọn một Điểm làm đỉnh mặt trên.'}
+            {activeTool === 'prism' && (
+              <span>
+                1. Click chọn một Đa giác làm mặt đáy.<br />
+                2. Thiết lập chiều cao, hoặc chọn một Điểm E làm đỉnh của mặt trên.<br />
+                <span className="text-primary font-semibold">💡 Lưu ý quan trọng:</span> Điểm chọn làm đỉnh (ví dụ E) luôn tương ứng với đỉnh đầu tiên của mặt đáy (ví dụ đáy ABCD thì E tương ứng với A', tức cạnh bên AA' = AE).
+                <br />
+                - Nếu E nằm thẳng đứng trên A (x và y bằng nhau, z khác nhau): hệ thống tạo lăng trụ đứng.
+                <br />
+                - Nếu E nằm thẳng đứng trên B, C, D hoặc nằm ở vị trí khác (lệch so với A): hệ thống sẽ tạo lăng trụ xiên (vì cạnh bên AA' = AE bị nghiêng so với đáy).
+              </span>
+            )}
             {activeTool === 'intersection' && 'Click chọn lần lượt 2 Đoạn thẳng cắt nhau.\nGiao điểm sẽ xuất hiện chính xác tại vị trí cắt!'}
             {activeTool === 'circle' && 'Chọn cách vẽ phù hợp ở dưới. Mặc định là Tâm + Điểm:\n1. Click chọn Tâm.\n2. Click chọn Điểm thứ hai xác định bán kính.'}
             {activeTool === 'box' && (

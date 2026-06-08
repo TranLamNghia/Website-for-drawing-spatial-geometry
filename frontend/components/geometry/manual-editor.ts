@@ -1019,7 +1019,8 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       sourceKind: 'point',
       sourceId: point.id,
       selectable: point.selectable,
-      generated: false,
+      generated: point.pointKind === 'solidVertex' ||
+                 ['prism', 'box', 'cube', 'pyramid', 'regularPyramid'].includes(point.createdByTool ?? ''),
       visible: point.visible,
     })
 
@@ -1369,20 +1370,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     const topLabels = baseLabels.map((label) => `${label}'`)
 
     topPoints.forEach((point, index) => {
-      const isRealPoint = index === 0 && hasTopPoint
       pushGeometryPoint(geometry, topLabels[index], point)
-      if (!isRealPoint) {
-        displayPoints.push({
-          id: `${solid.id}_top_${index}`,
-          label: topLabels[index],
-          position: point,
-          sourceKind: 'solid',
-          sourceId: solid.id,
-          selectable: false,
-          generated: true,
-          visible: solid.visible,
-        })
-      }
     })
 
     for (let index = 0; index < basePoints.length; index += 1) {

@@ -278,7 +278,7 @@ function ObjectRow({
 
       {isEditable && (
         <div className="col-span-full mt-1.5 flex flex-wrap items-center gap-2 rounded bg-background/50 p-2 shadow-inner">
-          <label className="text-[11px] font-medium text-muted-foreground">Chi\u1ec1u cao:</label>
+          <label className="text-[11px] font-medium text-muted-foreground">Chiều cao:</label>
           <input
             type="number"
             step="0.5"
