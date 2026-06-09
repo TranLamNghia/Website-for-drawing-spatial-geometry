@@ -69,6 +69,7 @@ export interface ManualPoint extends ManualEntityMeta {
   sourceSegmentId?: string
   targetSegmentId?: string
   targetPolygonId?: string
+  targetPointIds?: string[]
   sideIndex?: number
   totalSides?: number
   anchorPointId?: string
@@ -144,6 +145,7 @@ export interface ManualDraft {
   basePolygonId?: string | null
   baseCircleId?: string | null
   height?: number
+  heightManuallySet?: boolean
   radius?: number
   centerPointId?: string | null
   apexPointId?: string | null
@@ -209,11 +211,13 @@ export interface ManualDisplayPolygon {
   id: string
   label: string
   points: Vec3[]
+  pointIds?: string[]
   sourceKind: 'polygon' | 'solid'
   sourceId: string
   fillColor: string
   opacity: number
   visible: boolean
+  isVirtual?: boolean
 }
 
 export interface ManualDisplayCircle {
@@ -453,6 +457,31 @@ export function createEntityId(prefix: string) {
   return `${prefix}_${crypto.randomUUID().slice(0, 8)}`
 }
 
+export function rotateVector3D(v: Vec3, angleRad: number): Vec3 {
+  const lenSq = v[0] * v[0] + v[1] * v[1] + v[2] * v[2]
+  if (lenSq < 1e-9) return [0, 0, 0]
+  const len = Math.sqrt(lenSq)
+  const u: Vec3 = [v[0] / len, v[1] / len, v[2] / len]
+  
+  let w: Vec3
+  const xyLenSq = u[0] * u[0] + u[1] * u[1]
+  if (xyLenSq > 1e-9) {
+    const xyLen = Math.sqrt(xyLenSq)
+    w = [-u[1] / xyLen, u[0] / xyLen, 0]
+  } else {
+    w = [1, 0, 0]
+  }
+  
+  const cosT = Math.cos(angleRad)
+  const sinT = Math.sin(angleRad)
+  
+  return [
+    len * (cosT * u[0] + sinT * w[0]),
+    len * (cosT * u[1] + sinT * w[1]),
+    len * (cosT * u[2] + sinT * w[2]),
+  ]
+}
+
 export function resolvePointPositions(document: ManualDocument) {
   const pointMap = new Map(document.points.map((point) => [point.id, point]))
   const positions: Record<string, Vec3> = {}
@@ -473,6 +502,73 @@ export function resolvePointPositions(document: ManualDocument) {
           const p1Id = poly.pointIds[edgeIdx]
           const p2Id = poly.pointIds[(edgeIdx + 1) % poly.pointIds.length]
           return [resolvePoint(p1Id, visiting), resolvePoint(p2Id, visiting)]
+        }
+        
+        const solid = document.solids.find(s => s.id === polyId)
+        if (solid && (solid.solidType === 'box' || solid.solidType === 'cube')) {
+          const allPointIds = Array(8).fill('')
+          if (solid.cornerPointIds) {
+            allPointIds[0] = solid.cornerPointIds[0]
+            allPointIds[1] = solid.cornerPointIds[1]
+            if (solid.cornerPointIds[2]) allPointIds[2] = solid.cornerPointIds[2]
+          }
+          document.points.forEach(p => {
+            if (p.pointKind === 'solidVertex' && p.solidId === solid.id && p.vertexIndex !== undefined) {
+              allPointIds[p.vertexIndex] = p.id
+            }
+          })
+          const edgePairs = [
+            [0, 1], [1, 2], [2, 3], [3, 0],
+            [4, 5], [5, 6], [6, 7], [7, 4],
+            [0, 4], [1, 5], [2, 6], [3, 7],
+          ]
+          if (edgePairs[edgeIdx]) {
+            return [resolvePoint(allPointIds[edgePairs[edgeIdx][0]], visiting), resolvePoint(allPointIds[edgePairs[edgeIdx][1]], visiting)]
+          }
+        }
+      }
+    }
+
+    if (segId.includes('_base_') || segId.includes('_top_') || segId.includes('_side_')) {
+      const match = segId.match(/^(.*)_(base|top|side)_(\d+)$/)
+      if (match) {
+        const solidId = match[1]
+        const edgeType = match[2]
+        const edgeIdx = parseInt(match[3], 10)
+        const solid = document.solids.find(s => s.id === solidId)
+        
+        if (solid && solid.solidType === 'prism' && solid.basePolygonId) {
+          const basePoly = document.polygons.find(p => p.id === solid.basePolygonId)
+          if (basePoly) {
+            const basePoints = basePoly.pointIds
+            const topPoints = document.points
+              .filter(p => p.pointKind === 'solidVertex' && p.solidId === solid.id && p.vertexIndex !== undefined && p.vertexIndex >= basePoints.length)
+              .sort((a, b) => (a.vertexIndex ?? 0) - (b.vertexIndex ?? 0))
+              .map(p => p.id)
+            
+            if (edgeType === 'base') {
+              return [resolvePoint(basePoints[edgeIdx], visiting), resolvePoint(basePoints[(edgeIdx + 1) % basePoints.length], visiting)]
+            } else if (edgeType === 'top') {
+              return [resolvePoint(topPoints[edgeIdx], visiting), resolvePoint(topPoints[(edgeIdx + 1) % topPoints.length], visiting)]
+            } else if (edgeType === 'side') {
+              return [resolvePoint(basePoints[edgeIdx], visiting), resolvePoint(topPoints[edgeIdx], visiting)]
+            }
+          }
+        }
+        
+        if (solid && (solid.solidType === 'pyramid' || solid.solidType === 'regularPyramid') && solid.basePolygonId) {
+          const basePoly = document.polygons.find(p => p.id === solid.basePolygonId)
+          if (basePoly) {
+            const basePoints = basePoly.pointIds
+            const apexId = solid.apexPointId ?? document.points.find(p => p.pointKind === 'solidVertex' && p.solidId === solid.id && p.vertexIndex === 0)?.id
+            if (apexId) {
+              if (edgeType === 'base') {
+                return [resolvePoint(basePoints[edgeIdx], visiting), resolvePoint(basePoints[(edgeIdx + 1) % basePoints.length], visiting)]
+              } else if (edgeType === 'side') {
+                return [resolvePoint(basePoints[edgeIdx], visiting), resolvePoint(apexId, visiting)]
+              }
+            }
+          }
         }
       }
     }
@@ -643,6 +739,23 @@ export function resolvePointPositions(document: ManualDocument) {
           return positions[pointId]
         }
       }
+      if (point.targetPointIds && point.targetPointIds.length >= 2) {
+        const src = resolvePoint(point.sourcePointId, visiting)
+        if (point.targetPointIds.length === 2) {
+          const ls = resolvePoint(point.targetPointIds[0], visiting)
+          const le = resolvePoint(point.targetPointIds[1], visiting)
+          positions[pointId] = projectPointOnLine(src, ls, le)
+          visiting.delete(pointId)
+          return positions[pointId]
+        } else if (point.targetPointIds.length >= 3) {
+          const p1 = resolvePoint(point.targetPointIds[0], visiting)
+          const p2 = resolvePoint(point.targetPointIds[1], visiting)
+          const p3 = resolvePoint(point.targetPointIds[2], visiting)
+          positions[pointId] = projectPointOnPlane(src, p1, p2, p3)
+          visiting.delete(pointId)
+          return positions[pointId]
+        }
+      }
     }
     if (point.pointKind === 'regularPolygonVertex' && point.sourcePointIds && point.sourcePointIds.length >= 2) {
       const posA = resolvePoint(point.sourcePointIds[0], visiting)
@@ -715,8 +828,8 @@ export function resolvePointPositions(document: ManualDocument) {
         const posA = resolvePoint(point.sourcePointIds[0], visiting)
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
         const E = subVec3(posB, posA)
-        const D_vec: Vec3 = [-E[1], E[0], 0]
-        const lenD = Math.hypot(D_vec[0], D_vec[1])
+        const D_vec = rotateVector3D(E, Math.PI / 2)
+        const lenD = Math.hypot(D_vec[0], D_vec[1], D_vec[2])
         const D_norm = lenD > 1e-9 ? scaleVec3(D_vec, 1 / lenD) : [0, 1, 0] as Vec3
         positions[pointId] = addVec3(posB, scaleVec3(D_norm, point.t ?? 4))
         visiting.delete(pointId)
@@ -727,13 +840,7 @@ export function resolvePointPositions(document: ManualDocument) {
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
         const E = subVec3(posA, posB) // vector BA
         const theta = point.t ?? (Math.PI / 3) // 60 deg default
-        const cosT = Math.cos(theta)
-        const sinT = Math.sin(theta)
-        const E_rot: Vec3 = [
-          E[0] * cosT - E[1] * sinT,
-          E[0] * sinT + E[1] * cosT,
-          0
-        ]
+        const E_rot = rotateVector3D(E, theta)
         positions[pointId] = addVec3(posB, E_rot)
         visiting.delete(pointId)
         return positions[pointId]
@@ -751,7 +858,7 @@ export function resolvePointPositions(document: ManualDocument) {
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
         const v = subVec3(posB, posA)
         const flip = point.flip ?? 1
-        const vRot: Vec3 = [-v[1] * flip, v[0] * flip, 0]
+        const vRot = rotateVector3D(v, (Math.PI / 2) * flip)
         positions[pointId] = addVec3(posA, vRot)
         visiting.delete(pointId)
         return positions[pointId]
@@ -761,13 +868,7 @@ export function resolvePointPositions(document: ManualDocument) {
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
         const v = subVec3(posB, posA)
         const flip = point.flip ?? 1
-        const cos60 = 0.5
-        const sin60 = 0.8660254 * flip
-        const vRot: Vec3 = [
-          v[0] * cos60 - v[1] * sin60,
-          v[0] * sin60 + v[1] * cos60,
-          0
-        ]
+        const vRot = rotateVector3D(v, (Math.PI / 3) * flip)
         positions[pointId] = addVec3(posA, vRot)
         visiting.delete(pointId)
         return positions[pointId]
@@ -777,7 +878,7 @@ export function resolvePointPositions(document: ManualDocument) {
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
         const v = subVec3(posB, posA)
         const flip = point.flip ?? 1
-        const vRot: Vec3 = [-v[1] * flip, v[0] * flip, 0]
+        const vRot = rotateVector3D(v, (Math.PI / 2) * flip)
         positions[pointId] = addVec3(posB, vRot)
         visiting.delete(pointId)
         return positions[pointId]
@@ -787,7 +888,7 @@ export function resolvePointPositions(document: ManualDocument) {
         const posB = resolvePoint(point.sourcePointIds[1], visiting)
         const v = subVec3(posB, posA)
         const flip = point.flip ?? 1
-        const vRot: Vec3 = [-v[1] * flip, v[0] * flip, 0]
+        const vRot = rotateVector3D(v, (Math.PI / 2) * flip)
         positions[pointId] = addVec3(posA, vRot)
         visiting.delete(pointId)
         return positions[pointId]
@@ -1209,6 +1310,19 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         })
       })
 
+      // Collect actual point IDs for all 8 vertices
+      const allPointIds: string[] = []
+      if (solid.cornerPointIds) {
+        allPointIds[0] = solid.cornerPointIds[0]
+        allPointIds[1] = solid.cornerPointIds[1]
+        if (solid.cornerPointIds[2]) allPointIds[2] = solid.cornerPointIds[2]
+      }
+      document.points.forEach(p => {
+        if (p.pointKind === 'solidVertex' && p.solidId === solid.id && p.vertexIndex !== undefined) {
+          allPointIds[p.vertexIndex] = p.id
+        }
+      })
+
       const faces = [
         [0, 1, 2, 3],
         [4, 5, 6, 7],
@@ -1222,6 +1336,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
           id: `${solid.id}_face_${faceIndex}`,
           label: `${solid.label}_face_${faceIndex + 1}`,
           points: indices.map((index) => allPoints[index]),
+          pointIds: indices.map((index) => allPointIds[index]).filter(Boolean),
           sourceKind: 'solid',
           sourceId: solid.id,
           fillColor: '#2563eb',
@@ -1234,6 +1349,29 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
           '#2563eb',
           0.12,
         )
+      })
+
+      // Virtual diagonal planes for picking
+      const diagonals = [
+        [0, 2, 6, 4],  // AC'CA' diagonal
+        [1, 3, 7, 5],  // BD'DB' diagonal
+      ]
+      diagonals.forEach((indices, dIdx) => {
+        const diagPointIds = indices.map(i => allPointIds[i]).filter(Boolean)
+        if (diagPointIds.length >= 3) {
+          displayPolygons.push({
+            id: `${solid.id}_vdiag_${dIdx}`,
+            label: indices.map(i => allLabels[i]).join(''),
+            points: indices.map(i => allPoints[i]),
+            pointIds: diagPointIds,
+            sourceKind: 'solid',
+            sourceId: solid.id,
+            fillColor: '#f59e0b',
+            opacity: 0,
+            visible: solid.visible,
+            isVirtual: true,
+          })
+        }
       })
 
       const width = Math.abs(baseB[0] - baseA[0])
@@ -1321,6 +1459,11 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
           id: `${solid.id}_face_${index}`,
           label: `${solid.label}_tam_giac_${index + 1}`,
           points: [basePoints[index], basePoints[(index + 1) % basePoints.length], apex],
+          pointIds: [
+            basePolygon.pointIds[index],
+            basePolygon.pointIds[(index + 1) % basePolygon.pointIds.length],
+            solid.apexPointId ?? `${solid.id}_apex`,
+          ],
           sourceKind: 'solid',
           sourceId: solid.id,
           fillColor: '#ea580c',
@@ -1329,6 +1472,43 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         })
       }
       pushGeometryPlane(geometry, baseLabels, '#f59e0b', 0.12)
+
+      // Pyramid base face polygon for picking
+      displayPolygons.push({
+        id: `${solid.id}_base_face`,
+        label: `${solid.label}_mat_day`,
+        points: basePoints,
+        pointIds: basePolygon.pointIds,
+        sourceKind: 'solid',
+        sourceId: solid.id,
+        fillColor: '#f59e0b',
+        opacity: 0.12,
+        visible: solid.visible,
+      })
+
+      // Virtual diagonal planes for pyramid (through apex and non-adjacent base edges)
+      const pn = basePolygon.pointIds.length
+      if (pn >= 4) {
+        const apexPid = solid.apexPointId ?? `${solid.id}_apex`
+        for (let i = 0; i < pn; i++) {
+          for (let j = i + 2; j < pn; j++) {
+            if (j === (i + pn - 1) % pn) continue
+            const diagPids = [basePolygon.pointIds[i], basePolygon.pointIds[j], apexPid]
+            displayPolygons.push({
+              id: `${solid.id}_vdiag_${i}_${j}`,
+              label: `${baseLabels[i]}${baseLabels[j]}${apexLabel}`,
+              points: [basePoints[i], basePoints[j], apex],
+              pointIds: diagPids,
+              sourceKind: 'solid',
+              sourceId: solid.id,
+              fillColor: '#f59e0b',
+              opacity: 0,
+              visible: solid.visible,
+              isVirtual: true,
+            })
+          }
+        }
+      }
 
       const distVec = subVec3(apex, basePoints[0])
       const resolvedHeight = Math.abs(dotVec3(distVec, normal))
@@ -1373,6 +1553,13 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       pushGeometryPoint(geometry, topLabels[index], point)
     })
 
+    // Collect top point IDs for prism
+    const topPointIds = document.points
+      .filter(p => p.pointKind === 'solidVertex' && p.solidId === solid.id && p.vertexIndex !== undefined && p.vertexIndex >= basePolygon.pointIds.length)
+      .sort((a, b) => (a.vertexIndex ?? 0) - (b.vertexIndex ?? 0))
+      .map(p => p.id)
+    const basePointIds = basePolygon.pointIds
+
     for (let index = 0; index < basePoints.length; index += 1) {
       pushGeometryEdge(geometry, baseLabels[index], baseLabels[(index + 1) % baseLabels.length])
       pushGeometryEdge(geometry, topLabels[index], topLabels[(index + 1) % topLabels.length])
@@ -1413,6 +1600,12 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
           topPoints[(index + 1) % topPoints.length],
           topPoints[index],
         ],
+        pointIds: [
+          basePointIds[index],
+          basePointIds[(index + 1) % basePointIds.length],
+          topPointIds[(index + 1) % topPointIds.length] ?? '',
+          topPointIds[index] ?? '',
+        ].filter(Boolean),
         sourceKind: 'solid',
         sourceId: solid.id,
         fillColor: '#7c3aed',
@@ -1434,6 +1627,61 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
 
     pushGeometryPlane(geometry, baseLabels, '#0f766e', 0.1)
     pushGeometryPlane(geometry, topLabels, '#7c3aed', 0.1)
+    
+    // Add missing top face polygon for selection/interaction
+    displayPolygons.push({
+      id: `${solid.id}_top_face`,
+      label: `${solid.label}_mat_tren`,
+      points: topPoints,
+      pointIds: topPointIds,
+      sourceKind: 'solid',
+      sourceId: solid.id,
+      fillColor: '#7c3aed',
+      opacity: 0.12,
+      visible: solid.visible,
+    })
+
+    // Add base face polygon for picking
+    displayPolygons.push({
+      id: `${solid.id}_base_face`,
+      label: `${solid.label}_mat_day`,
+      points: basePoints,
+      pointIds: basePointIds,
+      sourceKind: 'solid',
+      sourceId: solid.id,
+      fillColor: '#0f766e',
+      opacity: 0.12,
+      visible: solid.visible,
+    })
+
+    // Virtual diagonal planes for prism picking
+    const n = basePointIds.length
+    if (n >= 4) {
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 2; j < n; j++) {
+          if (j === (i + n - 1) % n) continue // skip adjacent
+          const diagPids = [
+            basePointIds[i], basePointIds[j],
+            topPointIds[j] ?? '', topPointIds[i] ?? '',
+          ].filter(Boolean)
+          if (diagPids.length >= 3) {
+            displayPolygons.push({
+              id: `${solid.id}_vdiag_${i}_${j}`,
+              label: `${baseLabels[i]}${baseLabels[j]}${topLabels[j]}${topLabels[i]}`,
+              points: [basePoints[i], basePoints[j], topPoints[j], topPoints[i]],
+              pointIds: diagPids,
+              sourceKind: 'solid',
+              sourceId: solid.id,
+              fillColor: '#f59e0b',
+              opacity: 0,
+              visible: solid.visible,
+              isVirtual: true,
+            })
+          }
+        }
+      }
+    }
+
     solidInfo[solid.id] = {
       solidType: 'prism',
       baseLabel: basePolygon.label,
@@ -1446,7 +1694,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     }
   })
 
-  // ──── Sphere / Cone / Cylinder (round solids) ────
+  // 🔴🔴🔴🔴 Sphere / Cone / Cylinder (round solids) 🔴🔴🔴🔴────
   document.solids.forEach((solid) => {
     if (solid.solidType === 'sphere' && solid.centerPointId && solid.radius) {
       const center = pointPositions[solid.centerPointId]

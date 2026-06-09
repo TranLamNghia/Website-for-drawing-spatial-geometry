@@ -14,6 +14,9 @@ import { ManualDisplayPolygon, ManualDisplaySegment, ManualSnapTarget, Vec3 } fr
 type InteractiveHit = {
   kind: 'point' | 'segment' | 'polygon' | 'solid' | 'circle'
   id: string
+  solidId?: string
+  facePointIds?: string[]
+  isVirtual?: boolean
 }
 
 function getColors(isDark: boolean) {
@@ -177,6 +180,7 @@ export function ManualCanvas3D() {
   const hoverStatusRef = useRef<HTMLSpanElement>(null)
   const hoverRafRef = useRef<number | null>(null)
   const pendingHoverTargetRef = useRef<ManualSnapTarget | null>(null)
+  const pendingHoverPositionRef = useRef<Vec3 | null>(null)
   const smartGuideMeshRef = useRef<THREE.Line | null>(null)
   const pointMeshesRef = useRef<Array<{ id: string; mesh: THREE.Mesh }>>([])
   const segmentMeshesRef = useRef<Array<{ id: string; mesh: THREE.Line }>>([])
@@ -251,6 +255,7 @@ export function ManualCanvas3D() {
     createMidpoint,
     createIntersection,
     createProjection,
+    createProjectionByPoints,
     createCentroid,
     createPerpendicularBisector,
     createAngleBisector,
@@ -278,6 +283,11 @@ export function ManualCanvas3D() {
   useEffect(() => {
     raycasterRef.current.params.Line = { threshold: 0.18 }
   }, [])
+
+  // Tab cycle selection refs
+  const cycleIntersectsRef = useRef<InteractiveHit[]>([])
+  const cycleIndexRef = useRef(0)
+  const lastCycleEventRef = useRef<{ x: number; y: number } | null>(null)
 
   // Smoothly aligns camera to specific axes (X, Y, Z) with animation transition
   const handleAlignView = useCallback((axis: 'x' | 'y' | 'z') => {
@@ -376,10 +386,43 @@ export function ManualCanvas3D() {
     const intersects = raycasterRef.current.intersectObjects(dynamicGroupRef.current.children, true)
     for (const intersect of intersects) {
       if (intersect.object.userData && intersect.object.userData.entity) {
-        return intersect.object.userData.entity as InteractiveHit
+        const entity = intersect.object.userData.entity as InteractiveHit
+        if (entity.isVirtual && activeTool !== 'projection') {
+          continue
+        }
+        return entity
       }
     }
     return null
+  }
+
+  const findAllIntersectionEntities = (event: PointerEvent | MouseEvent | { clientX: number; clientY: number }): InteractiveHit[] => {
+    const camera = cameraRef.current
+    const renderer = rendererRef.current
+    if (!camera || !renderer) return []
+
+    const rect = renderer.domElement.getBoundingClientRect()
+    const x = (((event as MouseEvent).clientX - rect.left) / rect.width) * 2 - 1
+    const y = -(((event as MouseEvent).clientY - rect.top) / rect.height) * 2 + 1
+
+    raycasterRef.current.setFromCamera(new THREE.Vector2(x, y), camera)
+    const intersects = raycasterRef.current.intersectObjects(dynamicGroupRef.current.children, true)
+    const results: InteractiveHit[] = []
+    const seenIds = new Set<string>()
+    for (const intersect of intersects) {
+      if (intersect.object.userData?.entity) {
+        const entity = intersect.object.userData.entity as InteractiveHit
+        if (entity.isVirtual && activeTool !== 'projection') {
+          continue
+        }
+        const key = `${entity.kind}_${entity.id}`
+        if (!seenIds.has(key)) {
+          seenIds.add(key)
+          results.push(entity)
+        }
+      }
+    }
+    return results
   }
 
   const getSnapTarget = (event: PointerEvent | MouseEvent, planePoint: Vec3 | null): ManualSnapTarget | null => {
@@ -490,32 +533,35 @@ export function ManualCanvas3D() {
     return null
   }
 
-  const applyHoverPresentation = (target: ManualSnapTarget | null) => {
-    const hud = hoverHudRef.current
+  const applyHoverPresentation = (target: ManualSnapTarget | null, pos: Vec3 | null) => {
     const status = hoverStatusRef.current
-    if (!hud || !status) return
-    if (!target) {
-      hud.style.display = 'none'
-      if (hoverMarkerRef.current) hoverMarkerRef.current.visible = false
-      return
+    if (!status) return
+
+    const finalPos = target ? target.position : pos
+
+    if (finalPos) {
+      status.textContent = `V\u1ecb tr\u00ed: ${formatHoverCoords(finalPos)}`
+    } else {
+      status.textContent = 'Tr\u1ed1ng'
     }
-    hud.style.display = 'block'
-    status.textContent = `${target.label} ${formatHoverCoords(target.position)}`
-    const screen = projectToScreen(target.position)
-    hud.style.left = `${screen.x + 12}px`
-    hud.style.top = `${screen.y + 12}px`
+
     if (hoverMarkerRef.current) {
-      hoverMarkerRef.current.position.set(...target.position)
-      hoverMarkerRef.current.visible = true
+      if (target) {
+        hoverMarkerRef.current.position.set(...target.position)
+        hoverMarkerRef.current.visible = true
+      } else {
+        hoverMarkerRef.current.visible = false
+      }
     }
   }
 
-  const scheduleHoverPresentation = (target: ManualSnapTarget | null) => {
+  const scheduleHoverPresentation = (target: ManualSnapTarget | null, pos: Vec3 | null = null) => {
     pendingHoverTargetRef.current = target
+    pendingHoverPositionRef.current = pos
     if (hoverRafRef.current !== null) return
     hoverRafRef.current = requestAnimationFrame(() => {
       hoverRafRef.current = null
-      applyHoverPresentation(pendingHoverTargetRef.current)
+      applyHoverPresentation(pendingHoverTargetRef.current, pendingHoverPositionRef.current)
     })
   }
 
@@ -948,6 +994,40 @@ export function ManualCanvas3D() {
       .filter((polygon) => polygon.visible)
       .forEach((polygon, pIdx) => {
         if (polygon.points.length < 3) return
+
+        // Virtual planes: only create raycast targets when projection tool is active
+        if (polygon.isVirtual) {
+          const faceGeometry = new THREE.BufferGeometry()
+          const positions: number[] = []
+          for (let index = 1; index < polygon.points.length - 1; index += 1) {
+            positions.push(...polygon.points[0], ...polygon.points[index], ...polygon.points[index + 1])
+          }
+          faceGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+          faceGeometry.computeVertexNormals()
+          const virtualMaterial = new THREE.MeshBasicMaterial({
+            color: '#f59e0b',
+            transparent: true,
+            opacity: 0,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1,
+          })
+          const virtualMesh = new THREE.Mesh(faceGeometry, virtualMaterial)
+          virtualMesh.userData.entity = {
+            kind: 'solid',
+            id: polygon.id,
+            solidId: polygon.sourceId,
+            facePointIds: polygon.pointIds,
+            isVirtual: true,
+          } satisfies InteractiveHit
+          virtualMesh.userData.isVirtualPlane = true
+          virtualMesh.userData.virtualLabel = polygon.label
+          group.add(virtualMesh)
+          return
+        }
+
         const faceGeometry = new THREE.BufferGeometry()
         const positions: number[] = []
         for (let index = 1; index < polygon.points.length - 1; index += 1) {
@@ -967,7 +1047,9 @@ export function ManualCanvas3D() {
         const mesh = new THREE.Mesh(faceGeometry, material)
         mesh.userData.entity = {
           kind: polygon.sourceKind === 'solid' ? 'solid' : 'polygon',
-          id: polygon.sourceId,
+          id: polygon.sourceKind === 'solid' ? polygon.id : polygon.sourceId,
+          solidId: polygon.sourceKind === 'solid' ? polygon.sourceId : undefined,
+          ...(polygon.pointIds ? { facePointIds: polygon.pointIds } : {}),
         } satisfies InteractiveHit
         group.add(mesh)
         const blockerMaterial = new THREE.MeshBasicMaterial({
@@ -1255,14 +1337,26 @@ export function ManualCanvas3D() {
     const dragThreshold = 5
 
     const handleCanvasClick = (event: PointerEvent) => {
-      const hit = findIntersectionEntity(event)
+      let hit = findIntersectionEntity(event)
+      if (cycleIntersectsRef.current.length > 0) {
+        hit = cycleIntersectsRef.current[cycleIndexRef.current % cycleIntersectsRef.current.length]
+      }
+
+      // Reset cycle selection
+      cycleIntersectsRef.current = []
+      cycleIndexRef.current = 0
+
       const planePoint = getPlaneIntersection(event)
       const snappedPlanePoint = planePoint ? snapPosition(planePoint) : null
       const snapTarget = getSnapTarget(event, snappedPlanePoint)
-      const fallbackPosition = snappedPlanePoint ?? snapTarget?.position ?? null
+      const fallbackPosition = snapTarget?.position ?? snappedPlanePoint ?? null
 
       if (activeTool === 'select') {
-        setManualSelection(hit ?? null)
+        if (hit?.kind === 'solid' && hit.solidId) {
+          setManualSelection({ kind: 'solid', id: hit.solidId })
+        } else {
+          setManualSelection(hit ?? null)
+        }
         return
       }
 
@@ -1469,12 +1563,14 @@ export function ManualCanvas3D() {
       if (activeTool === 'projection') {
         const currentPointIds = draftOperation?.tool === 'projection' ? draftOperation.pointIds ?? [] : []
         if (currentPointIds.length === 0) {
-          const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+          // Step 1: Select source point
+          const clickedPointId = (snapTarget?.kind === 'point' ? snapTarget.pointId : null) ?? (hit?.kind === 'point' ? hit.id : null)
           if (clickedPointId) {
             setDraftOperation({ tool: 'projection', pointIds: [clickedPointId] })
           }
           return
         }
+        // Step 2: Select target (segment, polygon, solid face, virtual plane, or pick points)
         if (hit?.kind === 'segment') {
           createProjection(currentPointIds[0], hit.id, 'segment')
           autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'projection', pointIds: [] })
@@ -1484,6 +1580,28 @@ export function ManualCanvas3D() {
           createProjection(currentPointIds[0], hit.id, 'polygon')
           autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'projection', pointIds: [] })
           return
+        }
+        // Solid face or virtual plane with facePointIds → project by points
+        if (hit?.kind === 'solid' && hit.facePointIds && hit.facePointIds.length >= 2) {
+          createProjectionByPoints(currentPointIds[0], hit.facePointIds)
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'projection', pointIds: [] })
+          return
+        }
+        // Pick-3-points mode: accumulate clicked points for custom plane definition
+        if (currentPointIds.length >= 1 && currentPointIds.length < 4) {
+          const clickedPointId = (snapTarget?.kind === 'point' ? snapTarget.pointId : null) ?? (hit?.kind === 'point' ? hit.id : null)
+          if (clickedPointId && !currentPointIds.includes(clickedPointId)) {
+            const newPointIds = [...currentPointIds, clickedPointId]
+            if (newPointIds.length === 4) {
+              // sourcePoint + 3 target points → project
+              const [sourceId, ...targetIds] = newPointIds
+              createProjectionByPoints(sourceId, targetIds)
+              autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'projection', pointIds: [] })
+            } else {
+              setDraftOperation({ ...draftOperation, tool: 'projection', pointIds: newPointIds })
+            }
+            return
+          }
         }
         return
       }
@@ -1610,7 +1728,12 @@ export function ManualCanvas3D() {
           autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'centroid', pointIds: [] })
           return
         }
-        const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+        if (hit?.kind === 'solid' && hit.facePointIds && hit.facePointIds.length >= 3) {
+          createCentroid(undefined, hit.facePointIds)
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'centroid', pointIds: [] })
+          return
+        }
+        const clickedPointId = (snapTarget?.kind === 'point' ? snapTarget.pointId : null) ?? (hit?.kind === 'point' ? hit.id : null)
         if (clickedPointId) {
           const currentIds = draftOperation?.tool === 'centroid' ? [...(draftOperation.pointIds ?? [])] : []
           if (!currentIds.includes(clickedPointId)) {
@@ -1899,9 +2022,56 @@ export function ManualCanvas3D() {
           }
         }
       })
+
+      // Highlight polygon and solid faces (including virtual ones)
+      dynamicGroupRef.current.children.forEach((obj) => {
+        if (obj instanceof THREE.Mesh && obj.userData?.entity) {
+          const entity = obj.userData.entity as InteractiveHit
+          const isVirtualPlane = !!obj.userData.isVirtualPlane
+          const isSelected = manualSelection && 
+            ((manualSelection.kind === entity.kind && manualSelection.id === entity.id) ||
+             (manualSelection.kind === 'solid' && entity.kind === 'solid' && entity.solidId === manualSelection.id))
+          
+          const isHovered = entity.id === hoveredId
+          
+          const mat = obj.material as THREE.MeshBasicMaterial
+          if (mat) {
+            const newDepthTest = !isHovered
+            if (mat.depthTest !== newDepthTest) {
+              mat.depthTest = newDepthTest
+              mat.needsUpdate = true
+            }
+            obj.renderOrder = isHovered ? 100 : 0
+
+            if (isVirtualPlane) {
+              if (isHovered) {
+                mat.opacity = 0.45
+                mat.color.set(colors.preview)
+              } else {
+                mat.opacity = 0
+              }
+            } else {
+              if (isSelected) {
+                mat.color.set(colors.pointSelected)
+                mat.opacity = 0.35
+              } else if (isHovered) {
+                mat.color.set(colors.pointHovered)
+                mat.opacity = 0.35
+              } else {
+                mat.color.set(entity.kind === 'solid' ? colors.solid : colors.polygon)
+                mat.opacity = entity.kind === 'solid' ? 0.14 : 0.18
+              }
+            }
+          }
+        }
+      })
     }
 
     const handlePointerMove = (event: PointerEvent) => {
+      cycleIntersectsRef.current = []
+      cycleIndexRef.current = 0
+      lastCycleEventRef.current = { x: event.clientX, y: event.clientY }
+
       const planePoint = getPlaneIntersection(event)
       const snappedPlanePoint = planePoint ? snapPosition(planePoint) : null
       const snapTarget = getSnapTarget(event, snappedPlanePoint)
@@ -1918,7 +2088,7 @@ export function ManualCanvas3D() {
       hoveredEntityIdRef.current = hoveredId
       updateEntityHighlight(hoveredId)
 
-      let activePosition = snappedPlanePoint ?? snapTarget?.position ?? null
+      let activePosition = snapTarget?.position ?? snappedPlanePoint ?? null
       let currentGuide: { start: Vec3; end: Vec3; label: string } | null = null
 
       if (activePosition && snapTarget?.kind !== 'point') {
@@ -2096,7 +2266,7 @@ export function ManualCanvas3D() {
         }
       }
 
-      scheduleHoverPresentation(activeSnapTarget)
+      scheduleHoverPresentation(activeSnapTarget, activePosition)
       if (!draftOperation) return
       if (draftOperation.tool === 'segment' || draftOperation.tool === 'polygon') {
         setDraftOperation({
@@ -2117,7 +2287,7 @@ export function ManualCanvas3D() {
                let h = closestHeightFromRay(ray.origin, ray.direction, center, normal)
                h = snapCoordinate(h)
                if (h < 0.1) h = 0.1
-               if (draftOperation.height !== undefined && draftOperation.height !== h) {
+               if (!draftOperation.heightManuallySet && draftOperation.height !== undefined && draftOperation.height !== h) {
                   setDraftOperation({ ...draftOperation, height: h })
                }
              }
@@ -2131,7 +2301,7 @@ export function ManualCanvas3D() {
                let h = closestHeightFromRay(ray.origin, ray.direction, center, normal)
                h = snapCoordinate(h)
                if (h < 0.1) h = 0.1
-               if (draftOperation.height !== h) {
+               if (!draftOperation.heightManuallySet && draftOperation.height !== h) {
                   setDraftOperation({ ...draftOperation, height: h })
                }
              }
@@ -2318,6 +2488,28 @@ export function ManualCanvas3D() {
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        if (lastCycleEventRef.current) {
+          if (cycleIntersectsRef.current.length === 0) {
+            cycleIntersectsRef.current = findAllIntersectionEntities({
+              clientX: lastCycleEventRef.current.x,
+              clientY: lastCycleEventRef.current.y,
+            })
+            cycleIndexRef.current = 0
+          } else {
+            cycleIndexRef.current += 1
+          }
+
+          if (cycleIntersectsRef.current.length > 0) {
+            const cycled = cycleIntersectsRef.current[cycleIndexRef.current % cycleIntersectsRef.current.length]
+            hoveredEntityIdRef.current = cycled.id
+            updateEntityHighlight(cycled.id)
+          }
+        }
+        return
+      }
+
       if (event.key === 'Delete' && manualSelection) {
         event.preventDefault()
         removeManualEntity(manualSelection.kind, manualSelection.id)
@@ -2463,10 +2655,6 @@ export function ManualCanvas3D() {
   return (
     <div className="w-full h-full relative bg-background overflow-hidden">
       <div ref={mountRef} className="absolute inset-0" />
-      <div
-        ref={hoverHudRef}
-        className="pointer-events-none absolute top-0 left-0 z-40 rounded-md border border-border bg-card/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-lg backdrop-blur-md opacity-0 transition-opacity"
-      />
 
       <div className="absolute top-5 left-1/2 -translate-x-1/2 z-50">
         <div className="flex bg-card/95 backdrop-blur-md border border-border rounded-2xl shadow-xl p-1.5 items-center gap-1">
@@ -2547,8 +2735,14 @@ export function ManualCanvas3D() {
                       ? 'Hình trụ'
                       : 'Chọn'}
           </span>
-          <span className="text-border">{'\u2022'}</span>
-          <span ref={hoverStatusRef}>Không bám</span>
+        </div>
+      </div>
+
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+        <div className="rounded-xl border border-border bg-card/95 backdrop-blur-md px-3 py-1.5 shadow-lg flex items-center justify-center min-w-[200px]">
+          <span ref={hoverStatusRef} className="text-[12px] font-medium text-foreground font-mono tracking-tight">
+            Trống
+          </span>
         </div>
       </div>
       {/* Navigation Gizmo (Three.js ViewHelper - rendered inside WebGL canvas, initialized in useEffect below) with circular background offset */}

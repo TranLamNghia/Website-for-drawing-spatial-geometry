@@ -192,6 +192,7 @@ interface GeometryContextType {
   createMidpoint: (pointIdA: string, pointIdB: string) => string | null
   createIntersection: (segmentIdA: string, segmentIdB: string) => string | null
   createProjection: (pointId: string, targetId: string, targetKind: 'segment' | 'polygon') => string | null
+  createProjectionByPoints: (pointId: string, targetPointIds: string[]) => string | null
   createCentroid: (targetPolygonId?: string, sourcePointIds?: string[]) => string | null
   createPerpendicularBisector: (segmentId?: string, pointIdA?: string, pointIdB?: string) => string | null
   createAngleBisector: (pointIdA: string, pointIdB: string, pointIdC: string) => string | null
@@ -693,6 +694,26 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         const point = current.points.find((candidate) => candidate.id === pointId)
         if (!point || point.locked) return current
 
+        const linkedTopSolid = current.solids.find((s) => 
+          (s.solidType === 'prism' && s.topPointId === pointId) ||
+          ((s.solidType === 'pyramid' || s.solidType === 'regularPyramid') && s.apexPointId === pointId)
+        )
+        if (linkedTopSolid) {
+          const resolved = resolvePointPositions(current)
+          const oldResolved = resolved[pointId]
+          if (oldResolved) {
+             const deltaZ = position[2] - oldResolved[2]
+             const nextPos: Vec3 = [oldResolved[0], oldResolved[1], oldResolved[2] + deltaZ]
+             return {
+                ...current,
+                points: mapEntities(current.points, pointId, (candidate) => ({
+                   ...candidate,
+                   position: nextPos
+                }))
+             }
+          }
+        }
+
         // Handle dragging solid vertices
         if (point.pointKind === 'solidVertex' && point.solidId) {
           const solid = current.solids.find((s) => s.id === point.solidId)
@@ -761,12 +782,35 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
                  // Project position onto the normal passing through centroid
                  const v = subVec3(position, c)
                  const nextHeight = Math.max(0.1, dotVec3(v, normal))
-                 return {
-                    ...current,
-                    solids: current.solids.map((s) => s.id === solid.id ? { ...s, height: nextHeight } : s)
-                 }
+                  return {
+                     ...current,
+                     solids: current.solids.map((s) => s.id === solid.id ? { ...s, height: nextHeight } : s)
+                  }
+                }
+             } else if (solid.solidType === 'prism') {
+               const resolved = resolvePointPositions(current)
+               const oldResolved = resolved[pointId]
+               if (oldResolved) {
+                  if (solid.topPointId) {
+                     const deltaZ = position[2] - oldResolved[2]
+                     const oldTopPoint = resolved[solid.topPointId]
+                     if (oldTopPoint) {
+                        const nextPos: Vec3 = [oldTopPoint[0], oldTopPoint[1], oldTopPoint[2] + deltaZ]
+                        return {
+                           ...current,
+                           points: current.points.map(p => p.id === solid.topPointId ? { ...p, position: nextPos } : p)
+                        }
+                     }
+                  } else {
+                     const deltaZ = position[2] - oldResolved[2]
+                     const newHeight = Math.max(0.1, (solid.height ?? 4) + deltaZ)
+                     return {
+                       ...current,
+                       solids: current.solids.map((s) => (s.id === solid.id ? { ...s, height: newHeight } : s)),
+                     }
+                  }
                }
-            }
+             }
           }
         }
 
@@ -1279,6 +1323,36 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           ...(targetKind === 'segment' ? { targetSegmentId: targetId } : { targetPolygonId: targetId }),
           createdByTool: 'projection',
           dependsOn: [pointId, targetId],
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+        return {
+          ...current,
+          points: [...current.points, projPoint],
+        }
+      })
+      setManualSelection({ kind: 'point', id: projId })
+      return projId
+    },
+    [commitManualDocument],
+  )
+
+  const createProjectionByPoints = useCallback(
+    (pointId: string, targetPointIds: string[]) => {
+      if (targetPointIds.length < 2) return null
+      const projId = createEntityId('point')
+      commitManualDocument((current) => {
+        const projPoint: ManualPoint = {
+          id: projId,
+          label: nextPointLabel(current),
+          entityType: 'point',
+          pointKind: 'projection',
+          position: [0, 0, 0],
+          sourcePointId: pointId,
+          targetPointIds,
+          createdByTool: 'projection',
+          dependsOn: [pointId, ...targetPointIds],
           locked: true,
           visible: true,
           selectable: true,
@@ -2625,46 +2699,41 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       saveManualState()
 
       const solidId = createEntityId('solid')
-      let finalTopPointId = topPointId
+      let finalTopPointId = topPointId === 'auto_generate' ? undefined : topPointId
       let generatedPoints: ManualPoint[] = []
 
-      if (topPointId === 'auto_generate') {
-        const topId = createEntityId('point')
-        finalTopPointId = topId
+      const poly = manualDocument.polygons.find((p) => p.id === basePolygonId)
+      const basePointLabels = poly ? poly.pointIds.map(id => manualDocument.points.find(p => p.id === id)?.label ?? 'P') : []
 
-        const poly = manualDocument.polygons.find((p) => p.id === basePolygonId)
-        let targetPos: Vec3 = [0, 0, height > 0 ? height : 4]
-        if (poly && poly.pointIds.length > 0) {
-          const resolved = resolvePointPositions(manualDocument)
-          const pts = poly.pointIds.map((pid) => resolved[pid] || [0, 0, 0])
-          let cx = 0, cy = 0, cz = 0
-          pts.forEach((pt) => {
-            cx += pt[0]
-            cy += pt[1]
-            cz += pt[2]
-          })
-          const N = pts.length
-          const firstPt = pts[0]
-          targetPos = [firstPt[0], firstPt[1], firstPt[2] + (height > 0 ? height : 4)]
+      if (poly) {
+        const n = poly.pointIds.length
+        const usedLabels = new Set(manualDocument.points.map(p => p.label))
+        
+        for (let i = 0; i < n; i++) {
+           if (i === 0 && finalTopPointId) {
+             continue
+           }
+           
+           const pid = createEntityId('point')
+           let label = `${basePointLabels[i]}'`
+           while (usedLabels.has(label)) label += "'"
+           usedLabels.add(label)
+           
+           generatedPoints.push({
+             id: pid,
+             label: label,
+             entityType: 'point',
+             pointKind: 'solidVertex',
+             solidId: solidId,
+             vertexIndex: n + i,
+             position: [0, 0, 0], // dynamically resolved
+             createdByTool: 'prism',
+             dependsOn: [solidId],
+             locked: false,
+             visible: true,
+             selectable: true,
+           })
         }
-
-        const baseFirstPtLabel = poly && poly.pointIds.length > 0
-          ? manualDocument.points.find(p => p.id === poly.pointIds[0])?.label ?? 'A'
-          : 'A'
-
-        const ptS: ManualPoint = {
-          id: topId,
-          label: `${baseFirstPtLabel}'`,
-          entityType: 'point',
-          pointKind: 'free',
-          position: targetPos,
-          createdByTool: 'prism',
-          dependsOn: [],
-          locked: false,
-          visible: true,
-          selectable: true,
-        }
-        generatedPoints.push(ptS)
       }
 
       const solid: ManualSolid = {
@@ -2993,6 +3062,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       createMidpoint,
       createIntersection,
       createProjection,
+      createProjectionByPoints,
       createCentroid,
       createPerpendicularBisector,
       createAngleBisector,
@@ -3071,6 +3141,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       createMidpoint,
       createIntersection,
       createProjection,
+      createProjectionByPoints,
       createCentroid,
       createPerpendicularBisector,
       createAngleBisector,

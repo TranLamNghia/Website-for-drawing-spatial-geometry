@@ -29,6 +29,7 @@ export function ManualLeftSubPanel() {
     createSpecialTriangle,
     createSpecialQuadrilateral,
     createCentroid,
+    createProjectionByPoints,
     manualDocument,
   } = useGeometry()
 
@@ -38,6 +39,7 @@ export function ManualLeftSubPanel() {
     setDraftOperation({
       ...draftOperation,
       height: Number.isFinite(numericHeight) ? numericHeight : 0,
+      heightManuallySet: true,
     })
   }
 
@@ -54,7 +56,7 @@ export function ManualLeftSubPanel() {
     if (draftOperation?.tool !== 'polygon') return
     if ((draftOperation.pointIds?.length ?? 0) < 3) return
     createPolygon(draftOperation.pointIds ?? [])
-    setDraftOperation({ tool: 'polygon', pointIds: [] })
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'polygon', pointIds: [] })
   }
 
   const handleBoxCreate = () => {
@@ -62,7 +64,7 @@ export function ManualLeftSubPanel() {
     if ((draftOperation.pointIds?.length ?? 0) !== 3) return
     if (!draftOperation.height || draftOperation.height <= 0) return
     createBox([draftOperation.pointIds![0], draftOperation.pointIds![1], draftOperation.pointIds![2]], draftOperation.height)
-    setDraftOperation({ tool: 'box', pointIds: [], height: draftOperation.height })
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'box', pointIds: [], height: draftOperation.height })
   }
 
   const handleSolidCreate = (type: 'pyramid' | 'prism' | 'regularPyramid') => {
@@ -107,7 +109,7 @@ export function ManualLeftSubPanel() {
     const radius = draftOperation.radius ?? 3
     if (!centerPointId || radius <= 0) return
     createSphere(centerPointId, radius)
-    setDraftOperation({ tool: 'sphere', centerPointId: null, radius })
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'sphere', centerPointId: null, radius })
   }
 
   const handleConeCreate = () => {
@@ -125,7 +127,7 @@ export function ManualLeftSubPanel() {
       if (!centerPointId || radius <= 0 || height <= 0) return
       createCone(centerPointId, radius, height)
     }
-    setDraftOperation({ tool: 'cone', centerPointId: null, baseCircleId: null, radius, height })
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'cone', centerPointId: null, baseCircleId: null, radius, height })
   }
 
   const handleCylinderCreate = () => {
@@ -143,7 +145,7 @@ export function ManualLeftSubPanel() {
       if (!centerPointId || radius <= 0 || height <= 0) return
       createCylinder(centerPointId, radius, height)
     }
-    setDraftOperation({ tool: 'cylinder', centerPointId: null, baseCircleId: null, radius, height })
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'cylinder', centerPointId: null, baseCircleId: null, radius, height })
   }
 
   const handleRegularPolygonCreate = () => {
@@ -152,7 +154,7 @@ export function ManualLeftSubPanel() {
     if (pts.length !== 2) return
     const sides = draftOperation.radius ?? 5
     createRegularPolygon(pts[0], pts[1], sides)
-    setDraftOperation({ tool: 'regularPolygon', pointIds: [], radius: sides })
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'regularPolygon', pointIds: [], radius: sides })
   }
 
   const handleSpecialTriangleCreate = () => {
@@ -163,7 +165,7 @@ export function ManualLeftSubPanel() {
     const type = typeCode === 1 ? 'vuong' : typeCode === 2 ? 'can' : typeCode === 3 ? 'vuong_can' : 'deu'
     const anchor = draftOperation.centerPointId ?? pts[0]
     createSpecialTriangle(type, pts[0], pts[1], anchor)
-    setDraftOperation({ tool: 'specialTriangle', pointIds: [], height: typeCode, centerPointId: anchor })
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'specialTriangle', pointIds: [], height: typeCode, centerPointId: anchor })
   }
 
   const handleSpecialQuadrilateralCreate = () => {
@@ -177,7 +179,26 @@ export function ManualLeftSubPanel() {
       if (pts.length !== 3) return
     }
     createSpecialQuadrilateral(type, pts)
-    setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [], height: typeCode })
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'specialQuadrilateral', pointIds: [], height: typeCode })
+  }
+
+  const handleManualProjectionTarget = (inputStr: string) => {
+    if (draftOperation?.tool !== 'projection') return
+    const pts = draftOperation.pointIds ?? []
+    if (pts.length !== 1) return
+    
+    const matches = inputStr.match(new RegExp("[a-zA-Z]['_a-zA-Z0-9]*", "g"))
+    if (!matches) return
+    
+    const pointIds = matches.map(label => {
+      const p = manualDocument.points.find(p => p.label.toLowerCase() === label.toLowerCase())
+      return p?.id
+    }).filter(Boolean) as string[]
+
+    if (pointIds.length >= 2) {
+      createProjectionByPoints(pts[0], pointIds)
+      autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'projection', pointIds: [] })
+    }
   }
 
   const handleCircleCreate = () => {
@@ -196,7 +217,7 @@ export function ManualLeftSubPanel() {
       if (pts.length !== 2) return
       createCircle('centerPoint', { centerPointId: pts[0], radiusPointId: pts[1] })
     }
-    setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation.radius ?? 3 })
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'circle', pointIds: [], height: kindCode, radius: draftOperation.radius ?? 3 })
   }
 
   const handleCentroidCreate = () => {
@@ -265,12 +286,16 @@ export function ManualLeftSubPanel() {
             {activeTool === 'polygon' && 'Click chọn lần lượt các Điểm làm đỉnh.\nClick lại điểm bắt đầu để hoàn tất Đa giác.'}
             {activeTool === 'point' && 'Click vào bất cứ đâu trên lưới Oxy (z=0) để tạo Điểm mới.\nGiữ Shift và kéo để nâng hạ độ cao (trục Z).'}
             {activeTool === 'midpoint' && 'Click vào một Đoạn thẳng có sẵn,\nhoặc click chọn lần lượt 2 Điểm để tạo Trung điểm.'}
-            {activeTool === 'projection' && '1. Click chọn Điểm cần chiếu.\n2. Click chọn một Đoạn thẳng hoặc Đa giác mẫu.'}
+            {activeTool === 'projection' && (
+              draftOperation?.pointIds && draftOperation.pointIds.length > 0
+                ? `Đang chiếu điểm ${manualDocument.points.find(p => p.id === draftOperation.pointIds![0])?.label ?? ''}.\nChọn đích: click đoạn thẳng, đa giác, mặt khối (hoặc dùng Tab để duyệt mặt sau/mặt ảo), HOẶC click 3 điểm để xác định mặt phẳng (${draftOperation.pointIds.length - 1}/3 điểm).`
+                : '1. Click chọn Điểm cần chiếu.\n2. Chọn đích: click đoạn thẳng, đa giác, mặt khối (hoặc dùng Tab để duyệt mặt sau/mặt ảo), HOẶC click 3 điểm để xác định mặt phẳng.'
+            )}
             {activeTool === 'regularPolygon' && 'Click chọn lần lượt 2 Điểm làm cạnh.\nMột Lục giác đều (6 cạnh) sẽ tự động được dựng hình.'}
             {activeTool === 'specialTriangle' && (draftOperation?.height === 5 
               ? 'Click chọn 3 điểm mới (bằng cách click trên lưới/canvas) hoặc chọn các điểm đã có sẵn để tạo tam giác.'
               : 'Click chọn lần lượt 2 Điểm (mới hoặc đã có sẵn) làm đỉnh cơ sở để tự động dựng tam giác đặc biệt.')}
-            {activeTool === 'centroid' && 'Click vào 1 Đa giác trên màn hình,\nhoặc chọn lần lượt các Điểm để tạo trọng tâm.'}
+            {activeTool === 'centroid' && 'Click vào 1 Đa giác hoặc Mặt của khối hình trên canvas,\nhoặc chọn lần lượt các Điểm để tạo trọng tâm.'}
             {activeTool === 'perpendicularBisector' && 'Click chọn 1 Đoạn thẳng,\nhoặc chọn lần lượt 2 Điểm tự do để dựng đường trung trực.'}
             {activeTool === 'angleBisector' && '1. Click chọn điểm thuộc tia thứ nhất.\n2. Click chọn đỉnh của góc.\n3. Click chọn điểm thuộc tia thứ hai.'}
             {activeTool === 'specialQuadrilateral' && (draftOperation?.height === 1 
@@ -297,7 +322,7 @@ export function ManualLeftSubPanel() {
             {draftOperation?.tool === 'polygon' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold">Đa giác nháp</p>
+                  <p className="text-xs font-semibold">Khối đa giác</p>
                   <Badge variant="outline">{draftOperation.pointIds?.length ?? 0} đỉnh</Badge>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -364,96 +389,8 @@ export function ManualLeftSubPanel() {
                   </Badge>
                 </div>
 
-                {activeTool === 'prism' && (
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Kiểu thiết lập</label>
-                    <div className="flex gap-1 p-1 bg-secondary rounded-xl">
-                      <Button
-                        type="button"
-                        variant={
-                          !draftOperation?.topPointId ? 'default' : 'ghost'
-                        }
-                        size="sm"
-                        className="flex-1 rounded-lg text-[11px] h-7 font-semibold"
-                        onClick={() => {
-                          if (draftOperation) {
-                            setDraftOperation({
-                              ...draftOperation,
-                              topPointId: null,
-                            })
-                          }
-                        }}
-                      >
-                        Đứng
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={
-                          draftOperation?.topPointId ? 'default' : 'ghost'
-                        }
-                        size="sm"
-                        className="flex-1 rounded-lg text-[11px] h-7 font-semibold"
-                        onClick={() => {
-                          if (draftOperation) {
-                            setDraftOperation({
-                              ...draftOperation,
-                              topPointId: 'auto_generate',
-                            })
-                          }
-                        }}
-                      >
-                        Xiên
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Standing Solid Form */}
-                {((activeTool === 'pyramid' && (draftOperation?.apexPointId === 'auto_generate' || !draftOperation?.apexPointId)) ||
-                  (activeTool === 'prism' && !draftOperation?.topPointId)) && (
-                  <div className="space-y-2">
-                    {activeTool === 'prism' && (
-                      <div className="flex items-center gap-2 py-0.5">
-                        <input
-                          id="prism-auto-height"
-                          type="checkbox"
-                          checked={draftOperation?.height === undefined}
-                          onChange={(e) => {
-                            if (draftOperation) {
-                              setDraftOperation({
-                                ...draftOperation,
-                                height: e.target.checked ? undefined : 4,
-                              })
-                            }
-                          }}
-                          className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary bg-background"
-                        />
-                        <label htmlFor="prism-auto-height" className="text-[11px] font-semibold cursor-pointer select-none">
-                          Hình lập phương (Auto cao)
-                        </label>
-                      </div>
-                    )}
-                    
-                    {draftOperation?.height !== undefined && (
-                      <div className="space-y-1">
-                        <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
-                        <Input
-                          type="number"
-                          min={0.1}
-                          step={0.5}
-                          value={draftOperation?.height ?? 4}
-                          onChange={(event) => updateDraftHeight(event.target.value)}
-                          placeholder="Chiều cao"
-                          className="rounded-xl h-8 text-xs"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Skewed Solid Form */}
-                {((activeTool === 'pyramid') ||
-                  (activeTool === 'prism' && draftOperation?.topPointId)) && (
+                {/* Select Top Point */}
+                {(activeTool === 'pyramid' || activeTool === 'prism') && (
                   <div className="space-y-2">
                     <div className="space-y-1">
                       <label className="text-[11px] text-muted-foreground font-medium">
@@ -461,21 +398,19 @@ export function ManualLeftSubPanel() {
                       </label>
                       <select
                         value={
-                          (activeTool === 'pyramid' ? draftOperation?.apexPointId : draftOperation?.topPointId) ?? ''
+                          (activeTool === 'pyramid' ? draftOperation?.apexPointId : draftOperation?.topPointId) || 'auto_generate'
                         }
                         onChange={(e) => {
                           if (draftOperation) {
                             setDraftOperation({
                               ...draftOperation,
-                              apexPointId: activeTool === 'pyramid' ? e.target.value : null,
-                              topPointId: activeTool === 'prism' ? e.target.value : null,
+                              ...(activeTool === 'pyramid' ? { apexPointId: e.target.value } : { topPointId: e.target.value }),
                             })
                           }
                         }}
                         className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       >
-                        <option value="" disabled>-- Chọn điểm --</option>
-                        <option value="auto_generate">-- Tự sinh đỉnh tự do ở cao độ h --</option>
+                        <option value="auto_generate">-- Tự sinh đỉnh thẳng đứng ở cao độ h --</option>
                         {manualDocument.points.map((pt) => (
                           <option key={pt.id} value={pt.id}>
                             {pt.label} ({pt.position.map(p => p.toFixed(1)).join(', ')})
@@ -489,14 +424,34 @@ export function ManualLeftSubPanel() {
                   </div>
                 )}
 
+                {/* Height Form */}
+                {((activeTool === 'pyramid' && (!draftOperation?.apexPointId || draftOperation?.apexPointId === 'auto_generate')) ||
+                  (activeTool === 'prism' && (!draftOperation?.topPointId || draftOperation?.topPointId === 'auto_generate')) || 
+                  (activeTool === 'regularPyramid')) && (
+                  <div className="space-y-2">
+                      <div className="space-y-1 mt-2">
+                        <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
+                        <Input
+                          type="number"
+                          min={0.1}
+                          step={0.5}
+                          value={draftOperation?.height ?? 4}
+                          onChange={(event) => updateDraftHeight(event.target.value)}
+                          placeholder="Chiều cao"
+                          className="rounded-xl h-8 text-xs"
+                        />
+                      </div>
+                  </div>
+                )}
+
                 <Button
                   size="sm"
-                  className="w-full rounded-xl h-8 text-xs font-semibold mt-2"
+                  className="w-full rounded-xl h-8 text-xs font-semibold mt-4"
                   onClick={() => handleSolidCreate(activeTool as 'pyramid' | 'prism' | 'regularPyramid')}
                   disabled={
                     !draftOperation?.basePolygonId ||
-                    (activeTool === 'pyramid' && draftOperation?.apexPointId === 'auto_generate' && (!draftOperation?.height || draftOperation.height <= 0)) ||
-                    (activeTool === 'prism' && !draftOperation?.topPointId && draftOperation?.height !== undefined && draftOperation.height <= 0)
+                    (activeTool === 'pyramid' && (!draftOperation?.apexPointId || draftOperation?.apexPointId === 'auto_generate') && (!draftOperation?.height || draftOperation.height <= 0)) ||
+                    (activeTool === 'prism' && (!draftOperation?.topPointId || draftOperation?.topPointId === 'auto_generate') && (!draftOperation?.height || draftOperation.height <= 0))
                   }
                 >
                   {activeTool === 'pyramid' ? 'Tạo hình chóp' : activeTool === 'regularPyramid' ? 'Tạo hình chóp đều' : 'Tạo lăng trụ'}
@@ -881,37 +836,52 @@ export function ManualLeftSubPanel() {
             {draftOperation?.tool === 'projection' && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold">Công cụ Hình chiếu</p>
-                <div className="flex gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Điểm chiếu</label>
-                    <div>
-                      <Badge variant={(draftOperation.pointIds?.length ?? 0) > 0 ? 'default' : 'outline'}>
-                        {(draftOperation.pointIds?.length ?? 0) > 0
-                          ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Điểm chiếu</label>
+                      <div>
+                        <Badge variant={(draftOperation.pointIds?.length ?? 0) > 0 ? 'default' : 'outline'}>
+                          {(draftOperation.pointIds?.length ?? 0) > 0
+                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Nhập đích (VD: BD)</label>
+                      <form onSubmit={(e) => {
+                        e.preventDefault()
+                        const form = e.target as HTMLFormElement
+                        const input = form.elements.namedItem('targetInput') as HTMLInputElement
+                        handleManualProjectionTarget(input.value)
+                        input.value = ''
+                      }}>
+                        <Input
+                          name="targetInput"
+                          placeholder="Nhập tên điểm"
+                          className="rounded-xl h-8 text-xs"
+                          autoComplete="off"
+                          disabled={(draftOperation.pointIds?.length ?? 0) === 0}
+                        />
+                      </form>
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Đoạn/Mặt đích</label>
-                    <div>
-                      <Badge
-                        variant={
-                          (draftOperation.segmentIds?.length ?? 0) > 0 || (draftOperation.basePolygonId ? 1 : 0) > 0
-                            ? 'default'
-                            : 'outline'
-                        }
-                      >
-                        {(draftOperation.segmentIds?.length ?? 0) > 0
-                          ? `\u0110o\u1ea1n ${manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? '?'}`
-                          : draftOperation.basePolygonId
-                            ? `M\u1eb7t ${
-                                manualDocument.polygons.find((p) => p.id === draftOperation.basePolygonId)?.label ?? '?'
-                              }`
-                            : 'Ch\u01b0a ch\u1ecdn'}
-                      </Badge>
+
+                  {draftOperation.pointIds && draftOperation.pointIds.length > 1 && (
+                    <div className="space-y-1 pt-1 border-t border-dashed">
+                      <label className="text-[11px] text-muted-foreground font-medium block">
+                        Mặt phẳng đích ({draftOperation.pointIds.length - 1}/3 điểm)
+                      </label>
+                      <div className="flex gap-1 flex-wrap">
+                        {draftOperation.pointIds.slice(1).map((pid, idx) => (
+                          <Badge key={pid} variant="secondary" className="text-xs">
+                            {manualDocument.points.find((p) => p.id === pid)?.label ?? `P${idx + 1}`}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             )}
