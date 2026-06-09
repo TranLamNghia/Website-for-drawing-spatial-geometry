@@ -226,7 +226,7 @@ export interface ManualDisplayCircle {
   center: Vec3
   radius: number
   normal: Vec3
-  sourceKind: 'circle'
+  sourceKind: 'circle' | 'solid'
   sourceId: string
   visible: boolean
 }
@@ -541,15 +541,21 @@ export function resolvePointPositions(document: ManualDocument) {
           const basePoly = document.polygons.find(p => p.id === solid.basePolygonId)
           if (basePoly) {
             const basePoints = basePoly.pointIds
-            const topPoints = document.points
-              .filter(p => p.pointKind === 'solidVertex' && p.solidId === solid.id && p.vertexIndex !== undefined && p.vertexIndex >= basePoints.length)
-              .sort((a, b) => (a.vertexIndex ?? 0) - (b.vertexIndex ?? 0))
-              .map(p => p.id)
-            
+            const n = basePoints.length
+            // Build topPointIds with explicit index mapping to handle oblique prisms
+            // where index-0 top vertex is solid.topPointId (a free point, not a solidVertex)
+            const topPoints: string[] = new Array(n).fill('')
+            if (solid.topPointId) topPoints[0] = solid.topPointId
+            document.points.forEach(p => {
+              if (p.pointKind === 'solidVertex' && p.solidId === solid.id && p.vertexIndex !== undefined && p.vertexIndex >= n) {
+                topPoints[p.vertexIndex - n] = p.id
+              }
+            })
+
             if (edgeType === 'base') {
-              return [resolvePoint(basePoints[edgeIdx], visiting), resolvePoint(basePoints[(edgeIdx + 1) % basePoints.length], visiting)]
+              return [resolvePoint(basePoints[edgeIdx], visiting), resolvePoint(basePoints[(edgeIdx + 1) % n], visiting)]
             } else if (edgeType === 'top') {
-              return [resolvePoint(topPoints[edgeIdx], visiting), resolvePoint(topPoints[(edgeIdx + 1) % topPoints.length], visiting)]
+              return [resolvePoint(topPoints[edgeIdx], visiting), resolvePoint(topPoints[(edgeIdx + 1) % n], visiting)]
             } else if (edgeType === 'side') {
               return [resolvePoint(basePoints[edgeIdx], visiting), resolvePoint(topPoints[edgeIdx], visiting)]
             }
@@ -1553,11 +1559,16 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       pushGeometryPoint(geometry, topLabels[index], point)
     })
 
-    // Collect top point IDs for prism
-    const topPointIds = document.points
-      .filter(p => p.pointKind === 'solidVertex' && p.solidId === solid.id && p.vertexIndex !== undefined && p.vertexIndex >= basePolygon.pointIds.length)
-      .sort((a, b) => (a.vertexIndex ?? 0) - (b.vertexIndex ?? 0))
-      .map(p => p.id)
+    // Collect top point IDs for prism with explicit index mapping
+    // Oblique prisms store index-0 as solid.topPointId (free point), not a solidVertex
+    const _pn = basePolygon.pointIds.length
+    const topPointIds: string[] = new Array(_pn).fill('')
+    if (solid.topPointId) topPointIds[0] = solid.topPointId
+    document.points.forEach(p => {
+      if (p.pointKind === 'solidVertex' && p.solidId === solid.id && p.vertexIndex !== undefined && p.vertexIndex >= _pn) {
+        topPointIds[p.vertexIndex - _pn] = p.id
+      }
+    })
     const basePointIds = basePolygon.pointIds
 
     for (let index = 0; index < basePoints.length; index += 1) {
@@ -1702,46 +1713,19 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       if (!center || !centerPoint) return
       const r = solid.radius
 
-      // Generate wireframe circle points for display (3 circles: XY, XZ, YZ)
-      const circleSegments = 32
-      const circleColors = ['#e11d48', '#2563eb', '#16a34a']
+      // Generate wireframe circle objects for display (3 orthogonal circles: XY, XZ, YZ)
       const circleNormals: Vec3[] = [[0, 0, 1], [0, 1, 0], [1, 0, 0]]
-
       circleNormals.forEach((normal, circleIdx) => {
-        const circlePoints: Vec3[] = []
-        for (let i = 0; i <= circleSegments; i++) {
-          const angle = (i / circleSegments) * Math.PI * 2
-          const cos = Math.cos(angle)
-          const sin = Math.sin(angle)
-          let pt: Vec3
-          if (normal[2] === 1) pt = [center[0] + r * cos, center[1] + r * sin, center[2]]
-          else if (normal[1] === 1) pt = [center[0] + r * cos, center[1], center[2] + r * sin]
-          else pt = [center[0], center[1] + r * cos, center[2] + r * sin]
-          circlePoints.push(pt)
-        }
-        for (let i = 0; i < circlePoints.length - 1; i++) {
-          displaySegments.push({
-            id: `${solid.id}_circle${circleIdx}_${i}`,
-            label: '',
-            start: circlePoints[i],
-            end: circlePoints[i + 1],
-            sourceKind: 'solid',
-            sourceId: solid.id,
-            visible: solid.visible,
-          })
-        }
-      })
-
-      // Display center point
-      displayPoints.push({
-        id: `${solid.id}_center`,
-        label: centerPoint.label,
-        position: center,
-        sourceKind: 'solid',
-        sourceId: solid.id,
-        selectable: false,
-        generated: true,
-        visible: solid.visible,
+        displayCircles.push({
+          id: `${solid.id}_circle_${circleIdx}`,
+          label: '',
+          center: center,
+          radius: r,
+          normal: normal,
+          sourceKind: 'solid',
+          sourceId: solid.id,
+          visible: solid.visible,
+        })
       })
 
       // Radius point (if defined)

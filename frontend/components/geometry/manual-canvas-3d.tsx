@@ -226,6 +226,7 @@ export function ManualCanvas3D() {
     setDraftOperation,
     createPointFromTarget,
     updatePointPosition,
+    updatePointT,
     createSegment,
     createPolygon,
     createBox,
@@ -1164,7 +1165,29 @@ export function ManualCanvas3D() {
         }
       })
 
-    // Render derived circles
+    // Add depth blocker spheres for spheres
+    if (manualDerived.displayCircles) {
+      const processedSpheres = new Set<string>()
+      manualDerived.displayCircles
+        .filter((c) => c.visible && c.sourceKind === 'solid')
+        .forEach((c) => {
+          if (processedSpheres.has(c.sourceId)) return
+          processedSpheres.add(c.sourceId)
+
+          // Create invisible depth blocker sphere slightly smaller to prevent Z-fighting
+          const blockerGeometry = new THREE.SphereGeometry(c.radius * 0.993, 32, 32)
+          const blockerMaterial = new THREE.MeshBasicMaterial({
+            colorWrite: false,
+            depthWrite: true,
+            side: THREE.DoubleSide,
+          })
+          const blockerMesh = new THREE.Mesh(blockerGeometry, blockerMaterial)
+          blockerMesh.position.set(c.center[0], c.center[1], c.center[2])
+          group.add(blockerMesh)
+        })
+    }
+
+    // Render derived circles (including sphere wireframe rings)
     if (manualDerived.displayCircles) {
       manualDerived.displayCircles
         .filter((c) => c.visible)
@@ -1192,14 +1215,51 @@ export function ManualCanvas3D() {
           }
 
           const geometry = new THREE.BufferGeometry().setFromPoints(circlePts)
-          const isSelected = manualSelection?.kind === 'circle' && manualSelection.id === circle.sourceId
+          
+          const isSelected =
+            (manualSelection?.kind === 'circle' && manualSelection.id === circle.sourceId) ||
+            (manualSelection?.kind === 'solid' && circle.sourceKind === 'solid' && manualSelection.id === circle.sourceId)
+          
+          const isHovered =
+            circle.sourceId === hoveredEntityIdRef.current ||
+            (circle.sourceKind === 'solid' && circle.sourceId === hoveredEntityIdRef.current)
+
+          let lineColor = circle.sourceKind === 'solid' ? colors.solid : colors.polygon
+          if (isSelected) {
+            lineColor = colors.pointSelected
+          } else if (isHovered) {
+            lineColor = colors.pointHovered
+          }
+
+          // 1. Solid line (front / LessEqualDepth)
           const material = new THREE.LineBasicMaterial({
-            color: isSelected ? colors.pointSelected : colors.polygon,
+            color: lineColor,
             linewidth: isSelected ? 2.5 : 1.5,
+            depthFunc: THREE.LessEqualDepth,
           })
           const line = new THREE.Line(geometry, material)
-          line.userData.entity = { kind: 'circle', id: circle.sourceId } as any
+          line.userData.entity = {
+            kind: circle.sourceKind === 'solid' ? 'solid' : 'circle',
+            id: circle.sourceId,
+          } satisfies InteractiveHit
           group.add(line)
+          segmentMeshesRef.current.push({ id: circle.sourceId, mesh: line })
+
+          // 2. Dashed line (back / GreaterDepth) - only for sphere rings!
+          if (circle.sourceKind === 'solid') {
+            const dashedMaterial = new THREE.LineDashedMaterial({
+              color: lineColor,
+              dashSize: 0.15,
+              gapSize: 0.1,
+              depthFunc: THREE.GreaterDepth,
+              transparent: true,
+              opacity: 0.5,
+            })
+            const dashedLine = new THREE.Line(geometry, dashedMaterial)
+            dashedLine.computeLineDistances()
+            group.add(dashedLine)
+            segmentMeshesRef.current.push({ id: circle.sourceId, mesh: dashedLine })
+          }
         })
     }
 
@@ -2000,17 +2060,23 @@ export function ManualCanvas3D() {
 
       segmentMeshesRef.current.forEach(({ id, mesh }) => {
         const segment = manualDerived.displaySegments.find((s) => s.id === id || s.sourceId === id)
+        const entity = mesh.userData.entity as InteractiveHit | undefined
+        
         const isSelected = manualSelection && 
           ((manualSelection.kind === 'segment' && manualSelection.id === id) ||
-           (manualSelection.kind === 'polygon' && segment?.sourceKind === 'polygon' && manualSelection.id === id) ||
-           (manualSelection.kind === 'solid' && segment?.sourceKind === 'solid' && manualSelection.id === id))
-        const isHovered = id === hoveredId || segment?.sourceId === hoveredId
+           (manualSelection.kind === 'polygon' && (segment?.sourceKind === 'polygon' || entity?.kind === 'polygon') && manualSelection.id === id) ||
+           (manualSelection.kind === 'solid' && (segment?.sourceKind === 'solid' || entity?.kind === 'solid') && manualSelection.id === id) ||
+           (manualSelection.kind === 'circle' && entity?.kind === 'circle' && manualSelection.id === id))
+           
+        const isHovered = id === hoveredId || segment?.sourceId === hoveredId || (entity?.kind === 'solid' && entity.id === hoveredId)
+        
         const isDraftSelected =
           draftOperation &&
           (draftOperation.segmentIds?.includes(id) ||
            draftOperation.segmentIds?.includes(segment?.sourceId ?? '') ||
            draftOperation.basePolygonId === id ||
            draftOperation.basePolygonId === segment?.sourceId)
+           
         const mat = mesh.material as THREE.LineBasicMaterial
         if (mat) {
           if (isSelected) {
@@ -2018,7 +2084,9 @@ export function ManualCanvas3D() {
           } else if (isHovered || isDraftSelected) {
             mat.color.set(colors.pointHovered)
           } else {
-            mat.color.set(segment?.sourceKind === 'solid' ? colors.solid : colors.segment)
+            const isSolid = segment?.sourceKind === 'solid' || entity?.kind === 'solid'
+            const isCircle = entity?.kind === 'circle'
+            mat.color.set(isSolid ? colors.solid : (isCircle ? colors.polygon : colors.segment))
           }
         }
       })
@@ -2117,6 +2185,58 @@ export function ManualCanvas3D() {
         const camera = cameraRef.current
         const container = mountRef.current
         if (!camera || !container || interactionRef.current.createPointStartY == null) return
+
+        // --- Segment-point drag: constrain motion along the 3D segment ---
+        const _segDragPointId = interactionRef.current.creatingPointId
+        const _segDragPoint = manualDocument.points.find(p => p.id === _segDragPointId)
+        if (_segDragPoint && (_segDragPoint.pointKind === 'segment' || _segDragPoint.pointKind === 'midpoint') && _segDragPoint.segmentId) {
+          controls.enabled = false
+          const _segRay = getCameraRay(event)
+          if (_segRay) {
+            // Resolve segment endpoints from displaySegments (already computed)
+            const _segDisplay = manualDerived.displaySegments.find(s => s.id === _segDragPoint.segmentId)
+            if (_segDisplay) {
+              // Closest-point-on-segment to camera ray
+              // Ray: R(s) = O + s*D
+              // Seg: S(t) = P1 + t*V
+              const O = _segRay.origin
+              const D = _segRay.direction
+              const P1x = _segDisplay.start[0], P1y = _segDisplay.start[1], P1z = _segDisplay.start[2]
+              const Vx = _segDisplay.end[0] - P1x, Vy = _segDisplay.end[1] - P1y, Vz = _segDisplay.end[2] - P1z
+              const Ux = P1x - O.x, Uy = P1y - O.y, Uz = P1z - O.z
+              const VdotV = Vx*Vx + Vy*Vy + Vz*Vz
+              const DdotV = D.x*Vx + D.y*Vy + D.z*Vz
+              const UdotV = Ux*Vx + Uy*Vy + Uz*Vz
+              const UdotD = Ux*D.x + Uy*D.y + Uz*D.z
+              const denom = VdotV - DdotV * DdotV
+              let nextT: number
+              if (Math.abs(denom) < 1e-10) {
+                nextT = _segDragPoint.t ?? 0.5
+              } else {
+                // Correct closest-approach formula: t = (U·D × D·V − U·V) / (V·V − (D·V)²)
+                nextT = (UdotD * DdotV - UdotV) / denom
+              }
+              // Snap near endpoints / midpoint for convenience (narrow zone to avoid unintended snap)
+              if (Math.abs(nextT) < 0.025) nextT = 0
+              else if (Math.abs(nextT - 0.5) < 0.025) nextT = 0.5
+              else if (Math.abs(nextT - 1) < 0.025) nextT = 1
+              nextT = Math.max(0, Math.min(1, nextT))
+              updatePointT(_segDragPointId, nextT)
+              const newPos: Vec3 = [
+                P1x + nextT * Vx,
+                P1y + nextT * Vy,
+                P1z + nextT * Vz,
+              ]
+              scheduleHoverPresentation({
+                kind: 'workplane',
+                label: `t = ${Number(nextT.toFixed(3))}`,
+                position: newPos,
+              })
+            }
+          }
+          return
+        }
+        // -------------------------------------------------------------------
 
         if (event.ctrlKey) {
           controls.enabled = true
