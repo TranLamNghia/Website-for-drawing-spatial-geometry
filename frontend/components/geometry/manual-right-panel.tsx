@@ -67,6 +67,9 @@ function PointRow({
   onRename,
   onUpdateT,
   tVal,
+  onUpdateAngle,
+  angleVal,
+  onAddDependentPoint,
 }: {
   point: ManualPoint
   coords: [number, number, number]
@@ -77,6 +80,9 @@ function PointRow({
   onRename: (newLabel: string) => void
   onUpdateT?: (val: number) => void
   tVal?: number
+  onUpdateAngle?: (val: number) => void
+  angleVal?: number
+  onAddDependentPoint?: () => void
 }) {
   const [cx, cy, cz] = coords
   const [isFocused, setIsFocused] = useState(false)
@@ -200,6 +206,50 @@ function PointRow({
           </div>
         </div>
       )}
+
+      {selected && onUpdateAngle !== undefined && angleVal !== undefined && (
+        <div className="mt-2 pl-6 pr-2 py-2 border-t border-border/50 bg-muted/20">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[10px] text-muted-foreground uppercase font-semibold">Góc (độ)</span>
+            <span className="text-[10px] font-mono font-medium text-primary">{(angleVal * 180 / Math.PI).toFixed(1)}°</span>
+          </div>
+          <div className="flex gap-2 items-center">
+            <input
+              type="range"
+              min="-180"
+              max="180"
+              step="1"
+              value={(angleVal * 180 / Math.PI).toFixed(0)}
+              onChange={(e) => onUpdateAngle(parseFloat(e.target.value) * Math.PI / 180)}
+              className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
+            />
+            <input
+              type="number"
+              value={(angleVal * 180 / Math.PI).toFixed(0)}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value)
+                if (!isNaN(val)) onUpdateAngle(val * Math.PI / 180)
+              }}
+              className="w-12 h-6 text-[10px] font-mono text-right rounded border bg-background px-1"
+            />
+          </div>
+          {onAddDependentPoint && (
+            <div className="mt-2 text-right">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 text-[10px] px-2 border-border/70 bg-background"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAddDependentPoint()
+                }}
+              >
+                + Tạo điểm phụ thuộc góc α
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -214,6 +264,10 @@ function ObjectRow({
   onDelete,
   onUpdateHeight,
   heightVal,
+  solid,
+  onAddRing,
+  onUpdateRing,
+  onRemoveRing,
 }: {
   typeLabel: string
   icon: React.ReactNode
@@ -224,6 +278,10 @@ function ObjectRow({
   onDelete: () => void
   onUpdateHeight?: (newHeight: number) => void
   heightVal?: number
+  solid?: any
+  onAddRing?: () => void
+  onUpdateRing?: (ringId: string, phi: number, theta: number) => void
+  onRemoveRing?: (ringId: string) => void
 }) {
   const [heightDraft, setHeightDraft] = useState(heightVal ? heightVal.toString() : '')
 
@@ -288,6 +346,99 @@ function ObjectRow({
             onBlur={commitHeight}
             onKeyDown={(e) => e.key === 'Enter' && commitHeight()}
           />
+        </div>
+      )}
+
+      {selected && solid?.solidType === 'sphere' && (
+        <div className="col-span-full mt-2 border-t border-border/50 bg-muted/20 p-2">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[10px] text-muted-foreground uppercase font-semibold">Các đường tròn</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 text-[10px] px-2 border-border/70 bg-background"
+              onClick={(e) => {
+                e.stopPropagation()
+                onAddRing?.()
+              }}
+            >
+              + Thêm
+            </Button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {solid.sphereRings?.map((ring: any) => {
+              const degreesTheta = (ring.theta * 180 / Math.PI).toFixed(0)
+              const degreesPhi = (ring.phi * 180 / Math.PI).toFixed(0)
+              return (
+                <div key={ring.id} className="flex flex-col gap-1.5 bg-background p-2 rounded border border-border/70 group">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[11px] font-medium truncate flex-1" title={ring.label}>{ring.label}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRemoveRing?.(ring.id)
+                      }}
+                      className="p-1 rounded-md text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Xóa đường tròn"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <span className="text-[10px] text-muted-foreground w-6">Dọc</span>
+                    <input
+                      type="range"
+                      min="-180"
+                      max="180"
+                      step="1"
+                      value={degreesTheta}
+                      onChange={(e) => {
+                        const rad = parseFloat(e.target.value) * Math.PI / 180
+                        onUpdateRing?.(ring.id, ring.phi, rad)
+                      }}
+                      className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
+                    />
+                    <input
+                      type="number"
+                      value={degreesTheta}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value)
+                        if (!isNaN(val)) onUpdateRing?.(ring.id, ring.phi, val * Math.PI / 180)
+                      }}
+                      className="w-12 h-6 text-[10px] font-mono text-right rounded border bg-background px-1"
+                    />
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <span className="text-[10px] text-muted-foreground w-6">Ngang</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="360"
+                      step="1"
+                      value={degreesPhi}
+                      onChange={(e) => {
+                        const rad = parseFloat(e.target.value) * Math.PI / 180
+                        onUpdateRing?.(ring.id, rad, ring.theta)
+                      }}
+                      className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
+                    />
+                    <input
+                      type="number"
+                      value={degreesPhi}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value)
+                        if (!isNaN(val)) onUpdateRing?.(ring.id, val * Math.PI / 180, ring.theta)
+                      }}
+                      className="w-12 h-6 text-[10px] font-mono text-right rounded border bg-background px-1"
+                    />
+                  </div>
+                </div>
+              )
+            })}
+            {!solid.sphereRings?.length && (
+              <span className="text-[10px] text-muted-foreground italic">Chưa có đường tròn nào</span>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -544,6 +695,11 @@ export function ManualRightPanel() {
     updateSolidHeight,
     updateCircleRadius,
     updatePointT,
+    updatePointAngle,
+    createSphereAngleDependentPoint,
+    addSphereRing,
+    removeSphereRing,
+    updateSphereRingOrientation,
     showAxes,
     showGrid,
     showLabels,
@@ -669,6 +825,9 @@ export function ManualRightPanel() {
                 onRename={(newLabel) => renameManualEntity('point', point.id, newLabel)}
                 onUpdateT={(point.pointKind === 'segment' || point.pointKind === 'midpoint') ? (newT) => updatePointT(point.id, newT) : undefined}
                 tVal={point.t}
+                onUpdateAngle={(point.pointKind === 'sphereRingPoint' || point.pointKind === 'sphereAngleDependent') ? (newA) => updatePointAngle(point.id, newA) : undefined}
+                angleVal={point.angle}
+                onAddDependentPoint={point.pointKind === 'sphereRingPoint' ? () => createSphereAngleDependentPoint(point.id) : undefined}
               />
             )
           })}
@@ -813,6 +972,10 @@ export function ManualRightPanel() {
               onDelete={() => removeManualEntity('solid', solid.id)}
               onUpdateHeight={solid.height !== undefined ? (newH) => updateSolidHeight(solid.id, newH) : undefined}
               heightVal={solid.height}
+              solid={solid}
+              onAddRing={() => addSphereRing(solid.id)}
+              onUpdateRing={(ringId, phi, theta) => updateSphereRingOrientation(solid.id, ringId, phi, theta)}
+              onRemoveRing={(ringId) => removeSphereRing(solid.id, ringId)}
             />
           ))}
 

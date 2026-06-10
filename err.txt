@@ -1,0 +1,113 @@
+## Error Type
+Console Error
+
+## Error Message
+Encountered two children with the same key, `-K`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+
+
+    at span (<anonymous>:null:null)
+    at <unknown> (components/geometry/manual-right-panel.tsx:186:11)
+    at Array.map (<anonymous>:null:null)
+    at ObjectRow (components/geometry/manual-right-panel.tsx:185:17)
+    at <unknown> (components/geometry/manual-right-panel.tsx:327:13)
+    at Array.map (<anonymous>:null:null)
+    at ManualRightPanel (components/geometry/manual-right-panel.tsx:326:36)
+    at ManualView (components/geometry/manual-view.tsx:63:11)
+    at ManualDrawingContent (app/che-do-tu-ve/page.tsx:66:10)
+    at ManualDrawingPage (app/che-do-tu-ve/page.tsx:79:9)
+
+## Code Frame
+  184 |       <button onClick={onSelect} className="flex min-w-0 flex-wrap gap-1.5 text-left">
+  185 |         {values.map((value) => (
+> 186 |           <span
+      |           ^
+  187 |             key={`${name}-${value}`}
+  188 |             className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2 text-[11px] font-me...
+  189 |           >
+
+Next.js version: 16.2.0 (Turbopack)
+
+
+================================================
+## Error Type
+Console Error
+
+## Error Message
+Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+
+
+    at GeometryProvider.useCallback[commitManualDocument] (components/geometry/geometry-context.tsx:437:7)
+    at GeometryProvider.useCallback[updatePointPosition] (components/geometry/geometry-context.tsx:493:7)
+    at ManualCanvas3D.useEffect.handlePointerMove (components/geometry/manual-canvas-3d.tsx:1695:13)
+
+## Code Frame
+  435 |   const commitManualDocument = useCallback(
+  436 |     (updater: (document: ManualDocument) => ManualDocument | null, isTransient: boolean = false) => {
+> 437 |       setManualDocumentState((current) => {
+      |       ^
+  438 |         const next = updater(current)
+  439 |         if (!next) return current
+  440 |         if (!isTransient) {
+
+Next.js version: 16.2.0 (Turbopack)
+
+
+
+===================================================
+## Error Type
+Console Error
+
+## Error Message
+Encountered two children with the same key, `d_trung_truc-`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+
+
+    at span (<anonymous>:null:null)
+    at <unknown> (components/geometry/manual-right-panel.tsx:186:11)
+    at Array.map (<anonymous>:null:null)
+    at ObjectRow (components/geometry/manual-right-panel.tsx:185:17)
+    at <unknown> (components/geometry/manual-right-panel.tsx:327:13)
+    at Array.map (<anonymous>:null:null)
+    at ManualRightPanel (components/geometry/manual-right-panel.tsx:326:36)
+    at ManualView (components/geometry/manual-view.tsx:63:11)
+    at ManualDrawingContent (app/che-do-tu-ve/page.tsx:66:10)
+    at ManualDrawingPage (app/che-do-tu-ve/page.tsx:79:9)
+
+## Code Frame
+  184 |       <button onClick={onSelect} className="flex min-w-0 flex-wrap gap-1.5 text-left">
+  185 |         {values.map((value) => (
+> 186 |           <span
+      |           ^
+  187 |             key={`${name}-${value}`}
+  188 |             className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2 text-[11px] font-me...
+  189 |           >
+
+Next.js version: 16.2.0 (Turbopack)
+
+
+
+=================================================
+## Error Type
+Console Error
+
+## Error Message
+Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.
+
+
+    at PointRow.useEffect (components/geometry/manual-right-panel.tsx:81:5)
+    at <unknown> (components/geometry/manual-right-panel.tsx:314:15)
+    at Array.map (<anonymous>:null:null)
+    at ManualRightPanel (components/geometry/manual-right-panel.tsx:309:34)
+    at ManualView (components/geometry/manual-view.tsx:63:11)
+    at ManualDrawingContent (app/che-do-tu-ve/page.tsx:66:10)
+    at ManualDrawingPage (app/che-do-tu-ve/page.tsx:79:9)
+
+## Code Frame
+  79 |
+  80 |   useEffect(() => {
+> 81 |     setDraft({
+     |     ^
+  82 |       x: formatCoord(cx),
+  83 |       y: formatCoord(cy),
+  84 |       z: formatCoord(cz),
+
+Next.js version: 16.2.0 (Turbopack)

@@ -1,0 +1,31 @@
+[HttpPost("process")]
+    public IActionResult ProcessProblem([FromBody] System.Text.Json.JsonElement rawJson)
+    {
+        try
+        {
+            // 1. (Tạm dừng AI Service) Gọi AI Service (Python) để bóc tách JSON
+            // Chúng ta tạm cất phần gọi AI này đi để tiết kiệm token
+            var problemText = rawJson.GetProperty("problem_text").GetString();
+            var dto = await _aiService.ExtractGeometryAsync(problemText); 
+            
+            // 2. Trích xuất phần 'data' từ JSON bạn cung cấp trực tiếp
+            // var dataElement = rawJson.GetProperty("data");
+            // var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            // var dto = System.Text.Json.JsonSerializer.Deserialize<Application.DTOs.GeometryProblemDto>(dataElement.GetRawText(), options);
+
+            if (dto == null)
+                return BadRequest(new { message = "Không thể chuyển đổi dữ liệu JSON." });
+
+            // 3. Chạy Geometry Compiler trực tiếp
+            var context = _compiler.Compile(dto);
+            return Ok(new 
+            {
+                message = "Biên dịch tọa độ thành công từ JSON trực tiếp!",
+                points = context.Points
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }

@@ -1,0 +1,128 @@
+{
+    "status": "success",
+    "data": {
+        "metadata": {
+            "problem_id": "luyen_tap_1_1",
+            "topic": "geometry_3D",
+            "language": "vi"
+        },
+        "entities": {
+            "points": [
+                "A",
+                "B",
+                "C",
+                "A'",
+                "B'",
+                "C'",
+                "O"
+            ],
+            "segments": [
+                "BC",
+                "AA'",
+                "AB"
+            ],
+            "rays": [],
+            "vectors": [],
+            "planes": [
+                "ABC",
+                "P"
+            ],
+            "solids": [
+                "ABC.A'B'C'"
+            ]
+        },
+        "facts": [
+            {
+                "id": "F1",
+                "type": "shape",
+                "data": {
+                    "target": "ABC.A'B'C'",
+                    "shape": "prism"
+                },
+                "raw_text": "Cho hình lăng trụ ABC.A'B'C'"
+            },
+            {
+                "id": "F2",
+                "type": "shape",
+                "data": {
+                    "target": "ABC",
+                    "shape": "equilateral_triangle"
+                },
+                "raw_text": "đáy là tam giác đều"
+            },
+            {
+                "id": "F3",
+                "type": "length",
+                "data": {
+                    "target": "AB",
+                    "value": "a"
+                },
+                "raw_text": "cạnh a"
+            },
+            {
+                "id": "F4",
+                "type": "centroid",
+                "data": {
+                    "point": "O",
+                    "objects": [
+                        "ABC"
+                    ]
+                },
+                "raw_text": "trọng tâm O của tam giác ABC"
+            },
+            {
+                "id": "F5",
+                "type": "projection",
+                "data": {
+                    "from": "A'",
+                    "onto": "ABC",
+                    "point": "O"
+                },
+                "raw_text": "hình chiếu vuông góc của A' lên mặt phẳng (ABC) trùng với trọng tâm O của tam giác ABC"
+            },
+            {
+                "id": "F6",
+                "type": "belongs_to",
+                "data": {
+                    "point": "BC",
+                    "target": "P"
+                },
+                "raw_text": "Một mặt phẳng (P) chứa BC"
+            },
+            {
+                "id": "F7",
+                "type": "perpendicular",
+                "data": {
+                    "objects": [
+                        "P",
+                        "AA'"
+                    ]
+                },
+                "raw_text": "vuông góc với AA'"
+            },
+            {
+                "id": "F8",
+                "type": "area",
+                "data": {
+                    "target": "P",
+                    "value": "a * a * sqrt(3) / 8"
+                },
+                "raw_text": "thiết diện có diện tích bằng (a^2√3)/8"
+            }
+        ],
+        "queries": [
+            {
+                "id": "Q1",
+                "type": "volume",
+                "data": {
+                    "target": "ABC.A'B'C'"
+                },
+                "raw_text": "Tính thể tích khối lăng trụ ABC.A'B'C' theo a"
+            }
+        ],
+        "extraction_meta": {
+            "confidence": 1,
+            "notes": ""
+        }
+    }
+}
