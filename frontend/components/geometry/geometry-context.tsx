@@ -23,6 +23,8 @@ import {
   centroid,
   getPolygonNormal,
   distance,
+  crossVec3,
+  resolveCircleProps,
 } from './manual-editor'
 
 export interface Point3D {
@@ -188,6 +190,8 @@ interface GeometryContextType {
   updateSegmentLength: (segmentId: string, newLength: number) => void
   updateSolidHeight: (solidId: string, newHeight: number) => void
   updateCircleRadius: (circleId: string, newRadius: number) => void
+  createCircleAngleDependentPoint: (sourcePointId: string, customAngleRad?: number) => void
+  updatePointAngle: (pointId: string, angle: number) => void
   saveManualState: () => void
   createMidpoint: (pointIdA: string, pointIdB: string) => string | null
   createIntersection: (segmentIdA: string, segmentIdB: string) => string | null
@@ -240,6 +244,10 @@ interface GeometryContextType {
     kind: 'point' | 'segment' | 'polygon' | 'solid' | 'circle',
     id: string,
   ) => void
+  addSphereRing: (solidId: string) => void
+  removeSphereRing: (solidId: string, ringId: string) => void
+  updateSphereRingOrientation: (solidId: string, ringId: string, phi: number, theta: number) => void
+  createSphereAngleDependentPoint: (sourcePointId: string, customAngleRad?: number) => void
 }
 
 const isPointCoplanarWithPolygon = (pointId: string, polygonId: string, doc: ManualDocument) => {
@@ -531,6 +539,117 @@ function resolvePointPlacement(
   target: ManualSnapTarget | null,
   fallback: Vec3,
 ): ManualPoint {
+  if (target?.kind === 'sphere' && target.solidId) {
+    return {
+      id: createEntityId('point'),
+      label: nextPointLabel(document),
+      entityType: 'point',
+      pointKind: 'spherePoint',
+      position: target.position ?? fallback,
+      solidId: target.solidId,
+      createdByTool: 'point',
+      dependsOn: [target.solidId],
+      locked: false,
+      visible: true,
+      selectable: true,
+    }
+  }
+
+  if (target?.kind === 'circle' && target.circleId) {
+    const circle = document.circles.find((c) => c.id === target.circleId)
+    if (circle) {
+      let initialT = 0
+      const pointPositions = resolvePointPositions(document)
+      const props = resolveCircleProps(circle, pointPositions)
+      if (props) {
+        const { center, normal } = props
+        const pos = target.position ?? fallback
+        const vx = pos[0] - center[0]
+        const vy = pos[1] - center[1]
+        const vz = pos[2] - center[2]
+        
+        let u: Vec3 = [1, 0, 0]
+        if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+        const w = crossVec3(normal, u)
+        const w_len = Math.hypot(w[0], w[1], w[2])
+        const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+        const u_new = crossVec3(w_norm, normal)
+        const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+        const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+        
+        const x = vx * u_norm[0] + vy * u_norm[1] + vz * u_norm[2]
+        const y = vx * w_norm[0] + vy * w_norm[1] + vz * w_norm[2]
+        initialT = Math.atan2(y, x)
+      }
+      return {
+        id: createEntityId('point'),
+        label: nextPointLabel(document),
+        entityType: 'point',
+        pointKind: 'circlePoint',
+        position: target.position ?? fallback,
+        circleId: target.circleId,
+        t: initialT,
+        createdByTool: 'point',
+        dependsOn: [target.circleId],
+        locked: false,
+        visible: true,
+        selectable: true,
+      }
+    } else {
+      // Find sphere solid containing this ring
+      const solid = document.solids.find(s => s.solidType === 'sphere' && s.sphereRings?.some(r => r.id === target.circleId))
+      if (solid) {
+        let initialT = 0
+        const ring = solid.sphereRings?.find(r => r.id === target.circleId)
+        if (ring) {
+          const pointPositions = resolvePointPositions(document)
+          const center = pointPositions[solid.centerPointId!]
+          if (center) {
+            const phi = ring.phi
+            const theta = ring.theta
+            const normal: Vec3 = [
+              Math.cos(phi) * Math.cos(theta),
+              Math.cos(phi) * Math.sin(theta),
+              Math.sin(phi)
+            ]
+            const pos = target.position ?? fallback
+            const vx = pos[0] - center[0]
+            const vy = pos[1] - center[1]
+            const vz = pos[2] - center[2]
+            
+            let u: Vec3 = [1, 0, 0]
+            if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+            const w = crossVec3(normal, u)
+            const w_len = Math.hypot(w[0], w[1], w[2])
+            const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+            const u_new = crossVec3(w_norm, normal)
+            const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+            const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+            
+            const x = vx * u_norm[0] + vy * u_norm[1] + vz * u_norm[2]
+            const y = vx * w_norm[0] + vy * w_norm[1] + vz * w_norm[2]
+            initialT = Math.atan2(y, x)
+          }
+        }
+        return {
+          id: createEntityId('point'),
+          label: nextPointLabel(document),
+          entityType: 'point',
+          pointKind: 'sphereRingPoint',
+          position: target.position ?? fallback,
+          solidId: solid.id,
+          circleId: target.circleId,
+          t: initialT,
+          createdByTool: 'point',
+          dependsOn: [solid.id],
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+      }
+    }
+  }
+
   if ((target?.kind === 'segment' || target?.kind === 'midpoint') && target.segmentId) {
     return {
       id: createEntityId('point'),
@@ -711,6 +830,218 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
                    position: nextPos
                 }))
              }
+          }
+        }
+
+        // Handle dragging point on sphere surface
+        if (point.pointKind === 'spherePoint' && point.solidId) {
+          const solid = current.solids.find((s) => s.id === point.solidId)
+          if (solid && solid.solidType === 'sphere' && solid.centerPointId && solid.radius) {
+            const resolved = resolvePointPositions(current)
+            const center = resolved[solid.centerPointId]
+            if (center) {
+              const dx = position[0] - center[0]
+              const dy = position[1] - center[1]
+              const dz = position[2] - center[2]
+              const dist = Math.hypot(dx, dy, dz)
+              if (dist > 1e-9) {
+                const ratio = solid.radius / dist
+                const nextPos: Vec3 = [
+                  center[0] + dx * ratio,
+                  center[1] + dy * ratio,
+                  center[2] + dz * ratio,
+                ]
+                return {
+                  ...current,
+                  points: mapEntities(current.points, pointId, (candidate) => ({
+                     ...candidate,
+                     position: nextPos
+                  }))
+                }
+              }
+            }
+          }
+        }
+
+        // Handle dragging point on circle
+        if (point.pointKind === 'circlePoint' && point.circleId) {
+          const circle = current.circles.find((c) => c.id === point.circleId)
+          if (circle) {
+            const resolved = resolvePointPositions(current)
+            const props = resolveCircleProps(circle, resolved)
+            if (props) {
+              const { center, normal } = props
+              const vx = position[0] - center[0]
+              const vy = position[1] - center[1]
+              const vz = position[2] - center[2]
+              
+              let u: Vec3 = [1, 0, 0]
+              if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+              const w = crossVec3(normal, u)
+              const w_len = Math.hypot(w[0], w[1], w[2])
+              const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+              const u_new = crossVec3(w_norm, normal)
+              const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+              const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+              
+              const x = vx * u_norm[0] + vy * u_norm[1] + vz * u_norm[2]
+              const y = vx * w_norm[0] + vy * w_norm[1] + vz * w_norm[2]
+              const nextT = Math.atan2(y, x)
+              
+              return {
+                ...current,
+                points: mapEntities(current.points, pointId, (candidate) => ({
+                  ...candidate,
+                  t: nextT,
+                })),
+              }
+            }
+          }
+        }
+
+        // Handle dragging circle angle dependent point
+        if (point.pointKind === 'circleAngleDependent' && point.circleId && point.sourcePointId) {
+          const circle = current.circles.find((c) => c.id === point.circleId)
+          if (circle) {
+            const resolved = resolvePointPositions(current)
+            const posB = resolved[point.sourcePointId]
+            const props = resolveCircleProps(circle, resolved)
+            if (props && posB) {
+              const { center, normal } = props
+              
+              let u: Vec3 = [1, 0, 0]
+              if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+              const w = crossVec3(normal, u)
+              const w_len = Math.hypot(w[0], w[1], w[2])
+              const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+              const u_new = crossVec3(w_norm, normal)
+              const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+              const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+              
+              const vxB = posB[0] - center[0]
+              const vyB = posB[1] - center[1]
+              const vzB = posB[2] - center[2]
+              const xB = vxB * u_norm[0] + vyB * u_norm[1] + vzB * u_norm[2]
+              const yB = vxB * w_norm[0] + vyB * w_norm[1] + vzB * w_norm[2]
+              const tB = Math.atan2(yB, xB)
+              
+              const vxC = position[0] - center[0]
+              const vyC = position[1] - center[1]
+              const vzC = position[2] - center[2]
+              const xC = vxC * u_norm[0] + vyC * u_norm[1] + vzC * u_norm[2]
+              const yC = vxC * w_norm[0] + vyC * w_norm[1] + vzC * w_norm[2]
+              const tC = Math.atan2(yC, xC)
+              
+              let nextAlpha = tC - tB
+              while (nextAlpha < -Math.PI) nextAlpha += 2 * Math.PI
+              while (nextAlpha > Math.PI) nextAlpha -= 2 * Math.PI
+              
+              return {
+                ...current,
+                points: mapEntities(current.points, pointId, (candidate) => ({
+                  ...candidate,
+                  angleOffset: nextAlpha,
+                })),
+              }
+            }
+          }
+        }
+
+        // Handle dragging sphere ring point
+        if (point.pointKind === 'sphereRingPoint' && point.solidId && point.circleId) {
+          const solid = current.solids.find((s) => s.id === point.solidId)
+          if (solid && solid.solidType === 'sphere' && solid.centerPointId && solid.radius) {
+            const resolved = resolvePointPositions(current)
+            const ring = solid.sphereRings?.find((r) => r.id === point.circleId)
+            const center = resolved[solid.centerPointId]
+            if (center && ring) {
+              const phi = ring.phi
+              const theta = ring.theta
+              const normal: Vec3 = [
+                Math.cos(phi) * Math.cos(theta),
+                Math.cos(phi) * Math.sin(theta),
+                Math.sin(phi)
+              ]
+              const vx = position[0] - center[0]
+              const vy = position[1] - center[1]
+              const vz = position[2] - center[2]
+              
+              let u: Vec3 = [1, 0, 0]
+              if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+              const w = crossVec3(normal, u)
+              const w_len = Math.hypot(w[0], w[1], w[2])
+              const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+              const u_new = crossVec3(w_norm, normal)
+              const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+              const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+              
+              const x = vx * u_norm[0] + vy * u_norm[1] + vz * u_norm[2]
+              const y = vx * w_norm[0] + vy * w_norm[1] + vz * w_norm[2]
+              const nextT = Math.atan2(y, x)
+              
+              return {
+                ...current,
+                points: mapEntities(current.points, pointId, (candidate) => ({
+                  ...candidate,
+                  t: nextT,
+                })),
+              }
+            }
+          }
+        }
+
+        // Handle dragging sphere angle dependent point
+        if (point.pointKind === 'sphereAngleDependent' && point.solidId && point.circleId && point.sourcePointId) {
+          const solid = current.solids.find((s) => s.id === point.solidId)
+          if (solid && solid.solidType === 'sphere' && solid.centerPointId && solid.radius) {
+            const resolved = resolvePointPositions(current)
+            const posB = resolved[point.sourcePointId]
+            const ring = solid.sphereRings?.find((r) => r.id === point.circleId)
+            const center = resolved[solid.centerPointId]
+            if (center && ring && posB) {
+              const phi = ring.phi
+              const theta = ring.theta
+              const normal: Vec3 = [
+                Math.cos(phi) * Math.cos(theta),
+                Math.cos(phi) * Math.sin(theta),
+                Math.sin(phi)
+              ]
+              
+              let u: Vec3 = [1, 0, 0]
+              if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+              const w = crossVec3(normal, u)
+              const w_len = Math.hypot(w[0], w[1], w[2])
+              const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+              const u_new = crossVec3(w_norm, normal)
+              const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+              const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+              
+              const vxB = posB[0] - center[0]
+              const vyB = posB[1] - center[1]
+              const vzB = posB[2] - center[2]
+              const xB = vxB * u_norm[0] + vyB * u_norm[1] + vzB * u_norm[2]
+              const yB = vxB * w_norm[0] + vyB * w_norm[1] + vzB * w_norm[2]
+              const tB = Math.atan2(yB, xB)
+              
+              const vxC = position[0] - center[0]
+              const vyC = position[1] - center[1]
+              const vzC = position[2] - center[2]
+              const xC = vxC * u_norm[0] + vyC * u_norm[1] + vzC * u_norm[2]
+              const yC = vxC * w_norm[0] + vyC * w_norm[1] + vzC * w_norm[2]
+              const tC = Math.atan2(yC, xC)
+              
+              let nextAlpha = tC - tB
+              while (nextAlpha < -Math.PI) nextAlpha += 2 * Math.PI
+              while (nextAlpha > Math.PI) nextAlpha -= 2 * Math.PI
+              
+              return {
+                ...current,
+                points: mapEntities(current.points, pointId, (candidate) => ({
+                  ...candidate,
+                  angle: nextAlpha,
+                })),
+              }
+            }
           }
         }
 
@@ -1135,6 +1466,51 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     [commitManualDocument],
   )
 
+  const addSphereRing = useCallback((solidId: string) => {
+    commitManualDocument((current) => {
+      const solid = current.solids.find((s) => s.id === solidId)
+      if (!solid || solid.solidType !== 'sphere') return current
+      
+      const newRing = {
+        id: createEntityId('sphereRing'),
+        phi: Math.PI / 2,
+        theta: 0,
+      }
+      
+      return {
+        ...current,
+        solids: mapEntities(current.solids, solidId, (s) => ({
+          ...s,
+          sphereRings: [...(s.sphereRings || []), newRing]
+        }))
+      }
+    })
+  }, [commitManualDocument])
+
+  const removeSphereRing = useCallback((solidId: string, ringId: string) => {
+    commitManualDocument((current) => {
+      return {
+        ...current,
+        solids: mapEntities(current.solids, solidId, (s) => ({
+          ...s,
+          sphereRings: s.sphereRings?.filter((r) => r.id !== ringId) || []
+        }))
+      }
+    })
+  }, [commitManualDocument])
+
+  const updateSphereRingOrientation = useCallback((solidId: string, ringId: string, phi: number, theta: number) => {
+    commitManualDocument((current) => {
+      return {
+        ...current,
+        solids: mapEntities(current.solids, solidId, (s) => ({
+          ...s,
+          sphereRings: s.sphereRings?.map((r) => r.id === ringId ? { ...r, phi, theta } : r) || []
+        }))
+      }
+    })
+  }, [commitManualDocument])
+
   const updatePointT = useCallback((pointId: string, t: number) => {
     commitManualDocument((current) => {
       const point = current.points.find((p) => p.id === pointId)
@@ -1149,6 +1525,97 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       }
     })
   }, [commitManualDocument])
+
+  const createCircleAngleDependentPoint = useCallback(
+    (sourcePointId: string, customAngleRad?: number) => {
+      commitManualDocument((current) => {
+        const pointB = current.points.find((p) => p.id === sourcePointId)
+        if (!pointB || !pointB.circleId) return current
+        
+        const createdPointId = createEntityId('point')
+        const createdPoint: ManualPoint = {
+          id: createdPointId,
+          label: nextPointLabel(current),
+          entityType: 'point',
+          pointKind: 'circleAngleDependent',
+          position: [0, 0, 0],
+          circleId: pointB.circleId,
+          sourcePointId: sourcePointId,
+          angleOffset: customAngleRad ?? (Math.PI / 3),
+          createdByTool: 'point',
+          dependsOn: [sourcePointId, pointB.circleId],
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+        
+        return {
+          ...current,
+          points: [...current.points, createdPoint],
+        }
+      })
+    },
+    [commitManualDocument]
+  )
+
+  const createSphereAngleDependentPoint = useCallback(
+    (sourcePointId: string, customAngleRad?: number) => {
+      commitManualDocument((current) => {
+        const pointB = current.points.find((p) => p.id === sourcePointId)
+        if (!pointB || !pointB.solidId || !pointB.circleId) return current
+        
+        const createdPointId = createEntityId('point')
+        const createdPoint: ManualPoint = {
+          id: createdPointId,
+          label: nextPointLabel(current),
+          entityType: 'point',
+          pointKind: 'sphereAngleDependent',
+          position: [0, 0, 0],
+          solidId: pointB.solidId,
+          circleId: pointB.circleId,
+          sourcePointId: sourcePointId,
+          angle: customAngleRad ?? 0.5,
+          createdByTool: 'point',
+          dependsOn: [sourcePointId, pointB.solidId],
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+        
+        return {
+          ...current,
+          points: [...current.points, createdPoint],
+        }
+      })
+    },
+    [commitManualDocument]
+  )
+
+  const updatePointAngle = useCallback(
+    (pointId: string, angle: number) => {
+      commitManualDocument((current) => {
+        return {
+          ...current,
+          points: current.points.map((p) => {
+            if (p.id === pointId) {
+              if (p.pointKind === 'circlePoint' || p.pointKind === 'sphereRingPoint') {
+                return { ...p, t: angle }
+              }
+              if (p.pointKind === 'circleAngleDependent') {
+                return { ...p, angleOffset: angle }
+              }
+              if (p.pointKind === 'sphereAngleDependent') {
+                return { ...p, angle }
+              }
+              return { ...p, angle }
+            }
+            return p
+          }),
+        }
+      })
+    },
+    [commitManualDocument]
+  )
 
   const updateSegmentLength = useCallback(
     (segmentId: string, newLength: number) => {
@@ -2779,6 +3246,13 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         locked: false,
         visible: true,
         selectable: true,
+        sphereRings: [
+          {
+            id: createEntityId('sphereRing'),
+            phi: Math.PI / 2,
+            theta: 0,
+          }
+        ]
       }
       commitManualDocument((current) => ({
         ...current,
@@ -3048,6 +3522,9 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updateSegmentLength,
       updateSolidHeight,
       updateCircleRadius,
+      createCircleAngleDependentPoint,
+      createSphereAngleDependentPoint,
+      updatePointAngle,
       createSegment,
       createPolygon,
       createBox,
@@ -3076,6 +3553,9 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       toggleManualVisibility,
       toggleManualLocked,
       removeManualEntity,
+      addSphereRing,
+      removeSphereRing,
+      updateSphereRingOrientation,
     }),
     [
       activeTool,
@@ -3135,6 +3615,9 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updateSegmentLength,
       updateSolidHeight,
       updateCircleRadius,
+      createCircleAngleDependentPoint,
+      createSphereAngleDependentPoint,
+      updatePointAngle,
       validation,
       workspaceMode,
       saveManualState,
@@ -3147,6 +3630,9 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       createAngleBisector,
       createParallelLine,
       createPerpendicularLine,
+      addSphereRing,
+      removeSphereRing,
+      updateSphereRingOrientation,
     ],
   )
 

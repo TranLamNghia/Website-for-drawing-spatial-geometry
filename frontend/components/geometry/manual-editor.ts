@@ -60,9 +60,15 @@ export interface ManualPoint extends ManualEntityMeta {
     | 'angleBisectorPoint'
     | 'parallelLinePoint'
     | 'solidVertex'
+    | 'spherePoint'
+    | 'circlePoint'
+    | 'circleAngleDependent'
+    | 'sphereRingPoint'
+    | 'sphereAngleDependent'
   position: Vec3
   segmentId?: string
   t?: number
+  angle?: number
   sourcePointIds?: string[]
   sourceSegmentIds?: [string, string]
   sourcePointId?: string
@@ -83,6 +89,8 @@ export interface ManualPoint extends ManualEntityMeta {
     | 'square_C'
     | 'square_D'
   solidId?: string
+  circleId?: string
+  angleOffset?: number
   vertexIndex?: number
   flip?: number
 }
@@ -119,6 +127,11 @@ export interface ManualSolid extends ManualEntityMeta {
   apexPointId?: string
   topPointId?: string
   radiusPointId?: string
+  sphereRings?: {
+    id: string
+    phi: number
+    theta: number
+  }[]
 }
 
 export interface ManualDocument {
@@ -130,11 +143,13 @@ export interface ManualDocument {
 }
 
 export interface ManualSnapTarget {
-  kind: 'point' | 'midpoint' | 'segment' | 'workplane'
+  kind: 'point' | 'midpoint' | 'segment' | 'workplane' | 'sphere' | 'circle'
   label: string
   position: Vec3
   pointId?: string
   segmentId?: string
+  circleId?: string
+  solidId?: string
   t?: number
 }
 
@@ -264,11 +279,11 @@ function cloneVec3(vec: Vec3): Vec3 {
   return [vec[0], vec[1], vec[2]]
 }
 
-function addVec3(a: Vec3, b: Vec3): Vec3 {
+export function addVec3(a: Vec3, b: Vec3): Vec3 {
   return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
-function scaleVec3(vec: Vec3, scalar: number): Vec3 {
+export function scaleVec3(vec: Vec3, scalar: number): Vec3 {
   return [vec[0] * scalar, vec[1] * scalar, vec[2] * scalar]
 }
 
@@ -288,11 +303,11 @@ export function distance(a: Vec3, b: Vec3) {
   )
 }
 
-function dotVec3(a: Vec3, b: Vec3): number {
+export function dotVec3(a: Vec3, b: Vec3): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-function crossVec3(a: Vec3, b: Vec3): Vec3 {
+export function crossVec3(a: Vec3, b: Vec3): Vec3 {
   return [
     a[1] * b[2] - a[2] * b[1],
     a[2] * b[0] - a[0] * b[2],
@@ -300,7 +315,7 @@ function crossVec3(a: Vec3, b: Vec3): Vec3 {
   ]
 }
 
-function subVec3(a: Vec3, b: Vec3): Vec3 {
+export function subVec3(a: Vec3, b: Vec3): Vec3 {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
@@ -964,6 +979,176 @@ export function resolvePointPositions(document: ManualDocument) {
       }
     }
 
+    if (point.pointKind === 'circlePoint' && point.circleId) {
+      const circle = document.circles.find((c) => c.id === point.circleId)
+      if (circle) {
+        if (circle.circleKind === 'threePoints' && circle.sourcePointIds) {
+          circle.sourcePointIds.forEach(pid => resolvePoint(pid, visiting))
+        } else if (circle.circleKind === 'centerRadius' && circle.centerPointId) {
+          resolvePoint(circle.centerPointId, visiting)
+        } else if (circle.circleKind === 'centerPoint' && circle.centerPointId && circle.radiusPointId) {
+          resolvePoint(circle.centerPointId, visiting)
+          resolvePoint(circle.radiusPointId, visiting)
+        }
+        const props = resolveCircleProps(circle, positions)
+        if (props) {
+          const { center, radius, normal } = props
+          const t = point.t ?? 0
+          
+          let u: Vec3 = [1, 0, 0]
+          if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+          const w = crossVec3(normal, u)
+          const w_len = Math.hypot(w[0], w[1], w[2])
+          const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+          const u_new = crossVec3(w_norm, normal)
+          const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+          const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+          
+          positions[pointId] = [
+            center[0] + radius * Math.cos(t) * u_norm[0] + radius * Math.sin(t) * w_norm[0],
+            center[1] + radius * Math.cos(t) * u_norm[1] + radius * Math.sin(t) * w_norm[1],
+            center[2] + radius * Math.cos(t) * u_norm[2] + radius * Math.sin(t) * w_norm[2],
+          ]
+          visiting.delete(pointId)
+          return positions[pointId]
+        }
+      }
+    }
+
+    if (point.pointKind === 'circleAngleDependent' && point.circleId && point.sourcePointId) {
+      const circle = document.circles.find((c) => c.id === point.circleId)
+      if (circle) {
+        if (circle.circleKind === 'threePoints' && circle.sourcePointIds) {
+          circle.sourcePointIds.forEach(pid => resolvePoint(pid, visiting))
+        } else if (circle.circleKind === 'centerRadius' && circle.centerPointId) {
+          resolvePoint(circle.centerPointId, visiting)
+        } else if (circle.circleKind === 'centerPoint' && circle.centerPointId && circle.radiusPointId) {
+          resolvePoint(circle.centerPointId, visiting)
+          resolvePoint(circle.radiusPointId, visiting)
+        }
+        const posB = resolvePoint(point.sourcePointId, visiting)
+        const props = resolveCircleProps(circle, positions)
+        if (props && posB) {
+          const { center, radius, normal } = props
+          
+          let u: Vec3 = [1, 0, 0]
+          if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+          const w = crossVec3(normal, u)
+          const w_len = Math.hypot(w[0], w[1], w[2])
+          const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+          const u_new = crossVec3(w_norm, normal)
+          const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+          const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+          
+          const vx = posB[0] - center[0]
+          const vy = posB[1] - center[1]
+          const vz = posB[2] - center[2]
+          const xB = vx * u_norm[0] + vy * u_norm[1] + vz * u_norm[2]
+          const yB = vx * w_norm[0] + vy * w_norm[1] + vz * w_norm[2]
+          const tB = Math.atan2(yB, xB)
+          
+          const alpha = point.angleOffset ?? 0
+          const tC = tB + alpha
+          
+          positions[pointId] = [
+            center[0] + radius * Math.cos(tC) * u_norm[0] + radius * Math.sin(tC) * w_norm[0],
+            center[1] + radius * Math.cos(tC) * u_norm[1] + radius * Math.sin(tC) * w_norm[1],
+            center[2] + radius * Math.cos(tC) * u_norm[2] + radius * Math.sin(tC) * w_norm[2],
+          ]
+          visiting.delete(pointId)
+          return positions[pointId]
+        }
+      }
+    }
+    if (point.pointKind === 'sphereRingPoint' && point.solidId && point.circleId) {
+      const solid = document.solids.find((s) => s.id === point.solidId)
+      if (solid && solid.solidType === 'sphere' && solid.centerPointId && solid.radius) {
+        resolvePoint(solid.centerPointId, visiting)
+        if (solid.radiusPointId) resolvePoint(solid.radiusPointId, visiting)
+        
+        const ring = solid.sphereRings?.find((r) => r.id === point.circleId)
+        const center = positions[solid.centerPointId]
+        if (center && ring) {
+          const r = solid.radius
+          const phi = ring.phi
+          const theta = ring.theta
+          const normal: Vec3 = [
+            Math.cos(phi) * Math.cos(theta),
+            Math.cos(phi) * Math.sin(theta),
+            Math.sin(phi)
+          ]
+          const t = point.t ?? 0
+          
+          let u: Vec3 = [1, 0, 0]
+          if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+          const w = crossVec3(normal, u)
+          const w_len = Math.hypot(w[0], w[1], w[2])
+          const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+          const u_new = crossVec3(w_norm, normal)
+          const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+          const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+          
+          positions[pointId] = [
+            center[0] + r * Math.cos(t) * u_norm[0] + r * Math.sin(t) * w_norm[0],
+            center[1] + r * Math.cos(t) * u_norm[1] + r * Math.sin(t) * w_norm[1],
+            center[2] + r * Math.cos(t) * u_norm[2] + r * Math.sin(t) * w_norm[2],
+          ]
+          visiting.delete(pointId)
+          return positions[pointId]
+        }
+      }
+    }
+
+    if (point.pointKind === 'sphereAngleDependent' && point.solidId && point.circleId && point.sourcePointId) {
+      const solid = document.solids.find((s) => s.id === point.solidId)
+      if (solid && solid.solidType === 'sphere' && solid.centerPointId && solid.radius) {
+        resolvePoint(solid.centerPointId, visiting)
+        if (solid.radiusPointId) resolvePoint(solid.radiusPointId, visiting)
+        
+        const posB = resolvePoint(point.sourcePointId, visiting)
+        const ring = solid.sphereRings?.find((r) => r.id === point.circleId)
+        const center = positions[solid.centerPointId]
+        
+        if (center && ring && posB) {
+          const r = solid.radius
+          const phi = ring.phi
+          const theta = ring.theta
+          const normal: Vec3 = [
+            Math.cos(phi) * Math.cos(theta),
+            Math.cos(phi) * Math.sin(theta),
+            Math.sin(phi)
+          ]
+          
+          let u: Vec3 = [1, 0, 0]
+          if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+          const w = crossVec3(normal, u)
+          const w_len = Math.hypot(w[0], w[1], w[2])
+          const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+          const u_new = crossVec3(w_norm, normal)
+          const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+          const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+          
+          const vx = posB[0] - center[0]
+          const vy = posB[1] - center[1]
+          const vz = posB[2] - center[2]
+          const xB = vx * u_norm[0] + vy * u_norm[1] + vz * u_norm[2]
+          const yB = vx * w_norm[0] + vy * w_norm[1] + vz * w_norm[2]
+          const tB = Math.atan2(yB, xB)
+          
+          const alpha = point.angle ?? 0
+          const tC = tB + alpha
+          
+          positions[pointId] = [
+            center[0] + r * Math.cos(tC) * u_norm[0] + r * Math.sin(tC) * w_norm[0],
+            center[1] + r * Math.cos(tC) * u_norm[1] + r * Math.sin(tC) * w_norm[1],
+            center[2] + r * Math.cos(tC) * u_norm[2] + r * Math.sin(tC) * w_norm[2],
+          ]
+          visiting.delete(pointId)
+          return positions[pointId]
+        }
+      }
+    }
+
     positions[pointId] = cloneVec3(point.position)
     visiting.delete(pointId)
     return positions[pointId]
@@ -1053,7 +1238,7 @@ export function getPolygonNormal(points: Vec3[]): Vec3 {
   return normal
 }
 
-function resolveCircleProps(
+export function resolveCircleProps(
   circle: ManualCircle,
   pointPositions: Record<string, Vec3>,
 ): { center: Vec3; radius: number; normal: Vec3 } | null {
@@ -1713,20 +1898,28 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       if (!center || !centerPoint) return
       const r = solid.radius
 
-      // Generate wireframe circle objects for display (3 orthogonal circles: XY, XZ, YZ)
-      const circleNormals: Vec3[] = [[0, 0, 1], [0, 1, 0], [1, 0, 0]]
-      circleNormals.forEach((normal, circleIdx) => {
-        displayCircles.push({
-          id: `${solid.id}_circle_${circleIdx}`,
-          label: '',
-          center: center,
-          radius: r,
-          normal: normal,
-          sourceKind: 'solid',
-          sourceId: solid.id,
-          visible: solid.visible,
+      // Generate circles from solid.sphereRings
+      if (solid.sphereRings && solid.sphereRings.length > 0) {
+        solid.sphereRings.forEach((ring) => {
+          const phi = ring.phi
+          const theta = ring.theta
+          const normal: Vec3 = [
+            Math.cos(phi) * Math.cos(theta),
+            Math.cos(phi) * Math.sin(theta),
+            Math.sin(phi),
+          ]
+          displayCircles.push({
+            id: ring.id,
+            label: '',
+            center: center,
+            radius: r,
+            normal: normal,
+            sourceKind: 'solid',
+            sourceId: solid.id,
+            visible: solid.visible,
+          })
         })
-      })
+      }
 
       // Radius point (if defined)
       if (solid.radiusPointId) {

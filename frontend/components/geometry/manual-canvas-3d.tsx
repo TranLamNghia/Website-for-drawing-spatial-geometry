@@ -122,6 +122,38 @@ function closestPointOnSegmentToRay(
   return { position: pos, t }
 }
 
+function closestPointOnCircleToRay(
+  rayOrigin: THREE.Vector3,
+  rayDir: THREE.Vector3,
+  center: Vec3,
+  radius: number,
+  normal: Vec3
+): Vec3 {
+  const d_dot_n = rayDir.x * normal[0] + rayDir.y * normal[1] + rayDir.z * normal[2];
+  if (Math.abs(d_dot_n) < 1e-6) {
+    return [center[0] + radius, center[1], center[2]];
+  }
+  const t = ((center[0] - rayOrigin.x) * normal[0] + (center[1] - rayOrigin.y) * normal[1] + (center[2] - rayOrigin.z) * normal[2]) / d_dot_n;
+  const pPlane: Vec3 = [
+    rayOrigin.x + t * rayDir.x,
+    rayOrigin.y + t * rayDir.y,
+    rayOrigin.z + t * rayDir.z,
+  ];
+  
+  const vx = pPlane[0] - center[0];
+  const vy = pPlane[1] - center[1];
+  const vz = pPlane[2] - center[2];
+  const dist = Math.hypot(vx, vy, vz);
+  if (dist < 1e-9) {
+    return [center[0] + radius, center[1], center[2]];
+  }
+  return [
+    center[0] + (vx / dist) * radius,
+    center[1] + (vy / dist) * radius,
+    center[2] + (vz / dist) * radius,
+  ];
+}
+
 function closestHeightFromRay(
   rayOrigin: THREE.Vector3,
   rayDir: THREE.Vector3,
@@ -516,9 +548,54 @@ export function ManualCanvas3D() {
             },
           }
         })
-        const bestSegment = segmentSnaps.sort((left, right) => left.distance - right.distance)[0]
-        if (bestSegment && bestSegment.distance <= snapThreshold) {
-          return bestSegment.target
+
+        const circleSnaps = (manualDerived.displayCircles || []).map((circle) => {
+          const position = closestPointOnCircleToRay(
+            ray.origin,
+            ray.direction,
+            circle.center,
+            circle.radius,
+            circle.normal
+          )
+          const distance = evaluateTarget(position)
+          const label = circle.label ? `Thuộc ${circle.label}` : 'Thuộc đường tròn'
+          return {
+            distance,
+            target: {
+              kind: 'circle' as const,
+              label,
+              circleId: circle.id,
+              position,
+            },
+          }
+        })
+
+        const allSnaps = [...segmentSnaps, ...circleSnaps].sort((left, right) => left.distance - right.distance)
+        const bestSnap = allSnaps[0]
+        if (bestSnap && bestSnap.distance <= snapThreshold) {
+          return bestSnap.target
+        }
+      }
+    }
+
+    // Check sphere surface snap
+    const hit = findIntersectionEntity(event)
+    if (hit && hit.kind === 'solid' && hit.solidId) {
+      const solid = manualDocument.solids.find(s => s.id === hit.solidId && s.solidType === 'sphere')
+      if (solid) {
+        const camera = cameraRef.current
+        if (camera) {
+          const intersects = raycasterRef.current.intersectObjects(dynamicGroupRef.current.children, true)
+          const intersect = intersects.find(i => i.object.userData?.entity?.solidId === solid.id)
+          if (intersect) {
+            const position: Vec3 = [intersect.point.x, intersect.point.y, intersect.point.z]
+            return {
+              kind: 'sphere' as const,
+              label: `Thuộc ${solid.label}`,
+              solidId: solid.id,
+              position,
+            }
+          }
         }
       }
     }
@@ -1165,7 +1242,7 @@ export function ManualCanvas3D() {
         }
       })
 
-    // Add depth blocker spheres for spheres
+    // Add depth blocker spheres and semi-transparent solid meshes for spheres
     if (manualDerived.displayCircles) {
       const processedSpheres = new Set<string>()
       manualDerived.displayCircles
@@ -1184,6 +1261,24 @@ export function ManualCanvas3D() {
           const blockerMesh = new THREE.Mesh(blockerGeometry, blockerMaterial)
           blockerMesh.position.set(c.center[0], c.center[1], c.center[2])
           group.add(blockerMesh)
+
+          // Create semi-transparent solid mesh for raycasting and visual background
+          const sphereGeometry = new THREE.SphereGeometry(c.radius, 32, 32)
+          const sphereMaterial = new THREE.MeshBasicMaterial({
+            color: colors.solid,
+            transparent: true,
+            opacity: 0.12,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          })
+          const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial)
+          sphereMesh.position.set(c.center[0], c.center[1], c.center[2])
+          sphereMesh.userData.entity = {
+            kind: 'solid',
+            id: c.sourceId,
+            solidId: c.sourceId,
+          } satisfies InteractiveHit
+          group.add(sphereMesh)
         })
     }
 
@@ -2146,11 +2241,10 @@ export function ManualCanvas3D() {
       const ray = getCameraRay(event)
 
       // Hover point highlight
-      const hit = findIntersectionEntity(event)
-      let hoveredId: string | null = (snapTarget?.kind === 'point' ? snapTarget.pointId : snapTarget?.kind === 'segment' ? snapTarget.segmentId : hit?.id) ?? null
-      
-      if (interactionRef.current.creatingPointId && interactionRef.current.pointerDown?.didDrag) {
-        hoveredId = null
+      let hoveredId: string | null = null
+      if (!interactionRef.current.creatingPointId) {
+        const hit = findIntersectionEntity(event)
+        hoveredId = (snapTarget?.kind === 'point' ? snapTarget.pointId : snapTarget?.kind === 'segment' ? snapTarget.segmentId : hit?.id) ?? null
       }
       
       hoveredEntityIdRef.current = hoveredId

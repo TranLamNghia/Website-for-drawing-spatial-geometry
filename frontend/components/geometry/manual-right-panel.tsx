@@ -697,6 +697,7 @@ export function ManualRightPanel() {
     updatePointT,
     updatePointAngle,
     createSphereAngleDependentPoint,
+    createCircleAngleDependentPoint,
     addSphereRing,
     removeSphereRing,
     updateSphereRingOrientation,
@@ -825,9 +826,41 @@ export function ManualRightPanel() {
                 onRename={(newLabel) => renameManualEntity('point', point.id, newLabel)}
                 onUpdateT={(point.pointKind === 'segment' || point.pointKind === 'midpoint') ? (newT) => updatePointT(point.id, newT) : undefined}
                 tVal={point.t}
-                onUpdateAngle={(point.pointKind === 'sphereRingPoint' || point.pointKind === 'sphereAngleDependent') ? (newA) => updatePointAngle(point.id, newA) : undefined}
-                angleVal={point.angle}
-                onAddDependentPoint={point.pointKind === 'sphereRingPoint' ? () => createSphereAngleDependentPoint(point.id) : undefined}
+                onUpdateAngle={
+                  (point.pointKind === 'sphereRingPoint' || point.pointKind === 'sphereAngleDependent' || point.pointKind === 'circlePoint' || point.pointKind === 'circleAngleDependent')
+                    ? (newA) => updatePointAngle(point.id, newA)
+                    : undefined
+                }
+                angleVal={
+                  point.pointKind === 'circlePoint' ? point.t :
+                  point.pointKind === 'circleAngleDependent' ? point.angleOffset :
+                  point.pointKind === 'sphereRingPoint' ? point.t :
+                  point.pointKind === 'sphereAngleDependent' ? point.angle :
+                  point.angle
+                }
+                onAddDependentPoint={
+                  point.pointKind === 'circlePoint'
+                    ? () => {
+                        const val = prompt('Nhập góc lệch α (độ) cho điểm phụ thuộc mới:', '60')
+                        if (val !== null) {
+                          const num = parseFloat(val)
+                          if (!isNaN(num)) {
+                            createCircleAngleDependentPoint(point.id, (num * Math.PI) / 180)
+                          }
+                        }
+                      }
+                    : (point.pointKind === 'sphereRingPoint'
+                        ? () => {
+                            const val = prompt('Nhập góc lệch α (độ) cho điểm phụ thuộc mới:', '60')
+                            if (val !== null) {
+                              const num = parseFloat(val)
+                              if (!isNaN(num)) {
+                                createSphereAngleDependentPoint(point.id, (num * Math.PI) / 180)
+                              }
+                            }
+                          }
+                        : undefined)
+                }
               />
             )
           })}
