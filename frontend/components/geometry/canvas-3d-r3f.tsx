@@ -1,12 +1,13 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
+import { ViewHelper } from 'three/examples/jsm/helpers/ViewHelper.js'
 import { useTheme } from 'next-themes'
 import { useGeometry } from './geometry-context'
-import { ZoomIn, ZoomOut, Layers, Crosshair, Eye, RefreshCcw, Scissors, Expand } from 'lucide-react'
+import { Layers, Crosshair, Eye, RefreshCcw, Scissors, Expand, Compass } from 'lucide-react'
 
 function getGeoColors(isDarkTheme: boolean) {
   if (isDarkTheme) {
@@ -19,7 +20,7 @@ function getGeoColors(isDarkTheme: boolean) {
       FACE: 0x818cf8,
       EDGE_SOLID: 0xe5e7eb,
       EDGE_DASHED: 0x9ca3af,
-      HIGHLIGHT: 0xfbbf24,
+      HIGHLIGHT: 0xfdba74,
       GRID: 0x374151,
       PLANE: 0x1f2937,
       LABEL: '#e5e7eb',
@@ -36,7 +37,7 @@ function getGeoColors(isDarkTheme: boolean) {
     FACE: 0x6671d1,
     EDGE_SOLID: 0x1a1a2e,
     EDGE_DASHED: 0x999999,
-    HIGHLIGHT: 0xff9f43,
+    HIGHLIGHT: 0xfdba74,
     GRID: 0xd0d0d0,
     PLANE: 0xcccccc,
     LABEL: '#1a1a2e',
@@ -62,18 +63,23 @@ interface TickData {
 
 export function Canvas3D() {
   const mountRef = useRef<HTMLDivElement>(null)
+  const [showGizmo, setShowGizmo] = useState(true)
   const { resolvedTheme } = useTheme()
   const isDarkTheme = resolvedTheme === 'dark'
   const GEO_COLORS = getGeoColors(isDarkTheme)
-  const [showLabels, setShowLabels] = useState(true)
-  const [showAxes, setShowAxes] = useState(true)
-  const [showBasePlane, setShowBasePlane] = useState(true)
   const {
     geometryData, highlightedEdges,
     bitmaskVisibility, setBitmaskVisibility,
     explodeAmount, setExplodeAmount,
     orderedSectionIds, setOrderedSectionIds,
+    showAxes, setShowAxes,
+    showGrid, setShowGrid,
+    showLabels, setShowLabels,
+    resetTrigger
   } = useGeometry()
+
+  const showBasePlane = showGrid
+  const setShowBasePlane = setShowGrid
 
   // Reset orderedSectionIds khi có dữ liệu mới (tất cả bật mặc định)
   useEffect(() => {
@@ -89,10 +95,58 @@ export function Canvas3D() {
   const controlsRef = useRef<OrbitControls | null>(null)
   const dynamicGroupRef = useRef<THREE.Group>(new THREE.Group())
 
-  const stateRefs = useRef({ showAxes, showBasePlane })
+  // Navigation Gizmo (Three.js ViewHelper)
+  const viewHelperRef = useRef<ViewHelper | null>(null)
+  const viewHelperTimerRef = useRef<THREE.Timer | null>(null)
+
+  const stateRefs = useRef({ showAxes, showGrid, showGizmo })
   useEffect(() => {
-    stateRefs.current = { showAxes, showBasePlane }
-  }, [showAxes, showBasePlane])
+    stateRefs.current = { showAxes, showGrid, showGizmo }
+  }, [showAxes, showGrid, showGizmo])
+
+  // Smoothly aligns camera to specific axes (X, Y, Z) with animation transition
+  const handleAlignView = useCallback((axis: 'x' | 'y' | 'z') => {
+    const cam = cameraRef.current
+    const controls = controlsRef.current
+    if (!cam || !controls) return
+
+    const target = controls.target
+    const dist = cam.position.distanceTo(target)
+
+    const duration = 400 // Animation duration in ms
+    const startTime = performance.now()
+
+    const startPos = cam.position.clone()
+    const endPos = new THREE.Vector3()
+
+    if (axis === 'z') {
+      endPos.set(target.x, target.y - 0.001, target.z + dist)
+    } else if (axis === 'y') {
+      endPos.set(target.x, target.y - dist, target.z)
+    } else {
+      endPos.set(target.x + dist, target.y, target.z)
+    }
+
+    const animateTransition = (now: number) => {
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+
+      // easeInOutCubic easing
+      const t = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2
+
+      cam.position.lerpVectors(startPos, endPos, t)
+
+      cam.up.set(0, 0, 1)
+
+      controls.update()
+
+      if (progress < 1) {
+        requestAnimationFrame(animateTransition)
+      }
+    }
+
+    requestAnimationFrame(animateTransition)
+  }, [])
 
   // Detect if cross-section splitting is available
   const hasSectionData = !!(geometryData?.sections?.length || geometryData?.clippingPlane)
@@ -143,10 +197,52 @@ export function Canvas3D() {
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
-    controls.minDistance = 2.0
+    controls.minDistance = 0.1
     controls.maxDistance = 150.0
     controls.target.set(0, 0, 0)
     controlsRef.current = controls
+
+    const viewHelper = new ViewHelper(camera, renderer.domElement)
+    // Position at the bottom right where zoom controls used to be
+    viewHelper.location = { top: null, right: 24, bottom: 24, left: null } as any
+    viewHelper.setLabels('x', 'y', 'z')
+    viewHelper.setLabelStyle('bold 24px sans-serif', '#ffffff')
+    
+    // Scale the entire gizmo up by 1.3x
+    viewHelper.scale.set(1.3, 1.3, 1.3)
+    
+    // Hide the black dots (negative axes sprites)
+    viewHelper.children.forEach((child) => {
+      if (child.userData.type && child.userData.type.startsWith('neg')) {
+        child.visible = false
+      }
+    })
+
+    // Create a perfectly circular background texture using Canvas API
+    const canvas = document.createElement('canvas')
+    canvas.width = 128
+    canvas.height = 128
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      ctx.beginPath()
+      ctx.arc(64, 64, 64, 0, 2 * Math.PI)
+      ctx.fillStyle = 'rgba(0,0,0,1)'
+      ctx.fill()
+    }
+    const bgTexture = new THREE.CanvasTexture(canvas)
+    const bgMat = new THREE.SpriteMaterial({ map: bgTexture, color: 0x000000, transparent: true, opacity: 0.35, depthTest: false })
+    const bgSprite = new THREE.Sprite(bgMat)
+    // Scale background to 2.6.
+    // World scale = 1.3 * 2.6 = 3.38 (radius 1.69).
+    // Radius 1.69 > 1.3 (label distance), so it encapsulates labels without clipping the [-2, 2] frustum!
+    bgSprite.scale.set(2.6, 2.6, 1)
+    bgSprite.center.set(0.5, 0.5) // Center the origin
+    bgSprite.renderOrder = -1 // Render behind the axes
+    viewHelper.add(bgSprite)
+
+    viewHelperRef.current = viewHelper
+    viewHelperTimerRef.current = new THREE.Timer()
+    viewHelperTimerRef.current.connect(document)
 
     // Ambient Lighting
     scene.add(new THREE.AmbientLight(0xffffff, 1.2))
@@ -186,7 +282,7 @@ export function Canvas3D() {
     const AXIS_LEN = 150
 
     const createAxis = (colorHex: number, dir: THREE.Vector3, labelStr: string) => {
-      const opacity = 0.5
+      const opacity = 0.75
       const lineProps = { color: colorHex, linewidth: 2, transparent: true, opacity, depthTest: false }
 
       if (labelStr === 'z') {
@@ -245,7 +341,7 @@ export function Canvas3D() {
         ticGeoPts.push(new THREE.Vector3(-tickLength, 0, 0), new THREE.Vector3(tickLength, 0, 0))
       }
       const tGeo = new THREE.BufferGeometry().setFromPoints(ticGeoPts)
-      const tMat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.5, depthTest: false })
+      const tMat = new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.75, depthTest: false })
 
       for (let i = -AXIS_LEN; i <= AXIS_LEN; i++) {
         if (i === 0) continue
@@ -295,6 +391,7 @@ export function Canvas3D() {
     let lastGridCenterX = -1
     let lastGridCenterY = -1
     let lastGridShow = true
+    let lastGridShowAxes = true
     let dynamicGrid: THREE.LineSegments | null = null
 
     // Animation Loop
@@ -355,18 +452,20 @@ export function Canvas3D() {
       })
 
       // Update Dynamic Grid if bounds or step change
-      const showGrid = stateRefs.current.showBasePlane
+      const showGrid = stateRefs.current.showGrid
+      const showAxesState = stateRefs.current.showAxes
       const gridRadius = 40 // Total size 80x80
       const snapX = Math.round(centerX / step) * step
       const snapY = Math.round(centerY / step) * step
 
       const hasMoved = Math.abs(lastGridCenterX - snapX) > 0.001 || Math.abs(lastGridCenterY - snapY) > 0.001
 
-      if (lastGridStep !== step || hasMoved || lastGridShow !== showGrid) {
+      if (lastGridStep !== step || hasMoved || lastGridShow !== showGrid || lastGridShowAxes !== showAxesState) {
         lastGridStep = step
         lastGridCenterX = snapX
         lastGridCenterY = snapY
         lastGridShow = showGrid
+        lastGridShowAxes = showAxesState
 
         if (dynamicGrid) {
           envGroup.remove(dynamicGrid)
@@ -380,12 +479,12 @@ export function Canvas3D() {
 
           // Vertical lines (X constant)
           for (let x = snapX - gridRadius; x <= snapX + gridRadius; x += step) {
-            if (x === 0 || Math.abs(x) > AXIS_LEN) continue
+            if (x === 0 && showAxesState) continue
             gPts.push(new THREE.Vector3(x, snapY - gridRadius, gridZ), new THREE.Vector3(x, snapY + gridRadius, gridZ))
           }
           // Horizontal lines (Y constant)
           for (let y = snapY - gridRadius; y <= snapY + gridRadius; y += step) {
-            if (y === 0 || Math.abs(y) > AXIS_LEN) continue
+            if (y === 0 && showAxesState) continue
             gPts.push(new THREE.Vector3(snapX - gridRadius, y, gridZ), new THREE.Vector3(snapX + gridRadius, y, gridZ))
           }
 
@@ -395,14 +494,30 @@ export function Canvas3D() {
         }
       }
 
-      basePlane.visible = stateRefs.current.showBasePlane
+      basePlane.visible = stateRefs.current.showGrid
       // Move base plane with camera focus
-      basePlane.position.set(centerX, centerY, 0)
+      basePlane.position.set(centerX, centerY, -0.002)
       basePlane.scale.set(gridRadius / 120, gridRadius / 120, 1)
       axesGroup.visible = stateRefs.current.showAxes
 
       renderer.render(scene, camera)
       labelRenderer.render(scene, camera)
+
+      // ViewHelper animates camera on click and renders gizmo overlay
+      if (viewHelperRef.current && viewHelperTimerRef.current) {
+        viewHelperTimerRef.current.update()
+        const delta = viewHelperTimerRef.current.getDelta()
+        viewHelperRef.current.center.copy(controls.target)
+        if (viewHelperRef.current.animating) {
+          viewHelperRef.current.update(delta)
+        }
+        if (stateRefs.current.showGizmo) {
+          const autoClear = renderer.autoClear
+          renderer.autoClear = false
+          viewHelperRef.current.render(renderer)
+          renderer.autoClear = autoClear
+        }
+      }
     }
     animate()
 
@@ -420,21 +535,80 @@ export function Canvas3D() {
         }
       }
     })
+
+    const handleDoubleClick = (event: MouseEvent) => {
+      if (!camera || !controls || !dynamicGroupRef.current) return
+      
+      const rect = renderer.domElement.getBoundingClientRect()
+      if (!rect) return
+      
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+      
+      const raycaster = new THREE.Raycaster()
+      raycaster.params.Line = { threshold: 0.18 }
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera)
+      const intersects = raycaster.intersectObjects(dynamicGroupRef.current.children, true)
+      
+      const targetPoint = new THREE.Vector3()
+      if (intersects.length > 0) {
+        targetPoint.copy(intersects[0].point)
+      } else {
+        const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
+        raycaster.ray.intersectPlane(plane, targetPoint)
+      }
+      
+      if (targetPoint) {
+        const offset = new THREE.Vector3().subVectors(targetPoint, controls.target)
+        camera.position.add(offset)
+        controls.target.copy(targetPoint)
+        controls.update()
+      }
+    }
+    const handlePointerUp = (event: PointerEvent) => {
+      if (viewHelperRef.current && stateRefs.current.showGizmo) {
+        // Handle ViewHelper clicks
+        viewHelperRef.current.handleClick(event)
+      }
+    }
+    
+    renderer.domElement.addEventListener('dblclick', handleDoubleClick)
+    renderer.domElement.addEventListener('pointerup', handlePointerUp)
+
     if (container) {
       resizeObserver.observe(container)
     }
 
     return () => {
+      renderer.domElement.removeEventListener('dblclick', handleDoubleClick)
+      renderer.domElement.removeEventListener('pointerup', handlePointerUp)
       resizeObserver.disconnect()
       cancelAnimationFrame(frameId)
       if (container) {
         if (renderer.domElement.parentNode) container.removeChild(renderer.domElement)
         if (labelRenderer.domElement.parentNode) container.removeChild(labelRenderer.domElement)
       }
+      if (viewHelperRef.current) {
+        viewHelperRef.current.dispose()
+        viewHelperRef.current = null
+      }
+      if (viewHelperTimerRef.current) {
+        viewHelperTimerRef.current.dispose()
+        viewHelperTimerRef.current = null
+      }
       renderer.dispose()
       labelRenderer.setSize(0, 0) // Force some internal cleanup
     }
   }, [isDarkTheme])
+
+  // Reset Camera Logic
+  useEffect(() => {
+    if (resetTrigger > 0 && cameraRef.current && controlsRef.current) {
+      cameraRef.current.position.set(25, -20, 15)
+      controlsRef.current.target.set(0, 0, 0)
+      controlsRef.current.update()
+    }
+  }, [resetTrigger])
 
   // Dynamic Geometry (Pyramid, Queries) — with Cross-Section Splitting
   useEffect(() => {
@@ -627,7 +801,7 @@ export function Canvas3D() {
     // Draw Planes (faces)
     // Nếu đã có sections cắt khối: KHÔNG vẽ lại các mặt phẳng cắt vô hạn để chống rối,
     // NHƯNG VẪN VẼ các mặt của khối gốc (isSolidFace = true) để khối trông đặc hơn.
-    geometryData.planes?.forEach(p => {
+    geometryData.planes?.forEach((p, pIdx) => {
       if (hasSectionData && !p.isSolidFace) return
       if (!p.points) return
       const pNodes = p.points.map(name => nodes[name]).filter(Boolean)
@@ -655,7 +829,7 @@ export function Canvas3D() {
             opacity: p.opacity || 0.15,
             side: THREE.DoubleSide,
             polygonOffset: true,
-            polygonOffsetFactor: 1,
+            polygonOffsetFactor: 1 + pIdx * 0.1,
             polygonOffsetUnits: 1,
             clippingPlanes: bgClipPlanes,
           })
@@ -668,7 +842,7 @@ export function Canvas3D() {
             depthWrite: true,
             side: THREE.DoubleSide,
             polygonOffset: true,
-            polygonOffsetFactor: 1,
+            polygonOffsetFactor: 1 + pIdx * 0.1,
             polygonOffsetUnits: 1,
             clippingPlanes: bgClipPlanes,
           })
@@ -719,7 +893,7 @@ export function Canvas3D() {
               opacity: 0.3,
               side: THREE.DoubleSide,
               polygonOffset: true,
-              polygonOffsetFactor: -1,
+              polygonOffsetFactor: -1 - originalIdx * 0.1,
               polygonOffsetUnits: -1,
               clippingPlanes: bgClipPlanes,
             })
@@ -731,7 +905,8 @@ export function Canvas3D() {
             // Depth blocker
             const blockerMat = new THREE.MeshBasicMaterial({
               colorWrite: false, depthWrite: true, side: THREE.DoubleSide,
-              polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+              polygonOffset: true, polygonOffsetFactor: -1 - originalIdx * 0.1,
+              polygonOffsetUnits: -1,
               clippingPlanes: bgClipPlanes,
             })
             const blockerMesh = new THREE.Mesh(circleGeom.clone(), blockerMat)
@@ -798,7 +973,7 @@ export function Canvas3D() {
                 opacity: 0.3,
                 side: THREE.DoubleSide,
                 polygonOffset: true,
-                polygonOffsetFactor: -1,
+                polygonOffsetFactor: -1 - originalIdx * 0.1,
                 polygonOffsetUnits: -1,
                 clippingPlanes: bgClipPlanes,
               })
@@ -807,7 +982,8 @@ export function Canvas3D() {
               // Block depth
               const blockerMat = new THREE.MeshBasicMaterial({
                 colorWrite: false, depthWrite: true, side: THREE.DoubleSide,
-                polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+                polygonOffset: true, polygonOffsetFactor: -1 - originalIdx * 0.1,
+                polygonOffsetUnits: -1,
                 clippingPlanes: bgClipPlanes,
               })
               bitmaskGroups[bitStr].add(new THREE.Mesh(capGeom.clone(), blockerMat))
@@ -1018,14 +1194,6 @@ export function Canvas3D() {
     return () => clearGroup(group)
   }, [geometryData, showLabels, highlightedEdges, isDarkTheme, bitmaskVisibility, explodeAmount, orderedSectionIds])
 
-  const handleZoom = (dir: number) => {
-    if (cameraRef.current && controlsRef.current) {
-      const cam = cameraRef.current
-      cam.position.sub(controlsRef.current.target).multiplyScalar(dir > 0 ? 0.8 : 1.2).add(controlsRef.current.target)
-      controlsRef.current.update()
-    }
-  }
-
   const handleResetCamera = () => {
     if (cameraRef.current && controlsRef.current) {
       const controls = controlsRef.current
@@ -1072,6 +1240,14 @@ export function Canvas3D() {
             <Eye size={18} />
             <span className="text-xs">Nhãn</span>
           </button>
+          <button
+            onClick={() => setShowGizmo(!showGizmo)}
+            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showGizmo ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
+            title="Ẩn/Hiện khối điều hướng"
+          >
+            <Compass size={18} />
+            <span className="text-xs">Điều hướng</span>
+          </button>
 
           <div className="w-[1px] h-6 bg-border mx-2" />
           <button
@@ -1085,13 +1261,7 @@ export function Canvas3D() {
         </div>
       </div>
 
-      {/* Zoom Controls */}
-      <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-50">
-        <div className="flex flex-col bg-card/95 backdrop-blur-md border border-border rounded-xl shadow-lg overflow-hidden">
-          <button onClick={() => handleZoom(1)} className="p-3 hover:bg-primary hover:text-primary-foreground border-b border-border text-muted-foreground transition-colors"><ZoomIn size={20} /></button>
-          <button onClick={() => handleZoom(-1)} className="p-3 hover:bg-primary hover:text-primary-foreground text-muted-foreground transition-colors"><ZoomOut size={20} /></button>
-        </div>
-      </div>
+      {/* Navigation Gizmo (Three.js ViewHelper - rendered inside WebGL canvas, initialized in useEffect below) */}
     </div>
   )
 }

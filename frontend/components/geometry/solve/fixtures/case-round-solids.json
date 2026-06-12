@@ -1,0 +1,13 @@
+{
+  "validation": { "allPassed": true, "failures": [] },
+  "points": {
+    "O": { "x": 0, "y": 0, "z": 0 },
+    "A": { "x": 0, "y": 0, "z": 2 }
+  },
+  "segments": [],
+  "spheres": [{ "center": "O", "radius": 3 }],
+  "cones": [{ "center": "O", "apex": "A", "radius": 1.5, "color": "#ffffff", "opacity": 0.2 }],
+  "cylinders": [{ "centerBottom": "O", "centerTop": "A", "radius": 1.0, "color": "#ffffff", "opacity": 0.2 }],
+  "queries": []
+}
+

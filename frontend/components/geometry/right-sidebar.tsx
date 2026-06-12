@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Scissors, Expand, Layers, ChevronRight, ChevronDown, Box, Cuboid, GripVertical, Check } from 'lucide-react'
+import { Scissors, Expand, Layers, ChevronRight, ChevronDown, Box, Cuboid, GripVertical, Check, Save, Sparkles } from 'lucide-react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { useGeometry } from './geometry-context'
 import type { SectionData } from './geometry-context'
+import { addProject, createProject } from './dashboard-view'
 
 // ─────────────────────────────────────────────────────────────
 // ChunkTree – Recursive component that renders the cut tree
@@ -174,6 +176,27 @@ export function RightSidebar() {
     setExplodeAmount,
   } = useGeometry()
 
+  const [isSaving, setIsSaving] = useState(false)
+  const [isSaved, setIsSaved] = useState(false)
+
+  const handleSave = () => {
+    if (!geometryData) return
+    setIsSaving(true)
+
+    const name = `Bản vẽ AI ${new Date().toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}`
+    const json = JSON.stringify(geometryData)
+    const project = createProject(name, '', json)
+    const ok = addProject(project)
+
+    setIsSaving(false)
+    if (ok) {
+      setIsSaved(true)
+      setTimeout(() => { setIsSaved(false) }, 2000)
+    } else {
+      alert('Đã đạt giới hạn 10 bản vẽ. Vui lòng xóa bản vẽ cũ trước.')
+    }
+  }
+
   const hasSectionData = !!(geometryData?.sections?.length || geometryData?.clippingPlane)
 
   const activeSectionsList: SectionData[] = orderedSectionIds
@@ -258,11 +281,16 @@ export function RightSidebar() {
   }
 
   return (
-    <div className="h-full flex flex-col p-6 gap-4 overflow-y-auto">
-      <div className="mb-2">
-        <h2 className="text-lg font-bold text-foreground">Bóc tách không gian</h2>
-        <p className="text-xs text-muted-foreground">Điều khiển lát cắt 3D</p>
+    <div className="h-full flex flex-col p-6 gap-6 overflow-hidden bg-card/95 backdrop-blur-md">
+      <div className="flex-shrink-0">
+        <div className="flex items-center gap-2 mb-1">
+          <Layers className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-bold text-foreground tracking-tight">Cấu trúc Hình học</h2>
+        </div>
+        <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-widest">Phân tích & Lát cắt</p>
       </div>
+
+      <div className="flex-1 overflow-y-auto min-h-0 pr-1 -mr-1 custom-scrollbar">
 
       <Card className="bg-background border-border">
         <CardHeader className="pb-3">
@@ -405,6 +433,29 @@ export function RightSidebar() {
           )}
         </CardContent>
       </Card>
+      </div>
+
+      {/* Save Action Section */}
+      <div className="flex-shrink-0 pt-4 border-t border-border/60">
+        <Button
+          onClick={handleSave}
+          disabled={isSaving || !geometryData}
+          className={`w-full h-12 rounded-xl font-bold text-sm shadow-lg transition-all flex items-center justify-center gap-2 ${
+            isSaved 
+              ? 'bg-green-500 hover:bg-green-600 text-white shadow-green-500/20' 
+              : 'bg-primary text-primary-foreground shadow-primary/20'
+          }`}
+        >
+          {isSaving ? (
+             <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+          ) : isSaved ? (
+            <Check size={18} />
+          ) : (
+            <Save size={18} />
+          )}
+          {isSaving ? 'ĐANG LƯU...' : isSaved ? 'ĐÃ LƯU BẢN VẼ!' : 'LƯU BẢN VẼ'}
+        </Button>
+      </div>
     </div>
   )
 }
