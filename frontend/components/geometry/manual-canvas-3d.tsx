@@ -9,7 +9,7 @@ import { ViewHelper } from 'three/examples/jsm/helpers/ViewHelper.js'
 import { useTheme } from 'next-themes'
 import { Crosshair, Eye, Layers, RefreshCcw, Sparkles, Compass } from 'lucide-react'
 import { useGeometry } from './geometry-context'
-import { ManualDisplayPolygon, ManualDisplaySegment, ManualSnapTarget, Vec3 } from './manual-editor'
+import { ManualDisplayPolygon, ManualDisplaySegment, ManualSnapTarget, Vec3, resolveCircleProps } from './manual-editor'
 
 type InteractiveHit = {
   kind: 'point' | 'segment' | 'polygon' | 'solid' | 'circle'
@@ -468,7 +468,15 @@ export function ManualCanvas3D() {
       }))
 
     const segmentCandidates = manualDerived.displaySegments
-      .filter((segment) => segment.visible)
+      .filter((segment) => {
+        if (!segment.visible) return false
+        if (segment.id.includes('_base_circle_') || 
+            segment.id.includes('_bottom_') || 
+            segment.id.includes('_top_')) {
+          return false
+        }
+        return true
+      })
       .map((displaySegment) => ({
         segmentId: displaySegment.id,
         label: '',
@@ -578,21 +586,56 @@ export function ManualCanvas3D() {
       }
     }
 
-    // Check sphere surface snap
+    // Check surface snap (sphere solid, cone/cylinder solids, polygon faces)
     const hit = findIntersectionEntity(event)
-    if (hit && hit.kind === 'solid' && hit.solidId) {
-      const solid = manualDocument.solids.find(s => s.id === hit.solidId && s.solidType === 'sphere')
-      if (solid) {
-        const camera = cameraRef.current
-        if (camera) {
-          const intersects = raycasterRef.current.intersectObjects(dynamicGroupRef.current.children, true)
-          const intersect = intersects.find(i => i.object.userData?.entity?.solidId === solid.id)
-          if (intersect) {
-            const position: Vec3 = [intersect.point.x, intersect.point.y, intersect.point.z]
+    if (hit) {
+      const camera = cameraRef.current
+      if (camera) {
+        const intersects = raycasterRef.current.intersectObjects(dynamicGroupRef.current.children, true)
+        const intersect = intersects.find(i => 
+          (hit.kind === 'solid' && i.object.userData?.entity?.solidId === hit.id) ||
+          (hit.kind === 'polygon' && i.object.userData?.entity?.polygonId === hit.id)
+        )
+        if (intersect) {
+          const position: Vec3 = [intersect.point.x, intersect.point.y, intersect.point.z]
+          if (hit.kind === 'solid') {
+            const solid = manualDocument.solids.find(s => s.id === hit.id)
+            if (solid) {
+              if (solid.solidType === 'sphere') {
+                return {
+                  kind: 'sphere' as const,
+                  label: `Thuộc ${solid.label}`,
+                  solidId: solid.id,
+                  position,
+                }
+              } else if (solid.solidType === 'cone' || solid.solidType === 'cylinder') {
+                return {
+                  kind: 'solid' as const,
+                  label: `Thuộc ${solid.label}`,
+                  solidId: solid.id,
+                  position,
+                }
+              } else {
+                return {
+                  kind: 'workplane' as const,
+                  label: `Thuộc ${solid.label}`,
+                  position,
+                }
+              }
+            }
+          } else if (hit.kind === 'polygon') {
+            const polygon = manualDocument.polygons.find(p => p.id === hit.id)
+            if (hit.facePointIds && hit.facePointIds.length >= 3) {
+              return {
+                kind: 'solid' as const,
+                label: polygon?.label ? `Thuộc ${polygon.label}` : 'Thuộc mặt phẳng',
+                position,
+                facePointIds: hit.facePointIds,
+              }
+            }
             return {
-              kind: 'sphere' as const,
-              label: `Thuộc ${solid.label}`,
-              solidId: solid.id,
+              kind: 'workplane' as const,
+              label: polygon?.label ? `Thuộc ${polygon.label}` : 'Thuộc mặt phẳng',
               position,
             }
           }
@@ -1139,6 +1182,7 @@ export function ManualCanvas3D() {
           polygonOffsetUnits: 1,
         })
         const blockerMesh = new THREE.Mesh(faceGeometry, blockerMaterial)
+        blockerMesh.renderOrder = 1
         group.add(blockerMesh)
       })
 
@@ -1164,6 +1208,7 @@ export function ManualCanvas3D() {
           color: isSelected ? colors.pointSelected : segment.sourceKind === 'solid' ? colors.solid : colors.segment,
         })
         const line = new THREE.Line(geometry, material)
+        line.renderOrder = 10
         line.userData.entity = {
           kind: segment.sourceKind === 'solid' ? 'solid' : segment.sourceKind === 'polygon' ? 'polygon' : 'segment',
           id: segment.sourceId,
@@ -1180,6 +1225,7 @@ export function ManualCanvas3D() {
           opacity: 0.5,
         })
         const dashedMesh = new THREE.Line(geometry, dashedMaterial)
+        dashedMesh.renderOrder = 11
         dashedMesh.computeLineDistances()
         group.add(dashedMesh)
       })
@@ -1260,6 +1306,7 @@ export function ManualCanvas3D() {
           })
           const blockerMesh = new THREE.Mesh(blockerGeometry, blockerMaterial)
           blockerMesh.position.set(c.center[0], c.center[1], c.center[2])
+          blockerMesh.renderOrder = 1
           group.add(blockerMesh)
 
           // Create semi-transparent solid mesh for raycasting and visual background
@@ -1281,6 +1328,93 @@ export function ManualCanvas3D() {
           group.add(sphereMesh)
         })
     }
+
+    // Add depth blocker and semi-transparent solid meshes for cones and cylinders
+    manualDocument.solids
+      .filter((solid) => solid.visible && (solid.solidType === 'cone' || solid.solidType === 'cylinder'))
+      .forEach((solid) => {
+        const hasBaseCircle = !!solid.baseCircleId
+        let center: Vec3 = [0, 0, 0]
+        let r = solid.radius ?? 3
+        let normal: Vec3 = [0, 0, 1]
+
+        if (hasBaseCircle) {
+          const circle = manualDocument.circles.find((c) => c.id === solid.baseCircleId)
+          if (circle) {
+            const props = resolveCircleProps(circle, manualDerived.pointPositions)
+            if (props) {
+              center = props.center
+              r = props.radius
+              normal = props.normal
+            }
+          }
+        } else if (solid.centerPointId) {
+          const cPos = manualDerived.pointPositions[solid.centerPointId]
+          if (cPos) center = cPos
+        }
+
+        let h = solid.height ?? 5
+        if ((solid.solidType === 'cone' || solid.solidType === 'cylinder') && solid.apexPointId && manualDerived.pointPositions[solid.apexPointId]) {
+          const apex = manualDerived.pointPositions[solid.apexPointId]
+          h = dotVec3(subVec3(apex, center), normal)
+        }
+
+        if (Math.abs(h) < 1e-3) return
+
+        const normalVec = new THREE.Vector3(...normal).normalize()
+        const defaultY = new THREE.Vector3(0, 1, 0)
+        const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultY, normalVec)
+        const meshCenter = addVec3(center, scaleVec3(normal, h / 2))
+
+        let geom: THREE.BufferGeometry
+        let blockerGeom: THREE.BufferGeometry
+
+        if (solid.solidType === 'cone') {
+          geom = new THREE.ConeGeometry(r, Math.abs(h), 32)
+          blockerGeom = new THREE.ConeGeometry(r * 0.993, Math.abs(h) * 0.993, 32)
+          if (h < 0) {
+            geom.scale(1, -1, 1)
+            blockerGeom.scale(1, -1, 1)
+          }
+        } else {
+          geom = new THREE.CylinderGeometry(r, r, Math.abs(h), 32)
+          blockerGeom = new THREE.CylinderGeometry(r * 0.993, r * 0.993, Math.abs(h) * 0.993, 32)
+          if (h < 0) {
+            geom.scale(1, -1, 1)
+            blockerGeom.scale(1, -1, 1)
+          }
+        }
+
+        // Create invisible depth blocker mesh
+        const blockerMaterial = new THREE.MeshBasicMaterial({
+          colorWrite: false,
+          depthWrite: true,
+          side: THREE.DoubleSide,
+        })
+        const blockerMesh = new THREE.Mesh(blockerGeom, blockerMaterial)
+        blockerMesh.position.set(meshCenter[0], meshCenter[1], meshCenter[2])
+        blockerMesh.quaternion.copy(quaternion)
+        blockerMesh.renderOrder = 1
+        group.add(blockerMesh)
+
+        // Create semi-transparent solid mesh for raycasting and visual background
+        const material = new THREE.MeshBasicMaterial({
+          color: colors.solid,
+          transparent: true,
+          opacity: 0.12,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        })
+        const mesh = new THREE.Mesh(geom, material)
+        mesh.position.set(meshCenter[0], meshCenter[1], meshCenter[2])
+        mesh.quaternion.copy(quaternion)
+        mesh.userData.entity = {
+          kind: 'solid',
+          id: solid.id,
+          solidId: solid.id,
+        } satisfies InteractiveHit
+        group.add(mesh)
+      })
 
     // Render derived circles (including sphere wireframe rings)
     if (manualDerived.displayCircles) {
@@ -1333,6 +1467,7 @@ export function ManualCanvas3D() {
             depthFunc: THREE.LessEqualDepth,
           })
           const line = new THREE.Line(geometry, material)
+          line.renderOrder = 10
           line.userData.entity = {
             kind: circle.sourceKind === 'solid' ? 'solid' : 'circle',
             id: circle.sourceId,
@@ -1351,6 +1486,7 @@ export function ManualCanvas3D() {
               opacity: 0.5,
             })
             const dashedLine = new THREE.Line(geometry, dashedMaterial)
+            dashedLine.renderOrder = 11
             dashedLine.computeLineDistances()
             group.add(dashedLine)
             segmentMeshesRef.current.push({ id: circle.sourceId, mesh: dashedLine })
@@ -1636,30 +1772,19 @@ export function ManualCanvas3D() {
         return
       }
 
-      // Click 2 for Cone / Cylinder
-      if ((activeTool === 'cone' || activeTool === 'cylinder') && draftOperation?.baseCircleId) {
-        const heightToUse = draftOperation.height ?? 5;
-        const radiusToUse = draftOperation.radius ?? 3;
-        if (activeTool === 'cone') createCone('', radiusToUse, heightToUse, draftOperation.baseCircleId);
-        if (activeTool === 'cylinder') createCylinder('', radiusToUse, heightToUse, draftOperation.baseCircleId);
-        autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null);
-        return;
-      }
-
-      // Click 1 for Cone / Cylinder
+      // Click for Cone / Cylinder (Circle select)
       if ((activeTool === 'cone' || activeTool === 'cylinder') && hit?.kind === 'circle') {
         setManualSelection(hit)
         setDraftOperation({
           tool: activeTool,
           baseCircleId: hit.id,
-          radius: draftOperation?.tool === activeTool ? draftOperation.radius ?? 3 : 3,
           height: draftOperation?.tool === activeTool ? draftOperation.height ?? 5 : 5,
         })
         return
       }
 
-      // Sphere / Cone / Cylinder: click to select center point
-      if ((activeTool === 'sphere' || ((activeTool === 'cone' || activeTool === 'cylinder') && !draftOperation?.baseCircleId)) && fallbackPosition) {
+      // Sphere: click to select center point
+      if (activeTool === 'sphere' && fallbackPosition) {
         // If user clicks on an existing point, use it as center
         if (snapTarget?.kind === 'point' && snapTarget.pointId) {
           setDraftOperation({
@@ -2279,6 +2404,9 @@ export function ManualCanvas3D() {
         const camera = cameraRef.current
         const container = mountRef.current
         if (!camera || !container || interactionRef.current.createPointStartY == null) return
+        const pointId = interactionRef.current.creatingPointId
+        const point = manualDocument.points.find(p => p.id === pointId)
+        if (!point) return
 
         // --- Segment-point drag: constrain motion along the 3D segment ---
         const _segDragPointId = interactionRef.current.creatingPointId
@@ -2330,6 +2458,132 @@ export function ManualCanvas3D() {
           }
           return
         }
+        // --- Surface/Face direct drag: slide along sphere, cone, cylinder, or polygon face ---
+        if (point.pointKind === 'spherePoint' && point.solidId) {
+          const solid = manualDocument.solids.find(s => s.id === point.solidId)
+          if (solid && solid.centerPointId && solid.radius) {
+            const center = manualDerived.pointPositions[solid.centerPointId]
+            if (center) {
+              const ray = getCameraRay(event)
+              if (ray) {
+                const x_local = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).normalize()
+                const y_local = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize()
+                const z_local = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion).normalize()
+                
+                const plane = new THREE.Plane()
+                plane.setFromNormalAndCoplanarPoint(z_local, new THREE.Vector3(...center))
+                
+                const targetVec = new THREE.Vector3()
+                if (ray.intersectPlane(plane, targetVec)) {
+                  controls.enabled = false
+                  const disp = new THREE.Vector3().subVectors(targetVec, new THREE.Vector3(...center))
+                  const x = disp.dot(x_local)
+                  const y = disp.dot(y_local)
+                  const d = Math.hypot(x, y)
+                  
+                  const r = solid.radius
+                  const phi = r > 1e-9 ? (d / r) * (Math.PI / 2) : 0
+                  const theta = Math.atan2(y, x)
+                  
+                  const targetPosVec = new THREE.Vector3(...center)
+                    .addScaledVector(x_local, r * Math.sin(phi) * Math.cos(theta))
+                    .addScaledVector(y_local, r * Math.sin(phi) * Math.sin(theta))
+                    .addScaledVector(z_local, r * Math.cos(phi))
+                    
+                  const newPos: Vec3 = [targetPosVec.x, targetPosVec.y, targetPosVec.z]
+                  updatePointPosition(pointId, newPos, null)
+                  
+                  if (draftOperation && (draftOperation.tool === 'segment' || draftOperation.tool === 'polygon')) {
+                    setDraftOperation({
+                      ...draftOperation,
+                      previewPosition: newPos,
+                    })
+                  }
+                  
+                  scheduleHoverPresentation({
+                    kind: 'workplane',
+                    label: `Thuộc ${solid.label}`,
+                    position: newPos,
+                  })
+                  return
+                }
+              }
+            }
+          }
+        }
+        
+        if (point.pointKind === 'facePoint' && point.sourcePointIds && point.sourcePointIds.length >= 3) {
+          const v0 = manualDerived.pointPositions[point.sourcePointIds[0]]
+          const v1 = manualDerived.pointPositions[point.sourcePointIds[1]]
+          const v2 = manualDerived.pointPositions[point.sourcePointIds[2]]
+          if (v0 && v1 && v2) {
+            const ray = getCameraRay(event)
+            if (ray) {
+              const plane = new THREE.Plane()
+              plane.setFromCoplanarPoints(
+                new THREE.Vector3(...v0),
+                new THREE.Vector3(...v1),
+                new THREE.Vector3(...v2)
+              )
+              const targetVec = new THREE.Vector3()
+              if (ray.intersectPlane(plane, targetVec)) {
+                controls.enabled = false
+                const newPos: Vec3 = [targetVec.x, targetVec.y, targetVec.z]
+                updatePointPosition(pointId, newPos, null)
+                
+                if (draftOperation && (draftOperation.tool === 'segment' || draftOperation.tool === 'polygon')) {
+                  setDraftOperation({
+                    ...draftOperation,
+                    previewPosition: newPos,
+                  })
+                }
+                
+                scheduleHoverPresentation({
+                  kind: 'workplane',
+                  label: 'Trên mặt phẳng',
+                  position: newPos,
+                })
+                return
+              }
+            }
+          }
+        }
+        
+        if (point.pointKind === 'conePoint' || point.pointKind === 'cylinderPoint') {
+          const ray = getCameraRay(event)
+          if (ray) {
+            const currentPos = manualDerived.pointPositions[pointId]
+            if (currentPos) {
+              const normal = new THREE.Vector3()
+              camera.getWorldDirection(normal)
+              normal.negate()
+              const plane = new THREE.Plane()
+              plane.setFromNormalAndCoplanarPoint(normal, new THREE.Vector3(...currentPos))
+              const targetVec = new THREE.Vector3()
+              if (ray.intersectPlane(plane, targetVec)) {
+                controls.enabled = false
+                const newPos: Vec3 = [targetVec.x, targetVec.y, targetVec.z]
+                updatePointPosition(pointId, newPos, null)
+                
+                if (draftOperation && (draftOperation.tool === 'segment' || draftOperation.tool === 'polygon')) {
+                  setDraftOperation({
+                    ...draftOperation,
+                    previewPosition: newPos,
+                  })
+                }
+                
+                const solid = manualDocument.solids.find(s => s.id === point.solidId)
+                scheduleHoverPresentation({
+                  kind: 'workplane',
+                  label: solid?.label ? `Thuộc ${solid.label}` : 'Trên bề mặt',
+                  position: newPos,
+                })
+                return
+              }
+            }
+          }
+        }
+
         // -------------------------------------------------------------------
 
         if (event.ctrlKey) {
@@ -2664,7 +2918,7 @@ export function ManualCanvas3D() {
 
       const shouldCreateAndDragPoint =
         activeTool !== 'select' &&
-        (['point', 'segment', 'polygon', 'box', 'cube', 'sphere', 'cone', 'cylinder'].includes(activeTool) || isCreatingSkewApex) &&
+        (['point', 'segment', 'polygon', 'box', 'cube', 'sphere'].includes(activeTool) || isCreatingSkewApex) &&
         (!snapTarget || snapTarget.kind !== 'point') &&
         !isCircleClick &&
         !isPolygonClick
@@ -2764,8 +3018,8 @@ export function ManualCanvas3D() {
         const circle = manualDerived.displayCircles.find(c => c.sourceId === draftOperation.baseCircleId)
         if (circle) {
           let id = null
-          if (draftOperation.tool === 'cone') id = createCone(draftOperation.baseCircleId, circle.radius, draftOperation.height, draftOperation.baseCircleId)
-          if (draftOperation.tool === 'cylinder') id = createCylinder(draftOperation.baseCircleId, circle.radius, draftOperation.height, draftOperation.baseCircleId)
+          if (draftOperation.tool === 'cone') id = createCone('', circle.radius, draftOperation.height, draftOperation.baseCircleId)
+          if (draftOperation.tool === 'cylinder') id = createCylinder('', circle.radius, draftOperation.height, draftOperation.baseCircleId)
           if (id) autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null)
         }
       }

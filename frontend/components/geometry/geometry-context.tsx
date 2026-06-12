@@ -539,6 +539,184 @@ function resolvePointPlacement(
   target: ManualSnapTarget | null,
   fallback: Vec3,
 ): ManualPoint {
+  if (target?.kind === 'solid' && target.solidId) {
+    const solid = document.solids.find((s) => s.id === target.solidId)
+    if (solid) {
+      if (solid.solidType === 'cone') {
+        const pointPositions = resolvePointPositions(document)
+        let center: Vec3 = [0, 0, 0]
+        let r = solid.radius ?? 3
+        let normal: Vec3 = [0, 0, 1]
+        
+        if (solid.baseCircleId) {
+          const circle = document.circles?.find((c) => c.id === solid.baseCircleId)
+          if (circle) {
+            const props = resolveCircleProps(circle, pointPositions)
+            if (props) {
+              center = props.center
+              r = props.radius
+              normal = props.normal
+            }
+          }
+        } else if (solid.centerPointId) {
+          const cPos = pointPositions[solid.centerPointId]
+          if (cPos) center = cPos
+        }
+        
+        let apex: Vec3 = addVec3(center, scaleVec3(normal, solid.height ?? 5))
+        if (solid.apexPointId && pointPositions[solid.apexPointId]) {
+          apex = pointPositions[solid.apexPointId]
+        }
+        
+        const pos = target.position ?? fallback
+        const axisVec = subVec3(apex, center)
+        const axisLenSq = axisVec[0]*axisVec[0] + axisVec[1]*axisVec[1] + axisVec[2]*axisVec[2]
+        const ptVec = subVec3(pos, center)
+        const dot = ptVec[0]*axisVec[0] + ptVec[1]*axisVec[1] + ptVec[2]*axisVec[2]
+        const rawRatio = axisLenSq > 1e-9 ? dot / axisLenSq : 0
+        const ratio = Math.max(0, Math.min(1, rawRatio))
+        
+        const projOnAxis = addVec3(center, scaleVec3(axisVec, ratio))
+        const radial = subVec3(pos, projOnAxis)
+        
+        let u: Vec3 = [1, 0, 0]
+        if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+        const w = crossVec3(normal, u)
+        const w_len = Math.hypot(w[0], w[1], w[2])
+        const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+        const u_new = crossVec3(w_norm, normal)
+        const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+        const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+        
+        const x = radial[0]*u_norm[0] + radial[1]*u_norm[1] + radial[2]*u_norm[2]
+        const y = radial[0]*w_norm[0] + radial[1]*w_norm[1] + radial[2]*w_norm[2]
+        const t = Math.atan2(y, x)
+        
+        return {
+          id: createEntityId('point'),
+          label: nextPointLabel(document),
+          entityType: 'point',
+          pointKind: 'conePoint',
+          position: pos,
+          solidId: solid.id,
+          t,
+          ratio,
+          createdByTool: 'point',
+          dependsOn: [solid.id],
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+      }
+      
+      if (solid.solidType === 'cylinder') {
+        const pointPositions = resolvePointPositions(document)
+        let center: Vec3 = [0, 0, 0]
+        let r = solid.radius ?? 3
+        let normal: Vec3 = [0, 0, 1]
+        
+        if (solid.baseCircleId) {
+          const circle = document.circles?.find((c) => c.id === solid.baseCircleId)
+          if (circle) {
+            const props = resolveCircleProps(circle, pointPositions)
+            if (props) {
+              center = props.center
+              r = props.radius
+              normal = props.normal
+            }
+          }
+        } else if (solid.centerPointId) {
+          const cPos = pointPositions[solid.centerPointId]
+          if (cPos) center = cPos
+        }
+        
+        const h = solid.height ?? 5
+        const axisVec = scaleVec3(normal, h)
+        const axisLenSq = axisVec[0]*axisVec[0] + axisVec[1]*axisVec[1] + axisVec[2]*axisVec[2]
+        
+        const pos = target.position ?? fallback
+        const ptVec = subVec3(pos, center)
+        const dot = ptVec[0]*axisVec[0] + ptVec[1]*axisVec[1] + ptVec[2]*axisVec[2]
+        const rawRatio = axisLenSq > 1e-9 ? dot / axisLenSq : 0
+        const ratio = Math.max(0, Math.min(1, rawRatio))
+        
+        const projOnAxis = addVec3(center, scaleVec3(axisVec, ratio))
+        const radial = subVec3(pos, projOnAxis)
+        
+        let u: Vec3 = [1, 0, 0]
+        if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+        const w = crossVec3(normal, u)
+        const w_len = Math.hypot(w[0], w[1], w[2])
+        const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+        const u_new = crossVec3(w_norm, normal)
+        const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+        const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+        
+        const x = radial[0]*u_norm[0] + radial[1]*u_norm[1] + radial[2]*u_norm[2]
+        const y = radial[0]*w_norm[0] + radial[1]*w_norm[1] + radial[2]*w_norm[2]
+        const t = Math.atan2(y, x)
+        
+        return {
+          id: createEntityId('point'),
+          label: nextPointLabel(document),
+          entityType: 'point',
+          pointKind: 'cylinderPoint',
+          position: pos,
+          solidId: solid.id,
+          t,
+          ratio,
+          createdByTool: 'point',
+          dependsOn: [solid.id],
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+      }
+    }
+  }
+
+  if (target?.kind === 'solid' && target.facePointIds && target.facePointIds.length >= 3) {
+    const pointPositions = resolvePointPositions(document)
+    const v0 = pointPositions[target.facePointIds[0]]
+    const v1 = pointPositions[target.facePointIds[1]]
+    const v2 = pointPositions[target.facePointIds[2]]
+    
+    if (v0 && v1 && v2) {
+      const pos = target.position ?? fallback
+      const e1 = subVec3(v1, v0)
+      const e2 = subVec3(v2, v0)
+      
+      const normal = crossVec3(e1, e2)
+      const normal_len = Math.hypot(normal[0], normal[1], normal[2])
+      const normal_norm = scaleVec3(normal, normal_len > 1e-9 ? 1 / normal_len : 1)
+      
+      const u_len = Math.hypot(e1[0], e1[1], e1[2])
+      const u_norm = scaleVec3(e1, u_len > 1e-9 ? 1 / u_len : 1)
+      
+      const w_norm = crossVec3(normal_norm, u_norm)
+      
+      const ptVec = subVec3(pos, v0)
+      const uVal = ptVec[0]*u_norm[0] + ptVec[1]*u_norm[1] + ptVec[2]*u_norm[2]
+      const vVal = ptVec[0]*w_norm[0] + ptVec[1]*w_norm[1] + ptVec[2]*w_norm[2]
+      
+      return {
+        id: createEntityId('point'),
+        label: nextPointLabel(document),
+        entityType: 'point',
+        pointKind: 'facePoint',
+        position: pos,
+        sourcePointIds: [target.facePointIds[0], target.facePointIds[1], target.facePointIds[2]],
+        u: uVal,
+        v: vVal,
+        createdByTool: 'point',
+        dependsOn: [target.facePointIds[0], target.facePointIds[1], target.facePointIds[2]],
+        locked: false,
+        visible: true,
+        selectable: true,
+      }
+    }
+  }
+
   if (target?.kind === 'sphere' && target.solidId) {
     return {
       id: createEntityId('point'),
@@ -607,24 +785,21 @@ function resolvePointPlacement(
           if (center) {
             const phi = ring.phi
             const theta = ring.theta
-            const normal: Vec3 = [
-              Math.cos(phi) * Math.cos(theta),
-              Math.cos(phi) * Math.sin(theta),
-              Math.sin(phi)
-            ]
             const pos = target.position ?? fallback
             const vx = pos[0] - center[0]
             const vy = pos[1] - center[1]
             const vz = pos[2] - center[2]
             
-            let u: Vec3 = [1, 0, 0]
-            if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
-            const w = crossVec3(normal, u)
-            const w_len = Math.hypot(w[0], w[1], w[2])
-            const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
-            const u_new = crossVec3(w_norm, normal)
-            const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
-            const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+            const u_norm: Vec3 = [
+              -Math.sin(theta),
+              Math.cos(theta),
+              0
+            ]
+            const w_norm: Vec3 = [
+              -Math.sin(phi) * Math.cos(theta),
+              -Math.sin(phi) * Math.sin(theta),
+              Math.cos(phi)
+            ]
             
             const x = vx * u_norm[0] + vy * u_norm[1] + vz * u_norm[2]
             const y = vx * w_norm[0] + vy * w_norm[1] + vz * w_norm[2]
@@ -751,7 +926,47 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       setManualDocumentState((current) => {
         const next = updater(current)
         if (!next) return current
-        const deduplicated = deduplicateDocumentPoints(current, next)
+
+        const resolvedBefore = resolvePointPositions(current)
+        const resolvedAfter = resolvePointPositions(next)
+        let finalPoints = [...next.points]
+        let hasShift = false
+
+        next.solids.forEach((solid) => {
+          if ((solid.solidType === 'cone' || solid.solidType === 'cylinder') && solid.baseCircleId && solid.apexPointId) {
+            const circle = next.circles.find(c => c.id === solid.baseCircleId)
+            if (circle) {
+              const propsBefore = resolveCircleProps(circle, resolvedBefore)
+              const propsAfter = resolveCircleProps(circle, resolvedAfter)
+              if (propsBefore && propsAfter) {
+                const shiftX = propsAfter.center[0] - propsBefore.center[0]
+                const shiftY = propsAfter.center[1] - propsBefore.center[1]
+                const shiftZ = propsAfter.center[2] - propsBefore.center[2]
+                
+                if (Math.hypot(shiftX, shiftY, shiftZ) > 1e-6) {
+                  const apexIdx = finalPoints.findIndex(p => p.id === solid.apexPointId)
+                  if (apexIdx !== -1) {
+                    const apexPt = finalPoints[apexIdx]
+                    if (apexPt.pointKind === 'free') {
+                      hasShift = true
+                      finalPoints[apexIdx] = {
+                        ...apexPt,
+                        position: [
+                          apexPt.position[0] + shiftX,
+                          apexPt.position[1] + shiftY,
+                          apexPt.position[2] + shiftZ
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        })
+
+        const finalDoc = hasShift ? { ...next, points: finalPoints } : next
+        const deduplicated = deduplicateDocumentPoints(current, finalDoc)
         if (!isTransient) {
           setTimeout(() => {
             setUndoStack((stack) => [...stack, cloneDocument(current)].slice(-60))
@@ -815,7 +1030,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
 
         const linkedTopSolid = current.solids.find((s) => 
           (s.solidType === 'prism' && s.topPointId === pointId) ||
-          ((s.solidType === 'pyramid' || s.solidType === 'regularPyramid') && s.apexPointId === pointId)
+          ((s.solidType === 'pyramid' || s.solidType === 'regularPyramid' || s.solidType === 'cone' || s.solidType === 'cylinder') && s.apexPointId === pointId)
         )
         if (linkedTopSolid) {
           const resolved = resolvePointPositions(current)
@@ -823,12 +1038,45 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           if (oldResolved) {
              const deltaZ = position[2] - oldResolved[2]
              const nextPos: Vec3 = [oldResolved[0], oldResolved[1], oldResolved[2] + deltaZ]
+             
+             let center: Vec3 = [0, 0, 0]
+             let normal: Vec3 = [0, 0, 1]
+             if (linkedTopSolid.solidType === 'cone' || linkedTopSolid.solidType === 'cylinder') {
+               if (linkedTopSolid.baseCircleId) {
+                 const circle = current.circles?.find((c) => c.id === linkedTopSolid.baseCircleId)
+                 if (circle) {
+                   const props = resolveCircleProps(circle, resolved)
+                   if (props) {
+                     center = props.center
+                     normal = props.normal
+                   }
+                 }
+               } else if (linkedTopSolid.centerPointId) {
+                 const cPos = resolved[linkedTopSolid.centerPointId]
+                 if (cPos) center = cPos
+               }
+             } else {
+               if (linkedTopSolid.basePolygonId) {
+                 const basePolygon = current.polygons.find((p) => p.id === linkedTopSolid.basePolygonId)
+                 if (basePolygon) {
+                   const basePoints = basePolygon.pointIds.map((id) => resolved[id]).filter(Boolean) as Vec3[]
+                   if (basePoints.length > 0) {
+                     center = centroid(basePoints)
+                     normal = getPolygonNormal(basePoints)
+                   }
+                 }
+               }
+             }
+             
+             const nextHeight = Math.max(0.1, dotVec3(subVec3(nextPos, center), normal))
+
              return {
                 ...current,
                 points: mapEntities(current.points, pointId, (candidate) => ({
                    ...candidate,
                    position: nextPos
-                }))
+                })),
+                solids: current.solids.map((s) => s.id === linkedTopSolid.id ? { ...s, height: nextHeight } : s)
              }
           }
         }
@@ -859,6 +1107,160 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
                   }))
                 }
               }
+            }
+          }
+        }
+
+        // Handle dragging point on cone surface
+        if (point.pointKind === 'conePoint' && point.solidId) {
+          const solid = current.solids.find((s) => s.id === point.solidId)
+          if (solid && solid.solidType === 'cone') {
+            const resolved = resolvePointPositions(current)
+            let center: Vec3 = [0, 0, 0]
+            let normal: Vec3 = [0, 0, 1]
+            
+            if (solid.baseCircleId) {
+              const circle = current.circles?.find((c) => c.id === solid.baseCircleId)
+              if (circle) {
+                const props = resolveCircleProps(circle, resolved)
+                if (props) {
+                  center = props.center
+                  normal = props.normal
+                }
+              }
+            } else if (solid.centerPointId) {
+              const cPos = resolved[solid.centerPointId]
+              if (cPos) center = cPos
+            }
+            
+            let apex: Vec3 = addVec3(center, scaleVec3(normal, solid.height ?? 5))
+            if (solid.apexPointId && resolved[solid.apexPointId]) {
+              apex = resolved[solid.apexPointId]
+            }
+            
+            const axisVec = subVec3(apex, center)
+            const axisLenSq = axisVec[0]*axisVec[0] + axisVec[1]*axisVec[1] + axisVec[2]*axisVec[2]
+            const ptVec = subVec3(position, center)
+            const dot = ptVec[0]*axisVec[0] + ptVec[1]*axisVec[1] + ptVec[2]*axisVec[2]
+            const rawRatio = axisLenSq > 1e-9 ? dot / axisLenSq : 0
+            const nextRatio = Math.max(0, Math.min(1, rawRatio))
+            
+            const projOnAxis = addVec3(center, scaleVec3(axisVec, nextRatio))
+            const radial = subVec3(position, projOnAxis)
+            
+            let u: Vec3 = [1, 0, 0]
+            if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+            const w = crossVec3(normal, u)
+            const w_len = Math.hypot(w[0], w[1], w[2])
+            const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+            const u_new = crossVec3(w_norm, normal)
+            const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+            const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+            
+            const x = radial[0]*u_norm[0] + radial[1]*u_norm[1] + radial[2]*u_norm[2]
+            const y = radial[0]*w_norm[0] + radial[1]*w_norm[1] + radial[2]*w_norm[2]
+            const nextT = Math.atan2(y, x)
+            
+            return {
+              ...current,
+              points: mapEntities(current.points, pointId, (candidate) => ({
+                ...candidate,
+                t: nextT,
+                ratio: nextRatio,
+              })),
+            }
+          }
+        }
+        
+        // Handle dragging point on cylinder surface
+        if (point.pointKind === 'cylinderPoint' && point.solidId) {
+          const solid = current.solids.find((s) => s.id === point.solidId)
+          if (solid && solid.solidType === 'cylinder') {
+            const resolved = resolvePointPositions(current)
+            let center: Vec3 = [0, 0, 0]
+            let normal: Vec3 = [0, 0, 1]
+            
+            if (solid.baseCircleId) {
+              const circle = current.circles?.find((c) => c.id === solid.baseCircleId)
+              if (circle) {
+                const props = resolveCircleProps(circle, resolved)
+                if (props) {
+                  center = props.center
+                  normal = props.normal
+                }
+              }
+            } else if (solid.centerPointId) {
+              const cPos = resolved[solid.centerPointId]
+              if (cPos) center = cPos
+            }
+            
+            const h = solid.height ?? 5
+            const axisVec = scaleVec3(normal, h)
+            const axisLenSq = axisVec[0]*axisVec[0] + axisVec[1]*axisVec[1] + axisVec[2]*axisVec[2]
+            
+            const ptVec = subVec3(position, center)
+            const dot = ptVec[0]*axisVec[0] + ptVec[1]*axisVec[1] + ptVec[2]*axisVec[2]
+            const rawRatio = axisLenSq > 1e-9 ? dot / axisLenSq : 0
+            const nextRatio = Math.max(0, Math.min(1, rawRatio))
+            
+            const projOnAxis = addVec3(center, scaleVec3(axisVec, nextRatio))
+            const radial = subVec3(position, projOnAxis)
+            
+            let u: Vec3 = [1, 0, 0]
+            if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+            const w = crossVec3(normal, u)
+            const w_len = Math.hypot(w[0], w[1], w[2])
+            const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+            const u_new = crossVec3(w_norm, normal)
+            const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+            const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+            
+            const x = radial[0]*u_norm[0] + radial[1]*u_norm[1] + radial[2]*u_norm[2]
+            const y = radial[0]*w_norm[0] + radial[1]*w_norm[1] + radial[2]*w_norm[2]
+            const nextT = Math.atan2(y, x)
+            
+            return {
+              ...current,
+              points: mapEntities(current.points, pointId, (candidate) => ({
+                ...candidate,
+                t: nextT,
+                ratio: nextRatio,
+              })),
+            }
+          }
+        }
+
+        // Handle dragging point on polygon face
+        if (point.pointKind === 'facePoint' && point.sourcePointIds && point.sourcePointIds.length >= 3) {
+          const resolved = resolvePointPositions(current)
+          const v0 = resolved[point.sourcePointIds[0]]
+          const v1 = resolved[point.sourcePointIds[1]]
+          const v2 = resolved[point.sourcePointIds[2]]
+          
+          if (v0 && v1 && v2) {
+            const e1 = subVec3(v1, v0)
+            const e2 = subVec3(v2, v0)
+            
+            const normal = crossVec3(e1, e2)
+            const normal_len = Math.hypot(normal[0], normal[1], normal[2])
+            const normal_norm = scaleVec3(normal, normal_len > 1e-9 ? 1 / normal_len : 1)
+            
+            const u_len = Math.hypot(e1[0], e1[1], e1[2])
+            const u_norm = scaleVec3(e1, u_len > 1e-9 ? 1 / u_len : 1)
+            
+            const w_norm = crossVec3(normal_norm, u_norm)
+            
+            const ptVec = subVec3(position, v0)
+            const nextU = ptVec[0]*u_norm[0] + ptVec[1]*u_norm[1] + ptVec[2]*u_norm[2]
+            const nextV = ptVec[0]*w_norm[0] + ptVec[1]*w_norm[1] + ptVec[2]*w_norm[2]
+            
+            return {
+              ...current,
+              points: mapEntities(current.points, pointId, (candidate) => ({
+                ...candidate,
+                u: nextU,
+                v: nextV,
+              })),
             }
           }
         }
@@ -957,23 +1359,20 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
             if (center && ring) {
               const phi = ring.phi
               const theta = ring.theta
-              const normal: Vec3 = [
-                Math.cos(phi) * Math.cos(theta),
-                Math.cos(phi) * Math.sin(theta),
-                Math.sin(phi)
-              ]
               const vx = position[0] - center[0]
               const vy = position[1] - center[1]
               const vz = position[2] - center[2]
               
-              let u: Vec3 = [1, 0, 0]
-              if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
-              const w = crossVec3(normal, u)
-              const w_len = Math.hypot(w[0], w[1], w[2])
-              const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
-              const u_new = crossVec3(w_norm, normal)
-              const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
-              const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+              const u_norm: Vec3 = [
+                -Math.sin(theta),
+                Math.cos(theta),
+                0
+              ]
+              const w_norm: Vec3 = [
+                -Math.sin(phi) * Math.cos(theta),
+                -Math.sin(phi) * Math.sin(theta),
+                Math.cos(phi)
+              ]
               
               const x = vx * u_norm[0] + vy * u_norm[1] + vz * u_norm[2]
               const y = vx * w_norm[0] + vy * w_norm[1] + vz * w_norm[2]
@@ -1001,20 +1400,17 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
             if (center && ring && posB) {
               const phi = ring.phi
               const theta = ring.theta
-              const normal: Vec3 = [
-                Math.cos(phi) * Math.cos(theta),
-                Math.cos(phi) * Math.sin(theta),
-                Math.sin(phi)
-              ]
               
-              let u: Vec3 = [1, 0, 0]
-              if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
-              const w = crossVec3(normal, u)
-              const w_len = Math.hypot(w[0], w[1], w[2])
-              const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
-              const u_new = crossVec3(w_norm, normal)
-              const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
-              const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+              const u_norm: Vec3 = [
+                -Math.sin(theta),
+                Math.cos(theta),
+                0
+              ]
+              const w_norm: Vec3 = [
+                -Math.sin(phi) * Math.cos(theta),
+                -Math.sin(phi) * Math.sin(theta),
+                Math.cos(phi)
+              ]
               
               const vxB = posB[0] - center[0]
               const vyB = posB[1] - center[1]
@@ -1459,8 +1855,102 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const updateSolidHeight = useCallback(
     (solidId: string, newHeight: number) => {
       commitManualDocument((current) => {
+        const solid = current.solids.find((s) => s.id === solidId)
+        if (!solid) return current
+
         const nextSolids = current.solids.map((s) => (s.id === solidId ? { ...s, height: newHeight } : s))
-        return { ...current, solids: nextSolids }
+        let nextPoints = [...current.points]
+
+        const resolved = resolvePointPositions(current)
+
+        if (
+          (solid.solidType === 'pyramid' ||
+            solid.solidType === 'regularPyramid' ||
+            solid.solidType === 'cone' ||
+            solid.solidType === 'cylinder') &&
+          solid.apexPointId
+        ) {
+          let center: Vec3 = [0, 0, 0]
+          let normal: Vec3 = [0, 0, 1]
+
+          if (solid.solidType === 'cone' || solid.solidType === 'cylinder') {
+            if (solid.baseCircleId) {
+              const circle = current.circles?.find((c) => c.id === solid.baseCircleId)
+              if (circle) {
+                const props = resolveCircleProps(circle, resolved)
+                if (props) {
+                  center = props.center
+                  normal = props.normal
+                }
+              }
+            } else if (solid.centerPointId) {
+              const cPos = resolved[solid.centerPointId]
+              if (cPos) center = cPos
+            }
+          } else {
+            if (solid.basePolygonId) {
+              const basePolygon = current.polygons.find((p) => p.id === solid.basePolygonId)
+              if (basePolygon) {
+                const basePoints = basePolygon.pointIds.map((id) => resolved[id]).filter(Boolean) as Vec3[]
+                if (basePoints.length > 0) {
+                  center = centroid(basePoints)
+                  normal = getPolygonNormal(basePoints)
+                }
+              }
+            }
+          }
+
+          const nextApexPos: Vec3 = [
+            center[0] + normal[0] * newHeight,
+            center[1] + normal[1] * newHeight,
+            center[2] + normal[2] * newHeight,
+          ]
+
+          nextPoints = nextPoints.map((p) =>
+            p.id === solid.apexPointId ? { ...p, position: nextApexPos } : p
+          )
+        } else if (solid.solidType === 'prism' && solid.topPointId) {
+          if (solid.basePolygonId) {
+            const basePolygon = current.polygons.find((p) => p.id === solid.basePolygonId)
+            if (basePolygon) {
+              const basePoints = basePolygon.pointIds.map((id) => resolved[id]).filter(Boolean) as Vec3[]
+              if (basePoints.length > 0) {
+                const v0 = resolved[basePolygon.pointIds[0]]
+                const normal = getPolygonNormal(basePoints)
+                if (v0) {
+                  const nextTopPos: Vec3 = [
+                    v0[0] + normal[0] * newHeight,
+                    v0[1] + normal[1] * newHeight,
+                    v0[2] + normal[2] * newHeight,
+                  ]
+                  nextPoints = nextPoints.map((p) =>
+                    p.id === solid.topPointId ? { ...p, position: nextTopPos } : p
+                  )
+                }
+              }
+            }
+          }
+        } else if ((solid.solidType === 'box' || solid.solidType === 'cube') && solid.cornerPointIds && solid.cornerPointIds.length === 8) {
+          for (let i = 4; i < 8; i++) {
+            const bottomPt = current.points.find(p => p.id === solid.cornerPointIds![i - 4])
+            if (bottomPt) {
+              const nextTopPos: Vec3 = [
+                bottomPt.position[0],
+                bottomPt.position[1],
+                bottomPt.position[2] + newHeight,
+              ]
+              nextPoints = nextPoints.map((p) =>
+                p.id === solid.cornerPointIds![i] ? { ...p, position: nextTopPos } : p
+              )
+            }
+          }
+        }
+
+        return {
+          ...current,
+          solids: nextSolids,
+          points: nextPoints,
+        }
       })
     },
     [commitManualDocument],
@@ -3267,59 +3757,200 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const createCone = useCallback(
     (centerPointId: string, radius: number, height: number, baseCircleId?: string) => {
       if (radius <= 0 || height <= 0) return null
+      saveManualState()
       const solidId = createEntityId('solid')
-      const solid: ManualSolid = {
-        id: solidId,
-        label: `Nón ${manualDocument.solids.length + 1}`,
-        entityType: 'solid',
-        solidType: 'cone',
-        radius,
-        height,
-        centerPointId: baseCircleId ? undefined : centerPointId,
-        baseCircleId,
-        createdByTool: 'cone',
-        dependsOn: baseCircleId ? [baseCircleId] : [centerPointId],
-        locked: false,
-        visible: true,
-        selectable: true,
-      }
-      commitManualDocument((current) => ({
-        ...current,
-        solids: [...current.solids, solid],
-      }))
+
+      commitManualDocument((current) => {
+        let center: Vec3 = [0, 0, 0]
+        let normal: Vec3 = [0, 0, 1]
+
+        const resolved = resolvePointPositions(current)
+        if (baseCircleId) {
+          const circle = current.circles.find(c => c.id === baseCircleId)
+          if (circle) {
+            const props = resolveCircleProps(circle, resolved)
+            if (props) {
+              center = props.center
+              normal = props.normal
+            }
+          }
+        } else if (centerPointId) {
+          const cPos = resolved[centerPointId]
+          if (cPos) center = cPos
+        }
+
+        const apexPos: Vec3 = [
+          center[0] + normal[0] * height,
+          center[1] + normal[1] * height,
+          center[2] + normal[2] * height,
+        ]
+
+        const existingPoint = current.points.find(p => {
+          const pos = resolved[p.id]
+          return pos && distance(pos, apexPos) < 1e-4
+        })
+
+        let apexId = ''
+        const newPoints: ManualPoint[] = []
+
+        if (existingPoint) {
+          apexId = existingPoint.id
+        } else {
+          apexId = createEntityId('point')
+          const usedLabels = new Set(current.points.map(p => p.label))
+          let apexLabel = 'S'
+          if (usedLabels.has('S')) {
+            for (let i = 0; i < 10; i++) {
+              if (!usedLabels.has(`S${i}`)) {
+                apexLabel = `S${i}`
+                break
+              }
+            }
+          }
+          newPoints.push({
+            id: apexId,
+            label: apexLabel,
+            entityType: 'point',
+            pointKind: 'free',
+            position: apexPos,
+            createdByTool: 'cone',
+            dependsOn: [],
+            locked: false,
+            visible: true,
+            selectable: true,
+          })
+        }
+
+        const solid: ManualSolid = {
+          id: solidId,
+          label: `Nón ${current.solids.length + 1}`,
+          entityType: 'solid',
+          solidType: 'cone',
+          radius,
+          height,
+          centerPointId: baseCircleId ? undefined : centerPointId,
+          baseCircleId,
+          apexPointId: apexId,
+          createdByTool: 'cone',
+          dependsOn: [
+            ...(baseCircleId ? [baseCircleId] : (centerPointId ? [centerPointId] : [])),
+            apexId,
+          ],
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+
+        return {
+          ...current,
+          points: [...current.points, ...newPoints],
+          solids: [...current.solids, solid],
+        }
+      })
+
       setManualSelection({ kind: 'solid', id: solidId })
       return solidId
     },
-    [commitManualDocument, manualDocument.solids.length],
+    [commitManualDocument, saveManualState],
   )
 
   const createCylinder = useCallback(
     (centerPointId: string, radius: number, height: number, baseCircleId?: string) => {
       if (radius <= 0 || height <= 0) return null
       const solidId = createEntityId('solid')
-      const solid: ManualSolid = {
-        id: solidId,
-        label: `Trụ ${manualDocument.solids.length + 1}`,
-        entityType: 'solid',
-        solidType: 'cylinder',
-        radius,
-        height,
-        centerPointId: baseCircleId ? undefined : centerPointId,
-        baseCircleId,
-        createdByTool: 'cylinder',
-        dependsOn: baseCircleId ? [baseCircleId] : [centerPointId],
-        locked: false,
-        visible: true,
-        selectable: true,
-      }
-      commitManualDocument((current) => ({
-        ...current,
-        solids: [...current.solids, solid],
-      }))
+      
+      commitManualDocument((current) => {
+        const resolved = resolvePointPositions(current)
+        let center: Vec3 = [0, 0, 0]
+        let normal: Vec3 = [0, 0, 1]
+
+        if (baseCircleId) {
+          const circle = current.circles.find(c => c.id === baseCircleId)
+          if (circle) {
+            const props = resolveCircleProps(circle, resolved)
+            if (props) {
+              center = props.center
+              normal = props.normal
+            }
+          }
+        } else if (centerPointId) {
+          const cPos = resolved[centerPointId]
+          if (cPos) center = cPos
+        }
+
+        const topPos: Vec3 = [
+          center[0] + normal[0] * height,
+          center[1] + normal[1] * height,
+          center[2] + normal[2] * height,
+        ]
+
+        // Find existing point or create a new one
+        const existingPoint = current.points.find(p => {
+          const pos = resolved[p.id]
+          return pos && distance(pos, topPos) < 1e-4
+        })
+
+        let topCenterId = ''
+        const newPoints: ManualPoint[] = []
+
+        if (existingPoint) {
+          topCenterId = existingPoint.id
+        } else {
+          topCenterId = createEntityId('point')
+          let topLabel = 'A\''
+          const baseCenterId = centerPointId || (baseCircleId ? current.circles.find(c => c.id === baseCircleId)?.centerPointId : '')
+          const basePoint = current.points.find(p => p.id === baseCenterId)
+          if (basePoint && basePoint.label) {
+            topLabel = basePoint.label + '\''
+          } else {
+            topLabel = nextPointLabel(current)
+          }
+
+          newPoints.push({
+            id: topCenterId,
+            label: topLabel,
+            entityType: 'point',
+            pointKind: 'free',
+            position: topPos,
+            createdByTool: 'cylinder',
+            dependsOn: [],
+            locked: false,
+            visible: true,
+            selectable: true,
+          })
+        }
+
+        const solid: ManualSolid = {
+          id: solidId,
+          label: `Trụ ${current.solids.length + 1}`,
+          entityType: 'solid',
+          solidType: 'cylinder',
+          radius,
+          height,
+          centerPointId: baseCircleId ? undefined : centerPointId,
+          baseCircleId,
+          apexPointId: topCenterId,
+          createdByTool: 'cylinder',
+          dependsOn: [
+            ...(baseCircleId ? [baseCircleId] : (centerPointId ? [centerPointId] : [])),
+            topCenterId,
+          ],
+          locked: false,
+          visible: true,
+          selectable: true,
+        }
+
+        return {
+          ...current,
+          points: [...current.points, ...newPoints],
+          solids: [...current.solids, solid],
+        }
+      })
+
       setManualSelection({ kind: 'solid', id: solidId })
       return solidId
     },
-    [commitManualDocument, manualDocument.solids.length],
+    [commitManualDocument],
   )
 
   const renameManualEntity = useCallback(
@@ -3635,6 +4266,10 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updateSphereRingOrientation,
     ],
   )
+
+  if (typeof window !== 'undefined') {
+    (window as any).debugGeometryContext = contextValue
+  }
 
   return (
     <GeometryContext.Provider value={contextValue}>

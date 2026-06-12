@@ -231,8 +231,7 @@ export function ManualLeftPanel({
     if (tool === 'cone') {
       setDraftOperation({
         tool: 'cone',
-        centerPointId: manualSelection?.kind === 'point' ? manualSelection.id : null,
-        radius: 3,
+        baseCircleId: manualSelection?.kind === 'circle' ? manualSelection.id : null,
         height: 5,
       })
       return
@@ -241,8 +240,7 @@ export function ManualLeftPanel({
     if (tool === 'cylinder') {
       setDraftOperation({
         tool: 'cylinder',
-        centerPointId: manualSelection?.kind === 'point' ? manualSelection.id : null,
-        radius: 3,
+        baseCircleId: manualSelection?.kind === 'circle' ? manualSelection.id : null,
         height: 5,
       })
       return

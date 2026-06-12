@@ -1,5 +1,6 @@
 'use client'
 
+import { toast } from 'sonner'
 import { Sparkles, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -116,36 +117,36 @@ export function ManualLeftSubPanel() {
     if (draftOperation?.tool !== 'cone') return
     const baseCircleId = draftOperation.baseCircleId
       ?? (manualSelection?.kind === 'circle' ? manualSelection.id : null)
-    const centerPointId = draftOperation.centerPointId
-      ?? (manualSelection?.kind === 'point' ? manualSelection.id : null)
-    const radius = draftOperation.radius ?? 3
     const height = draftOperation.height ?? 5
     
-    if (baseCircleId) {
-      createCone('', radius, height, baseCircleId)
-    } else {
-      if (!centerPointId || radius <= 0 || height <= 0) return
-      createCone(centerPointId, radius, height)
+    if (!baseCircleId || height <= 0) {
+      toast.error('Vui lòng chọn một đường tròn trên canvas.')
+      return
     }
-    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'cone', centerPointId: null, baseCircleId: null, radius, height })
+
+    const circle = manualDocument.circles.find(c => c.id === baseCircleId)
+    const radius = circle ? (circle.radius ?? 3) : 3
+
+    createCone('', radius, height, baseCircleId)
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'cone', baseCircleId: null, height })
   }
 
   const handleCylinderCreate = () => {
     if (draftOperation?.tool !== 'cylinder') return
     const baseCircleId = draftOperation.baseCircleId
       ?? (manualSelection?.kind === 'circle' ? manualSelection.id : null)
-    const centerPointId = draftOperation.centerPointId
-      ?? (manualSelection?.kind === 'point' ? manualSelection.id : null)
-    const radius = draftOperation.radius ?? 3
     const height = draftOperation.height ?? 5
     
-    if (baseCircleId) {
-      createCylinder('', radius, height, baseCircleId)
-    } else {
-      if (!centerPointId || radius <= 0 || height <= 0) return
-      createCylinder(centerPointId, radius, height)
+    if (!baseCircleId || height <= 0) {
+      toast.error('Vui lòng chọn một đường tròn trên canvas.')
+      return
     }
-    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'cylinder', centerPointId: null, baseCircleId: null, radius, height })
+
+    const circle = manualDocument.circles.find(c => c.id === baseCircleId)
+    const radius = circle ? (circle.radius ?? 3) : 3
+
+    createCylinder('', radius, height, baseCircleId)
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'cylinder', baseCircleId: null, height })
   }
 
   const handleRegularPolygonCreate = () => {
@@ -271,16 +272,7 @@ export function ManualLeftSubPanel() {
             {activeTool === 'intersection' && 'Click chọn lần lượt 2 Đoạn thẳng cắt nhau.\nGiao điểm sẽ xuất hiện chính xác tại vị trí cắt!'}
             {activeTool === 'circle' && 'Chọn cách vẽ phù hợp ở dưới. Mặc định là Tâm + Điểm:\n1. Click chọn Tâm.\n2. Click chọn Điểm thứ hai xác định bán kính.'}
             {activeTool === 'box' && (
-              <div className="flex flex-col gap-2">
-                <span>Click chọn lần lượt 3 điểm (A, B, C) để xác định mặt đáy. Hình hộp 3D sẽ tự động dựng hình với chiều cao mặc định!</span>
-                <div className="rounded-md bg-blue-500/10 p-2 border border-blue-500/20">
-                  <span className="font-semibold text-blue-500 block mb-1">💡 Lưu ý thao tác kéo điểm:</span>
-                  <ul className="list-disc pl-4 space-y-1">
-                    <li><strong className="text-foreground">Điểm A, B, C:</strong> Di chuyển tự do trên mặt phẳng ngang (Oxy) để đổi kích thước đáy.</li>
-                    <li><strong className="text-foreground">Đỉnh A', B', C', D':</strong> Chỉ di chuyển lên/xuống theo trục dọc (Oz) để thay đổi chiều cao của khối.</li>
-                  </ul>
-                </div>
-              </div>
+              <span>Click chọn lần lượt 3 điểm (A, B, C) để xác định mặt đáy. Hình hộp 3D sẽ tự động dựng hình với chiều cao mặc định!</span>
             )}
             {activeTool === 'segment' && 'Click chọn Điểm thứ nhất, sau đó click chọn Điểm thứ hai (hoặc kéo chuột) để tạo Đoạn thẳng.'}
             {activeTool === 'polygon' && 'Click chọn lần lượt các Điểm làm đỉnh.\nClick lại điểm bắt đầu để hoàn tất Đa giác.'}
@@ -292,9 +284,20 @@ export function ManualLeftSubPanel() {
                 : '1. Click chọn Điểm cần chiếu.\n2. Chọn đích: click đoạn thẳng, đa giác, mặt khối (hoặc dùng Tab để duyệt mặt sau/mặt ảo), HOẶC click 3 điểm để xác định mặt phẳng.'
             )}
             {activeTool === 'regularPolygon' && 'Click chọn lần lượt 2 Điểm làm cạnh.\nMột Lục giác đều (6 cạnh) sẽ tự động được dựng hình.'}
-            {activeTool === 'specialTriangle' && (draftOperation?.height === 5 
-              ? 'Click chọn 3 điểm mới (bằng cách click trên lưới/canvas) hoặc chọn các điểm đã có sẵn để tạo tam giác.'
-              : 'Click chọn lần lượt 2 Điểm (mới hoặc đã có sẵn) làm đỉnh cơ sở để tự động dựng tam giác đặc biệt.')}
+            {activeTool === 'specialTriangle' && (
+              draftOperation?.height === 5 ? (
+                <span>Click chọn 3 điểm mới (bằng cách click trên lưới/canvas) hoặc chọn các điểm đã có sẵn để tạo tam giác.</span>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <span>Click chọn lần lượt 2 Điểm (mới hoặc đã có sẵn) làm đỉnh cơ sở để tự động dựng tam giác đặc biệt.</span>
+                  <div className="rounded-md bg-blue-500/10 p-2 border border-blue-500/20 text-[10px] text-blue-500 leading-normal">
+                    <span className="font-semibold block mb-0.5">💡 Lưu ý quan trọng:</span>
+                    Nếu bạn đã có sẵn 3 điểm (ví dụ A, B, C) trên lưới vẽ và muốn kết nối chúng thành tam giác, hãy chọn công cụ <strong className="text-foreground">Tam giác thường</strong>.
+                    Nếu chọn công cụ tam giác đặc biệt (ví dụ Tam giác vuông) và chọn 2 điểm A, B, hệ thống sẽ tự động dựng điểm thứ ba D mới hoàn toàn để thỏa mãn tính chất hình học, tạo thành tam giác ABD mới thay vì kết nối với C.
+                  </div>
+                </div>
+              )
+            )}
             {activeTool === 'centroid' && 'Click vào 1 Đa giác hoặc Mặt của khối hình trên canvas,\nhoặc chọn lần lượt các Điểm để tạo trọng tâm.'}
             {activeTool === 'perpendicularBisector' && 'Click chọn 1 Đoạn thẳng,\nhoặc chọn lần lượt 2 Điểm tự do để dựng đường trung trực.'}
             {activeTool === 'angleBisector' && '1. Click chọn điểm thuộc tia thứ nhất.\n2. Click chọn đỉnh của góc.\n3. Click chọn điểm thuộc tia thứ hai.'}
@@ -306,8 +309,8 @@ export function ManualLeftSubPanel() {
                   ? 'Click chọn lần lượt 2 Điểm (A, B) xác định một cạnh.\nHai đỉnh còn lại (C, D) sẽ tự động dựng để tạo Hình thoi.'
                   : 'Click chọn lần lượt 2 Điểm (A, B) xác định một cạnh.\nHai đỉnh còn lại (C, D) sẽ tự động dựng vuông góc để tạo Hình vuông.')}
             {activeTool === 'sphere' && '1. Click chọn (hoặc tạo mới) một Điểm làm tâm.\n2. Nhập bán kính trong bảng Thiết lập bên dưới.'}
-            {activeTool === 'cone' && '1. Click chọn 1 Đường tròn làm đáy (hoặc Tâm + Bán kính).\n2. Nhập chiều cao hoặc điều chỉnh trong bảng Thiết lập.'}
-            {activeTool === 'cylinder' && '1. Click chọn 1 Đường tròn làm đáy (hoặc Tâm + Bán kính).\n2. Nhập chiều cao hoặc điều chỉnh trong bảng Thiết lập.'}
+            {activeTool === 'cone' && '1. Click chọn duy nhất 1 Đường tròn ĐÃ CÓ trên canvas.\n2. Nhập chiều cao (mặc định là 5) và bấm nút "Tạo hình nón".'}
+            {activeTool === 'cylinder' && '1. Click chọn duy nhất 1 Đường tròn ĐÃ CÓ trên canvas.\n2. Nhập chiều cao (mặc định là 5) và bấm nút "Tạo hình trụ".'}
           </div>
         </CardContent>
       </Card>
@@ -496,109 +499,31 @@ export function ManualLeftSubPanel() {
               <div className="space-y-3">
                 <p className="text-xs font-semibold">Thông số hình nón</p>
                 
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground font-medium">Kiểu đáy</label>
-                  <div className="flex gap-1 p-1 bg-secondary rounded-xl">
-                    <Button
-                      type="button"
-                      variant={!draftOperation.baseCircleId ? 'default' : 'ghost'}
-                      size="sm"
-                      className="flex-1 rounded-lg text-[11px] h-7 font-semibold"
-                      onClick={() => {
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground font-medium">Chọn đường tròn đáy</label>
+                    <select
+                      value={draftOperation.baseCircleId ?? ''}
+                      onChange={(e) => {
                         setDraftOperation({
                           ...draftOperation,
-                          baseCircleId: null,
-                          centerPointId: manualDocument.points[0]?.id ?? null,
+                          baseCircleId: e.target.value,
                         })
                       }}
+                      className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
-                      Tâm + Bán kính
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={draftOperation.baseCircleId ? 'default' : 'ghost'}
-                      size="sm"
-                      className="flex-1 rounded-lg text-[11px] h-7 font-semibold"
-                      onClick={() => {
-                        setDraftOperation({
-                          ...draftOperation,
-                          baseCircleId: manualDocument.circles[0]?.id ?? null,
-                          centerPointId: null,
-                        })
-                      }}
-                    >
-                      Đường tròn đáy
-                    </Button>
+                      <option value="" disabled>-- Chọn đường tròn --</option>
+                      {manualDocument.circles.map((circle) => (
+                        <option key={circle.id} value={circle.id}>
+                          {circle.label || `Đường tròn ${circle.id.slice(-4)}`}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-muted-foreground">
+                      * Hoặc click chọn một đường tròn trực tiếp trên canvas.
+                    </p>
                   </div>
                 </div>
-
-                {/* Center + Radius Mode */}
-                {!draftOperation.baseCircleId && (
-                  <div className="space-y-2">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Tâm đáy</label>
-                      <select
-                        value={draftOperation.centerPointId ?? ''}
-                        onChange={(e) => {
-                          setDraftOperation({
-                            ...draftOperation,
-                            centerPointId: e.target.value,
-                          })
-                        }}
-                        className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        <option value="" disabled>-- Chọn tâm --</option>
-                        {manualDocument.points.map((pt) => (
-                          <option key={pt.id} value={pt.id}>
-                            {pt.label} ({pt.position.map(p => p.toFixed(1)).join(', ')})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Bán kính đáy R</label>
-                      <Input
-                        type="number"
-                        min={0.1}
-                        step={0.5}
-                        value={draftOperation.radius ?? 3}
-                        onChange={(event) => updateDraftRadius(event.target.value)}
-                        placeholder="Bán kính"
-                        className="rounded-xl h-8 text-xs"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Base Circle Mode */}
-                {!!draftOperation.baseCircleId && (
-                  <div className="space-y-2">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Chọn đường tròn đáy</label>
-                      <select
-                        value={draftOperation.baseCircleId ?? ''}
-                        onChange={(e) => {
-                          setDraftOperation({
-                            ...draftOperation,
-                            baseCircleId: e.target.value,
-                          })
-                        }}
-                        className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        <option value="" disabled>-- Chọn đường tròn --</option>
-                        {manualDocument.circles.map((circle) => (
-                          <option key={circle.id} value={circle.id}>
-                            {circle.label || `Đường tròn ${circle.id.slice(-4)}`}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-muted-foreground">
-                        * Hoặc click chọn một đường tròn trực tiếp trên canvas.
-                      </p>
-                    </div>
-                  </div>
-                )}
 
                 <div className="space-y-1">
                   <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
@@ -618,8 +543,7 @@ export function ManualLeftSubPanel() {
                   className="w-full rounded-xl h-8 text-xs font-semibold mt-2"
                   onClick={handleConeCreate}
                   disabled={
-                    (!draftOperation.baseCircleId && (!draftOperation.centerPointId || !draftOperation.radius || draftOperation.radius <= 0)) ||
-                    (draftOperation.baseCircleId && !draftOperation.baseCircleId) ||
+                    !draftOperation.baseCircleId ||
                     !draftOperation.height ||
                     draftOperation.height <= 0
                   }
@@ -633,109 +557,31 @@ export function ManualLeftSubPanel() {
               <div className="space-y-3">
                 <p className="text-xs font-semibold">Thông số hình trụ</p>
                 
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground font-medium">Kiểu đáy</label>
-                  <div className="flex gap-1 p-1 bg-secondary rounded-xl">
-                    <Button
-                      type="button"
-                      variant={!draftOperation.baseCircleId ? 'default' : 'ghost'}
-                      size="sm"
-                      className="flex-1 rounded-lg text-[11px] h-7 font-semibold"
-                      onClick={() => {
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground font-medium">Chọn đường tròn đáy</label>
+                    <select
+                      value={draftOperation.baseCircleId ?? ''}
+                      onChange={(e) => {
                         setDraftOperation({
                           ...draftOperation,
-                          baseCircleId: null,
-                          centerPointId: manualDocument.points[0]?.id ?? null,
+                          baseCircleId: e.target.value,
                         })
                       }}
+                      className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
-                      Tâm + Bán kính
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={draftOperation.baseCircleId ? 'default' : 'ghost'}
-                      size="sm"
-                      className="flex-1 rounded-lg text-[11px] h-7 font-semibold"
-                      onClick={() => {
-                        setDraftOperation({
-                          ...draftOperation,
-                          baseCircleId: manualDocument.circles[0]?.id ?? null,
-                          centerPointId: null,
-                        })
-                      }}
-                    >
-                      Đường tròn đáy
-                    </Button>
+                      <option value="" disabled>-- Chọn đường tròn --</option>
+                      {manualDocument.circles.map((circle) => (
+                        <option key={circle.id} value={circle.id}>
+                          {circle.label || `Đường tròn ${circle.id.slice(-4)}`}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-muted-foreground">
+                      * Hoặc click chọn một đường tròn trực tiếp trên canvas.
+                    </p>
                   </div>
                 </div>
-
-                {/* Center + Radius Mode */}
-                {!draftOperation.baseCircleId && (
-                  <div className="space-y-2">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Tâm đáy</label>
-                      <select
-                        value={draftOperation.centerPointId ?? ''}
-                        onChange={(e) => {
-                          setDraftOperation({
-                            ...draftOperation,
-                            centerPointId: e.target.value,
-                          })
-                        }}
-                        className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        <option value="" disabled>-- Chọn tâm --</option>
-                        {manualDocument.points.map((pt) => (
-                          <option key={pt.id} value={pt.id}>
-                            {pt.label} ({pt.position.map(p => p.toFixed(1)).join(', ')})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Bán kính đáy R</label>
-                      <Input
-                        type="number"
-                        min={0.1}
-                        step={0.5}
-                        value={draftOperation.radius ?? 3}
-                        onChange={(event) => updateDraftRadius(event.target.value)}
-                        placeholder="Bán kính"
-                        className="rounded-xl h-8 text-xs"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Base Circle Mode */}
-                {!!draftOperation.baseCircleId && (
-                  <div className="space-y-2">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Chọn đường tròn đáy</label>
-                      <select
-                        value={draftOperation.baseCircleId ?? ''}
-                        onChange={(e) => {
-                          setDraftOperation({
-                            ...draftOperation,
-                            baseCircleId: e.target.value,
-                          })
-                        }}
-                        className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        <option value="" disabled>-- Chọn đường tròn --</option>
-                        {manualDocument.circles.map((circle) => (
-                          <option key={circle.id} value={circle.id}>
-                            {circle.label || `Đường tròn ${circle.id.slice(-4)}`}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-muted-foreground">
-                        * Hoặc click chọn một đường tròn trực tiếp trên canvas.
-                      </p>
-                    </div>
-                  </div>
-                )}
 
                 <div className="space-y-1">
                   <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
@@ -755,8 +601,7 @@ export function ManualLeftSubPanel() {
                   className="w-full rounded-xl h-8 text-xs font-semibold mt-2"
                   onClick={handleCylinderCreate}
                   disabled={
-                    (!draftOperation.baseCircleId && (!draftOperation.centerPointId || !draftOperation.radius || draftOperation.radius <= 0)) ||
-                    (draftOperation.baseCircleId && !draftOperation.baseCircleId) ||
+                    !draftOperation.baseCircleId ||
                     !draftOperation.height ||
                     draftOperation.height <= 0
                   }
@@ -1283,6 +1128,42 @@ export function ManualLeftSubPanel() {
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Card Lưu ý thao tác kéo điểm */}
+      {(activeTool === 'box' || activeTool === 'sphere') && (
+        <Card className="border-blue-500/20 bg-blue-500/5 py-3.5 shadow-sm rounded-2xl">
+          <CardHeader className="px-4 pb-0 pt-1">
+            <CardTitle className="text-xs text-blue-500 font-bold flex items-center gap-1.5">
+              <Info size={14} className="text-blue-500" />
+              Lưu ý thao tác kéo điểm:
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-2">
+            <div className="text-[11px] leading-relaxed text-muted-foreground font-medium">
+              {activeTool === 'box' && (
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>
+                    <strong className="text-foreground">Điểm A, B, C:</strong> Di chuyển tự do trên mặt phẳng ngang (Oxy) để đổi kích thước đáy.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">Đỉnh A', B', C', D':</strong> Chỉ di chuyển lên/xuống theo trục dọc (Oz) để thay đổi chiều cao của khối.
+                  </li>
+                </ul>
+              )}
+              {activeTool === 'sphere' && (
+                <div className="space-y-1">
+                  <p>
+                    Khi di chuyển một điểm thuộc đường tròn của hình cầu (ví dụ G, F):
+                  </p>
+                  <p>
+                    Bạn nên đặt camera xoay về hướng tâm đường tròn (nhìn thẳng vào tâm đường tròn) và vị trí camera nằm trên đường thẳng vuông góc từ tâm với mặt phẳng đường tròn để dễ tương tác và kéo thả chính xác nhất.
+                  </p>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}

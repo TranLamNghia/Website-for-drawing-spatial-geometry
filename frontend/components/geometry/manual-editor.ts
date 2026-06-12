@@ -65,9 +65,15 @@ export interface ManualPoint extends ManualEntityMeta {
     | 'circleAngleDependent'
     | 'sphereRingPoint'
     | 'sphereAngleDependent'
+    | 'conePoint'
+    | 'cylinderPoint'
+    | 'facePoint'
   position: Vec3
   segmentId?: string
   t?: number
+  ratio?: number
+  u?: number
+  v?: number
   angle?: number
   sourcePointIds?: string[]
   sourceSegmentIds?: [string, string]
@@ -143,13 +149,14 @@ export interface ManualDocument {
 }
 
 export interface ManualSnapTarget {
-  kind: 'point' | 'midpoint' | 'segment' | 'workplane' | 'sphere' | 'circle'
+  kind: 'point' | 'midpoint' | 'segment' | 'workplane' | 'sphere' | 'circle' | 'solid'
   label: string
   position: Vec3
   pointId?: string
   segmentId?: string
   circleId?: string
   solidId?: string
+  facePointIds?: string[]
   t?: number
 }
 
@@ -1072,21 +1079,18 @@ export function resolvePointPositions(document: ManualDocument) {
           const r = solid.radius
           const phi = ring.phi
           const theta = ring.theta
-          const normal: Vec3 = [
-            Math.cos(phi) * Math.cos(theta),
-            Math.cos(phi) * Math.sin(theta),
-            Math.sin(phi)
-          ]
           const t = point.t ?? 0
           
-          let u: Vec3 = [1, 0, 0]
-          if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
-          const w = crossVec3(normal, u)
-          const w_len = Math.hypot(w[0], w[1], w[2])
-          const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
-          const u_new = crossVec3(w_norm, normal)
-          const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
-          const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+          const u_norm: Vec3 = [
+            -Math.sin(theta),
+            Math.cos(theta),
+            0
+          ]
+          const w_norm: Vec3 = [
+            -Math.sin(phi) * Math.cos(theta),
+            -Math.sin(phi) * Math.sin(theta),
+            Math.cos(phi)
+          ]
           
           positions[pointId] = [
             center[0] + r * Math.cos(t) * u_norm[0] + r * Math.sin(t) * w_norm[0],
@@ -1113,20 +1117,17 @@ export function resolvePointPositions(document: ManualDocument) {
           const r = solid.radius
           const phi = ring.phi
           const theta = ring.theta
-          const normal: Vec3 = [
-            Math.cos(phi) * Math.cos(theta),
-            Math.cos(phi) * Math.sin(theta),
-            Math.sin(phi)
-          ]
           
-          let u: Vec3 = [1, 0, 0]
-          if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
-          const w = crossVec3(normal, u)
-          const w_len = Math.hypot(w[0], w[1], w[2])
-          const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
-          const u_new = crossVec3(w_norm, normal)
-          const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
-          const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+          const u_norm: Vec3 = [
+            -Math.sin(theta),
+            Math.cos(theta),
+            0
+          ]
+          const w_norm: Vec3 = [
+            -Math.sin(phi) * Math.cos(theta),
+            -Math.sin(phi) * Math.sin(theta),
+            Math.cos(phi)
+          ]
           
           const vx = posB[0] - center[0]
           const vy = posB[1] - center[1]
@@ -1146,6 +1147,146 @@ export function resolvePointPositions(document: ManualDocument) {
           visiting.delete(pointId)
           return positions[pointId]
         }
+      }
+    }
+
+    if (point.pointKind === 'conePoint' && point.solidId) {
+      const solid = document.solids.find((s) => s.id === point.solidId)
+      if (solid && solid.solidType === 'cone') {
+        let center: Vec3 = [0, 0, 0]
+        let r = solid.radius ?? 3
+        let normal: Vec3 = [0, 0, 1]
+        
+        if (solid.baseCircleId) {
+          const circle = document.circles?.find((c) => c.id === solid.baseCircleId)
+          if (circle) {
+            const props = resolveCircleProps(circle, positions)
+            if (props) {
+              center = props.center
+              r = props.radius
+              normal = props.normal
+            }
+          }
+        } else if (solid.centerPointId) {
+          resolvePoint(solid.centerPointId, visiting)
+          const cPos = positions[solid.centerPointId]
+          if (cPos) center = cPos
+        }
+        
+        let apex: Vec3 = addVec3(center, scaleVec3(normal, solid.height ?? 5))
+        if (solid.apexPointId) {
+          resolvePoint(solid.apexPointId, visiting)
+          if (positions[solid.apexPointId]) apex = positions[solid.apexPointId]
+        }
+        
+        const t = point.t ?? 0
+        const ratio = point.ratio ?? 0 // 0 = base, 1 = apex
+        
+        // Orthogonal vectors to base normal
+        let u: Vec3 = [1, 0, 0]
+        if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+        const w = crossVec3(normal, u)
+        const w_len = Math.hypot(w[0], w[1], w[2])
+        const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+        const u_new = crossVec3(w_norm, normal)
+        const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+        const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+        
+        const basePt = addVec3(center, addVec3(scaleVec3(u_norm, r * Math.cos(t)), scaleVec3(w_norm, r * Math.sin(t))))
+        
+        positions[pointId] = [
+          (1 - ratio) * basePt[0] + ratio * apex[0],
+          (1 - ratio) * basePt[1] + ratio * apex[1],
+          (1 - ratio) * basePt[2] + ratio * apex[2]
+        ]
+        visiting.delete(pointId)
+        return positions[pointId]
+      }
+    }
+
+    if (point.pointKind === 'cylinderPoint' && point.solidId) {
+      const solid = document.solids.find((s) => s.id === point.solidId)
+      if (solid && solid.solidType === 'cylinder') {
+        let center: Vec3 = [0, 0, 0]
+        let r = solid.radius ?? 3
+        let normal: Vec3 = [0, 0, 1]
+        
+        if (solid.baseCircleId) {
+          const circle = document.circles?.find((c) => c.id === solid.baseCircleId)
+          if (circle) {
+            const props = resolveCircleProps(circle, positions)
+            if (props) {
+              center = props.center
+              r = props.radius
+              normal = props.normal
+            }
+          }
+        } else if (solid.centerPointId) {
+          resolvePoint(solid.centerPointId, visiting)
+          const cPos = positions[solid.centerPointId]
+          if (cPos) center = cPos
+        }
+        
+        const h = solid.height ?? 5
+        const axisVec = scaleVec3(normal, h)
+        
+        const t = point.t ?? 0
+        const ratio = point.ratio ?? 0 // 0 = bottom, 1 = top
+        
+        // Orthogonal vectors to base normal
+        let u: Vec3 = [1, 0, 0]
+        if (Math.abs(normal[0]) > 0.9) u = [0, 1, 0]
+        const w = crossVec3(normal, u)
+        const w_len = Math.hypot(w[0], w[1], w[2])
+        const w_norm = scaleVec3(w, w_len > 1e-9 ? 1 / w_len : 1)
+        const u_new = crossVec3(w_norm, normal)
+        const u_len = Math.hypot(u_new[0], u_new[1], u_new[2])
+        const u_norm = scaleVec3(u_new, u_len > 1e-9 ? 1 / u_len : 1)
+        
+        const bottomPt = addVec3(center, addVec3(scaleVec3(u_norm, r * Math.cos(t)), scaleVec3(w_norm, r * Math.sin(t))))
+        
+        positions[pointId] = [
+          bottomPt[0] + ratio * axisVec[0],
+          bottomPt[1] + ratio * axisVec[1],
+          bottomPt[2] + ratio * axisVec[2]
+        ]
+        visiting.delete(pointId)
+        return positions[pointId]
+      }
+    }
+
+    if (point.pointKind === 'facePoint' && point.sourcePointIds && point.sourcePointIds.length >= 3) {
+      resolvePoint(point.sourcePointIds[0], visiting)
+      resolvePoint(point.sourcePointIds[1], visiting)
+      resolvePoint(point.sourcePointIds[2], visiting)
+      
+      const v0 = positions[point.sourcePointIds[0]]
+      const v1 = positions[point.sourcePointIds[1]]
+      const v2 = positions[point.sourcePointIds[2]]
+      
+      if (v0 && v1 && v2) {
+        const e1 = subVec3(v1, v0)
+        const e2 = subVec3(v2, v0)
+        
+        const normal = crossVec3(e1, e2)
+        const normal_len = Math.hypot(normal[0], normal[1], normal[2])
+        const normal_norm = scaleVec3(normal, normal_len > 1e-9 ? 1 / normal_len : 1)
+        
+        const u_len = Math.hypot(e1[0], e1[1], e1[2])
+        const u_norm = scaleVec3(e1, u_len > 1e-9 ? 1 / u_len : 1)
+        
+        const w_norm = crossVec3(normal_norm, u_norm)
+        
+        const uVal = point.u ?? 0
+        const vVal = point.v ?? 0
+        
+        positions[pointId] = [
+          v0[0] + uVal * u_norm[0] + vVal * w_norm[0],
+          v0[1] + uVal * u_norm[1] + vVal * w_norm[1],
+          v0[2] + uVal * u_norm[2] + vVal * w_norm[2]
+        ]
+        visiting.delete(pointId)
+        return positions[pointId]
       }
     }
 
@@ -1989,8 +2130,12 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         }
       }
 
-      const h = solid.height ?? 5
-      const apex: Vec3 = addVec3(center, scaleVec3(normal, h))
+      let apex: Vec3 = addVec3(center, scaleVec3(normal, solid.height ?? 5))
+      let h = solid.height ?? 5
+      if (solid.apexPointId && pointPositions[solid.apexPointId]) {
+        apex = pointPositions[solid.apexPointId]
+        h = dotVec3(subVec3(apex, center), normal)
+      }
       const apexLabel = solid.apexPointId
         ? (pointMap.get(solid.apexPointId)?.label ?? `${solid.label}S`)
         : `${solid.label}S`
@@ -2071,22 +2216,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         })
       }
 
-      // Slant lines (4 generatrices)
-      for (let i = 0; i < 4; i++) {
-        const angle = (i / 4) * Math.PI * 2
-        const cos = Math.cos(angle)
-        const sin = Math.sin(angle)
-        const basePoint = addVec3(center, addVec3(scaleVec3(u_norm, r * cos), scaleVec3(w_norm, r * sin)))
-        displaySegments.push({
-          id: `${solid.id}_slant_${i}`,
-          label: '',
-          start: basePoint,
-          end: apex,
-          sourceKind: 'solid',
-          sourceId: solid.id,
-          visible: solid.visible,
-        })
-      }
+
 
       solidInfo[solid.id] = {
         solidType: 'cone',
@@ -2128,13 +2258,21 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         }
       }
 
-      const h = solid.height ?? 5
-      const topCenter: Vec3 = addVec3(center, scaleVec3(normal, h))
-      const topLabel = hasBaseCircle ? `${baseLabel}'` : (solid.centerPointId && pointMap.get(solid.centerPointId) ? `${pointMap.get(solid.centerPointId)!.label}'` : `${solid.label}'`)
+      let topCenter = addVec3(center, scaleVec3(normal, solid.height ?? 5))
+      if (solid.apexPointId && pointPositions[solid.apexPointId]) {
+        topCenter = pointPositions[solid.apexPointId]
+      }
+      const h = dotVec3(subVec3(topCenter, center), normal)
 
-      if (!hasBaseCircle && solid.centerPointId) {
-        const cMeta = pointMap.get(solid.centerPointId)
-        if (cMeta) {
+      const circle = hasBaseCircle ? document.circles?.find((c) => c.id === solid.baseCircleId) : null
+      const baseCenterPtId = circle ? circle.centerPointId : solid.centerPointId
+      const cMeta = baseCenterPtId ? pointMap.get(baseCenterPtId) : null
+      const topLabel = cMeta ? `${cMeta.label}'` : `${solid.label}'`
+
+      const hasRealTopCenter = solid.apexPointId && document.points.some(p => p.id === solid.apexPointId)
+
+      if (!hasRealTopCenter && cMeta) {
+        if (!hasBaseCircle) {
           pushGeometryPoint(geometry, cMeta.label, center)
           displayPoints.push({
             id: `${solid.id}_bottom_center`,
@@ -2146,17 +2284,22 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
             generated: true,
             visible: solid.visible,
           })
-          pushGeometryPoint(geometry, topLabel, topCenter)
-          displayPoints.push({
-            id: `${solid.id}_top_center`,
-            label: topLabel,
-            position: topCenter,
-            sourceKind: 'solid',
-            sourceId: solid.id,
-            selectable: false,
-            generated: true,
-            visible: solid.visible,
-          })
+        }
+        pushGeometryPoint(geometry, topLabel, topCenter)
+        displayPoints.push({
+          id: `${solid.id}_top_center`,
+          label: topLabel,
+          position: topCenter,
+          sourceKind: 'solid',
+          sourceId: solid.id,
+          selectable: false,
+          generated: true,
+          visible: solid.visible,
+        })
+      } else if (hasRealTopCenter) {
+        const topPt = document.points.find(p => p.id === solid.apexPointId)
+        if (topPt) {
+          pushGeometryPoint(geometry, topPt.label, topCenter)
         }
       }
 
@@ -2214,22 +2357,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         })
       }
 
-      // Vertical generatrices (4 lines)
-      for (let i = 0; i < 4; i++) {
-        const angle = (i / 4) * Math.PI * 2
-        const cos = Math.cos(angle)
-        const sin = Math.sin(angle)
-        const offset = addVec3(scaleVec3(u_norm, r * cos), scaleVec3(w_norm, r * sin))
-        displaySegments.push({
-          id: `${solid.id}_gen_${i}`,
-          label: '',
-          start: addVec3(center, offset),
-          end: addVec3(topCenter, offset),
-          sourceKind: 'solid',
-          sourceId: solid.id,
-          visible: solid.visible,
-        })
-      }
+
 
       solidInfo[solid.id] = {
         solidType: 'cylinder',

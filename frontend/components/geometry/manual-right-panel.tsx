@@ -988,7 +988,7 @@ export function ManualRightPanel() {
               onClick={() => setOpenGroups({ ...openGroups, solids: !openGroups.solids })}
               className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
             >
-              <span>Khối</span>
+              <span>Khối và hình</span>
               <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.solids ? 'rotate-90' : ''}`} />
             </button>
             {openGroups.solids && (
