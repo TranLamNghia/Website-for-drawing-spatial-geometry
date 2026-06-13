@@ -13,6 +13,7 @@ export type ManualTool =
   | 'cube'
   | 'pyramid'
   | 'regularPyramid'
+  | 'rightPyramid'
   | 'prism'
   | 'sphere'
   | 'cone'
@@ -29,6 +30,7 @@ export type ManualTool =
   | 'angleBisector'
   | 'parallelLine'
   | 'perpendicularLine'
+  | 'slice'
 
 export type ManualSelection =
   | { kind: 'point' | 'segment' | 'polygon' | 'solid' | 'circle'; id: string }
@@ -121,6 +123,12 @@ export interface ManualCircle extends ManualEntityMeta {
   sourcePointIds?: string[]
 }
 
+export interface ManualCut {
+  id: string
+  planePointIds: string[]
+  visible: boolean
+}
+
 export interface ManualSolid extends ManualEntityMeta {
   entityType: 'solid'
   solidType: 'box' | 'cube' | 'pyramid' | 'regularPyramid' | 'prism' | 'sphere' | 'cone' | 'cylinder'
@@ -131,6 +139,7 @@ export interface ManualSolid extends ManualEntityMeta {
   baseCircleId?: string
   centerPointId?: string
   apexPointId?: string
+  apexAnchorPointId?: string
   topPointId?: string
   radiusPointId?: string
   sphereRings?: {
@@ -138,6 +147,7 @@ export interface ManualSolid extends ManualEntityMeta {
     phi: number
     theta: number
   }[]
+  cuts?: ManualCut[]
 }
 
 export interface ManualDocument {
@@ -171,10 +181,12 @@ export interface ManualDraft {
   radius?: number
   centerPointId?: string | null
   apexPointId?: string | null
+  apexAnchorPointId?: string | null
   topPointId?: string | null
   radiusPointId?: string | null
   previewPosition?: Vec3 | null
   snapTarget?: ManualSnapTarget | null
+  targetId?: string | null
 }
 
 export interface ManualPointInfo {
@@ -680,8 +692,20 @@ export function resolvePointPositions(document: ManualDocument) {
             const basePoints = basePoly.pointIds.map((id) => resolvePoint(id, visiting))
             const c = centroid(basePoints)
             if (point.vertexIndex === 0) {
-              const hasApex = !!(solid.apexPointId && pointMap.has(solid.apexPointId))
               const normal = getPolygonNormal(basePoints)
+              if (solid.apexAnchorPointId) {
+                const anchorPt = resolvePoint(solid.apexAnchorPointId, visiting)
+                if (anchorPt) {
+                  positions[pointId] = [
+                    anchorPt[0] + normal[0] * (solid.height ?? 4),
+                    anchorPt[1] + normal[1] * (solid.height ?? 4),
+                    anchorPt[2] + normal[2] * (solid.height ?? 4)
+                  ]
+                  visiting.delete(pointId)
+                  return positions[pointId]
+                }
+              }
+              const hasApex = !!(solid.apexPointId && pointMap.has(solid.apexPointId))
               positions[pointId] = hasApex
                 ? resolvePoint(solid.apexPointId!, visiting)
                 : addVec3(c, scaleVec3(normal, solid.height ?? 4))
@@ -1441,9 +1465,21 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
   const segmentMap = new Map(document.segments.map((segment) => [segment.id, segment]))
   const polygonMap = new Map(document.polygons.map((polygon) => [polygon.id, polygon]))
 
+  // Build a quick lookup: solidId → solid for checking solid visibility
+  const solidMap = new Map(document.solids.map((s) => [s.id, s]))
+
   document.points.forEach((point) => {
     const resolved = pointPositions[point.id]
     if (!resolved) return
+
+    // If this is a solid vertex, inherit parent solid visibility
+    let effectiveVisible = point.visible
+    if (point.pointKind === 'solidVertex' && point.solidId) {
+      const parentSolid = solidMap.get(point.solidId)
+      if (parentSolid && parentSolid.visible === false) {
+        effectiveVisible = false
+      }
+    }
 
     displayPoints.push({
       id: point.id,
@@ -1454,7 +1490,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       selectable: point.selectable,
       generated: point.pointKind === 'solidVertex' ||
                  ['prism', 'box', 'cube', 'pyramid', 'regularPyramid'].includes(point.createdByTool ?? ''),
-      visible: point.visible,
+      visible: effectiveVisible,
     })
 
     pushGeometryPoint(geometry, point.label, resolved)
@@ -1493,6 +1529,13 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     }
   })
 
+  // Build a set of basePolygonIds that belong to hidden solids
+  const hiddenBasePolygonIds = new Set<string>(
+    document.solids
+      .filter((s) => s.visible === false && s.basePolygonId)
+      .map((s) => s.basePolygonId!)
+  )
+
   document.polygons.forEach((polygon) => {
     const polygonPoints = polygon.pointIds
       .map((pointId) => pointPositions[pointId])
@@ -1502,6 +1545,9 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       .filter(Boolean) as string[]
     if (polygonPoints.length < 3 || polygonLabels.length < 3) return
 
+    // If this polygon is the base of a hidden solid, inherit the solid's visibility
+    const effectivePolygonVisible = hiddenBasePolygonIds.has(polygon.id) ? false : polygon.visible
+
     displayPolygons.push({
       id: polygon.id,
       label: polygon.label,
@@ -1510,10 +1556,10 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       sourceId: polygon.id,
       fillColor: '#0f766e',
       opacity: 0.18,
-      visible: polygon.visible,
+      visible: effectivePolygonVisible,
     })
 
-    buildPolygonEdges(polygon.id, polygonLabels, polygonPoints, polygon.visible).forEach(
+    buildPolygonEdges(polygon.id, polygonLabels, polygonPoints, effectivePolygonVisible).forEach(
       (edge) => displaySegments.push(edge),
     )
     pushGeometryPlane(geometry, polygonLabels, '#0f766e', 0.14)
@@ -2440,6 +2486,57 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     })
   }
 
+  // Generate temporary intersection points (CS1, CS2...) for solid cuts
+  let intersectionCount = 1
+  document.solids.forEach((solid) => {
+    if (solid.visible && solid.cuts) {
+      solid.cuts.forEach((cut) => {
+        if (cut.visible) {
+          const planePts = cut.planePointIds.map(id => {
+            const pObj = document.points.find(p => p.label === id)
+            return pObj ? pointPositions[pObj.id] : null
+          }).filter(Boolean) as Vec3[]
+          if (planePts.length === 3) {
+            const intersect = computeSolidPlaneIntersection(solid, planePts, pointPositions, document)
+            if (intersect && !intersect.isCircle && intersect.polygon) {
+              intersect.polygon.forEach((pt) => {
+                // Check if any existing document point is at (or very near) this position
+                const EPS = 1e-4
+                const existingPt = document.points.find((p) => {
+                  const pos = pointPositions[p.id]
+                  if (!pos) return false
+                  return (
+                    Math.abs(pos[0] - pt[0]) < EPS &&
+                    Math.abs(pos[1] - pt[1]) < EPS &&
+                    Math.abs(pos[2] - pt[2]) < EPS
+                  )
+                })
+
+                if (existingPt) {
+                  // Reuse the existing point's label/id — do NOT push a duplicate displayPoint
+                  // (it's already in displayPoints from the document.points loop above)
+                  return
+                }
+
+                const label = `CS${intersectionCount++}`
+                displayPoints.push({
+                  id: `cs_point_${solid.id}_${cut.id}_${label}`,
+                  label,
+                  position: pt,
+                  sourceKind: 'point',
+                  sourceId: solid.id,
+                  selectable: false,
+                  generated: true,
+                  visible: solid.visible,
+                })
+              })
+            }
+          }
+        }
+      })
+    }
+  })
+
   return {
     geometry,
     pointPositions,
@@ -2452,5 +2549,337 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     polygonInfo,
     solidInfo,
   }
+}
+
+export function arePointsCollinear3D(p1: Vec3, p2: Vec3, p3: Vec3): boolean {
+  const u: Vec3 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]
+  const v: Vec3 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
+  const wx = u[1] * v[2] - u[2] * v[1]
+  const wy = u[2] * v[0] - u[0] * v[2]
+  const wz = u[0] * v[1] - u[1] * v[0]
+  const len = Math.sqrt(wx * wx + wy * wy + wz * wz)
+  return len < 1e-4
+}
+
+export function linePlaneIntersection3D(a: Vec3, b: Vec3, p0: Vec3, normal: Vec3): Vec3 | null {
+  const ab: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+  const denom = ab[0] * normal[0] + ab[1] * normal[1] + ab[2] * normal[2]
+  if (Math.abs(denom) < 1e-6) return null
+  
+  const ap0: Vec3 = [p0[0] - a[0], p0[1] - a[1], p0[2] - a[2]]
+  const numer = ap0[0] * normal[0] + ap0[1] * normal[1] + ap0[2] * normal[2]
+  const t = numer / denom
+  if (t >= -1e-5 && t <= 1 + 1e-5) {
+    return [
+      a[0] + t * ab[0],
+      a[1] + t * ab[1],
+      a[2] + t * ab[2]
+    ]
+  }
+  return null
+}
+
+export function sortPointsClockwise3D(pts: Vec3[], normal: Vec3): Vec3[] {
+  if (pts.length < 3) return pts
+  
+  const C: Vec3 = [0, 0, 0]
+  pts.forEach(p => {
+    C[0] += p[0]
+    C[1] += p[1]
+    C[2] += p[2]
+  })
+  C[0] /= pts.length
+  C[1] /= pts.length
+  C[2] /= pts.length
+  
+  const normLen = Math.sqrt(normal[0]*normal[0] + normal[1]*normal[1] + normal[2]*normal[2])
+  const norm: Vec3 = [normal[0]/normLen, normal[1]/normLen, normal[2]/normLen]
+  
+  let u: Vec3 = [1, 0, 0]
+  const dot = norm[0] * u[0] + norm[1] * u[1] + norm[2] * u[2]
+  if (Math.abs(dot) > 0.9) {
+    u = [0, 1, 0]
+  }
+  
+  const w: Vec3 = [
+    norm[1] * u[2] - norm[2] * u[1],
+    norm[2] * u[0] - norm[0] * u[2],
+    norm[0] * u[1] - norm[1] * u[0]
+  ]
+  const wLen = Math.sqrt(w[0]*w[0] + w[1]*w[1] + w[2]*w[2])
+  w[0] /= wLen; w[1] /= wLen; w[2] /= wLen
+  
+  u = [
+    w[1] * norm[2] - w[2] * norm[1],
+    w[2] * norm[0] - w[0] * norm[2],
+    w[0] * norm[1] - w[1] * norm[0]
+  ]
+  const uLen = Math.sqrt(u[0]*u[0] + u[1]*u[1] + u[2]*u[2])
+  u[0] /= uLen; u[1] /= uLen; u[2] /= uLen
+  
+  const withAngles = pts.map(p => {
+    const dx = p[0] - C[0]
+    const dy = p[1] - C[1]
+    const dz = p[2] - C[2]
+    const x = dx * u[0] + dy * u[1] + dz * u[2]
+    const y = dx * w[0] + dy * w[1] + dz * w[2]
+    const angle = Math.atan2(y, x)
+    return { p, angle }
+  })
+  
+  withAngles.sort((a, b) => a.angle - b.angle)
+  return withAngles.map(item => item.p)
+}
+
+export function computeSolidPlaneIntersection(
+  solid: ManualSolid,
+  planePointCoords: Vec3[],
+  resolvedPoints: Record<string, Vec3>,
+  document: ManualDocument
+): { isCircle: boolean; circleCenter?: Vec3; circleRadius?: number; normal?: Vec3; polygon?: Vec3[] } | null {
+  if (planePointCoords.length < 3) return null
+  const p0 = planePointCoords[0]
+  const p1 = planePointCoords[1]
+  const p2 = planePointCoords[2]
+  
+  const ux = p1[0] - p0[0], uy = p1[1] - p0[1], uz = p1[2] - p0[2]
+  const vx = p2[0] - p0[0], vy = p2[1] - p0[1], vz = p2[2] - p0[2]
+  
+  const nx = uy * vz - uz * vy
+  const ny = uz * vx - ux * vz
+  const nz = ux * vy - uy * vx
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz)
+  if (len < 1e-6) return null
+  const normal: Vec3 = [nx / len, ny / len, nz / len]
+
+  if (solid.solidType === 'sphere') {
+    if (!solid.centerPointId) return null
+    const center = resolvedPoints[solid.centerPointId]
+    if (!center) return null
+    const R = solid.radius ?? 3
+    
+    const dx = center[0] - p0[0]
+    const dy = center[1] - p0[1]
+    const dz = center[2] - p0[2]
+    const dist = dx * normal[0] + dy * normal[1] + dz * normal[2]
+    
+    if (Math.abs(dist) < R) {
+      const circleCenter: Vec3 = [
+        center[0] - dist * normal[0],
+        center[1] - dist * normal[1],
+        center[2] - dist * normal[2]
+      ]
+      const circleRadius = Math.sqrt(R * R - dist * dist)
+      return { isCircle: true, circleCenter, circleRadius, normal }
+    }
+    return null
+  }
+
+  const edges: [Vec3, Vec3][] = []
+  
+  if (solid.solidType === 'box' || solid.solidType === 'cube') {
+    const pts: Array<Vec3 | undefined> = new Array(8)
+    solid.cornerPointIds?.forEach((id, index) => {
+      if (index < pts.length) pts[index] = resolvedPoints[id]
+    })
+    document.points.forEach((point) => {
+      if (
+        point.pointKind === 'solidVertex' &&
+        point.solidId === solid.id &&
+        point.vertexIndex !== undefined &&
+        point.vertexIndex >= 0 &&
+        point.vertexIndex < pts.length
+      ) {
+        pts[point.vertexIndex] = resolvedPoints[point.id]
+      }
+    })
+
+    if (pts.every((point): point is Vec3 => !!point)) {
+      edges.push([pts[0], pts[1]], [pts[1], pts[2]], [pts[2], pts[3]], [pts[3], pts[0]])
+      edges.push([pts[4], pts[5]], [pts[5], pts[6]], [pts[6], pts[7]], [pts[7], pts[4]])
+      edges.push([pts[0], pts[4]], [pts[1], pts[5]], [pts[2], pts[6]], [pts[3], pts[7]])
+    }
+  } else if (solid.solidType === 'pyramid' || solid.solidType === 'regularPyramid') {
+    if (solid.basePolygonId) {
+      const basePoly = document.polygons.find(p => p.id === solid.basePolygonId)
+      const apexId = solid.apexPointId
+      if (basePoly && apexId) {
+        const basePts = basePoly.pointIds.map(id => resolvedPoints[id]).filter(Boolean) as Vec3[]
+        const apex = resolvedPoints[apexId]
+        if (basePts.length > 0 && apex) {
+          const k = basePts.length
+          for (let i = 0; i < k; i++) {
+            edges.push([basePts[i], basePts[(i + 1) % k]])
+            edges.push([basePts[i], apex])
+          }
+        }
+      }
+    }
+  } else if (solid.solidType === 'prism') {
+    if (solid.basePolygonId) {
+      const basePoly = document.polygons.find(p => p.id === solid.basePolygonId)
+      if (basePoly) {
+        const basePts = basePoly.pointIds.map(id => resolvedPoints[id]).filter(Boolean) as Vec3[]
+        const k = basePts.length
+        if (k > 0) {
+          const topPts: Vec3[] = new Array(k)
+          document.points.forEach(p => {
+            if (p.pointKind === 'solidVertex' && p.solidId === solid.id && p.vertexIndex !== undefined && p.vertexIndex >= k) {
+              const pos = resolvedPoints[p.id]
+              if (pos) topPts[p.vertexIndex - k] = pos
+            }
+          })
+          if (solid.topPointId) {
+            const pos = resolvedPoints[solid.topPointId]
+            if (pos) topPts[0] = pos
+          }
+          
+          const validTop = topPts.filter(Boolean)
+          if (validTop.length === k) {
+            for (let i = 0; i < k; i++) {
+              edges.push([basePts[i], basePts[(i + 1) % k]])
+              edges.push([topPts[i], topPts[(i + 1) % k]])
+              edges.push([basePts[i], topPts[i]])
+            }
+          }
+        }
+      }
+    }
+  } else if (solid.solidType === 'cone') {
+    let center: Vec3 | null = null
+    let r = solid.radius ?? 3
+    if (solid.baseCircleId) {
+      const circle = document.circles.find(c => c.id === solid.baseCircleId)
+      if (circle && circle.centerPointId) {
+        center = resolvedPoints[circle.centerPointId]
+        if (circle.radius) r = circle.radius
+      }
+    } else if (solid.centerPointId) {
+      center = resolvedPoints[solid.centerPointId]
+    }
+    const apex = solid.apexPointId ? resolvedPoints[solid.apexPointId] : null
+    
+    if (center && apex) {
+      const normalAxis: Vec3 = [apex[0] - center[0], apex[1] - center[1], apex[2] - center[2]]
+      const lenA = Math.sqrt(normalAxis[0]*normalAxis[0] + normalAxis[1]*normalAxis[1] + normalAxis[2]*normalAxis[2])
+      const normN: Vec3 = lenA > 0 ? [normalAxis[0]/lenA, normalAxis[1]/lenA, normalAxis[2]/lenA] : [0, 0, 1]
+      
+      let u: Vec3 = [1, 0, 0]
+      if (Math.abs(normN[0]) > 0.9) u = [0, 1, 0]
+      const w: Vec3 = [
+        normN[1]*u[2] - normN[2]*u[1],
+        normN[2]*u[0] - normN[0]*u[2],
+        normN[0]*u[1] - normN[1]*u[0]
+      ]
+      const wLen = Math.sqrt(w[0]*w[0] + w[1]*w[1] + w[2]*w[2])
+      w[0] /= wLen; w[1] /= wLen; w[2] /= wLen
+      u = [
+        w[1]*normN[2] - w[2]*normN[1],
+        w[2]*normN[0] - w[0]*normN[2],
+        w[0]*normN[1] - w[1]*normN[0]
+      ]
+      
+      const boundaryPts: Vec3[] = []
+      const divisions = 32
+      for (let i = 0; i < divisions; i++) {
+        const theta = (i / divisions) * Math.PI * 2
+        const cos = Math.cos(theta) * r
+        const sin = Math.sin(theta) * r
+        const pt: Vec3 = [
+          center[0] + cos * u[0] + sin * w[0],
+          center[1] + cos * u[1] + sin * w[1],
+          center[2] + cos * u[2] + sin * w[2]
+        ]
+        boundaryPts.push(pt)
+      }
+      for (let i = 0; i < divisions; i++) {
+        edges.push([boundaryPts[i], boundaryPts[(i + 1) % divisions]])
+        edges.push([boundaryPts[i], apex])
+      }
+    }
+  } else if (solid.solidType === 'cylinder') {
+    let centerBottom: Vec3 | null = null
+    let r = solid.radius ?? 3
+    if (solid.baseCircleId) {
+      const circle = document.circles.find(c => c.id === solid.baseCircleId)
+      if (circle && circle.centerPointId) {
+        centerBottom = resolvedPoints[circle.centerPointId]
+        if (circle.radius) r = circle.radius
+      }
+    } else if (solid.centerPointId) {
+      centerBottom = resolvedPoints[solid.centerPointId]
+    }
+    const centerTop = solid.apexPointId ? resolvedPoints[solid.apexPointId] : null
+    
+    if (centerBottom && centerTop) {
+      const normalAxis: Vec3 = [centerTop[0] - centerBottom[0], centerTop[1] - centerBottom[1], centerTop[2] - centerBottom[2]]
+      const lenA = Math.sqrt(normalAxis[0]*normalAxis[0] + normalAxis[1]*normalAxis[1] + normalAxis[2]*normalAxis[2])
+      const normN: Vec3 = lenA > 0 ? [normalAxis[0]/lenA, normalAxis[1]/lenA, normalAxis[2]/lenA] : [0, 0, 1]
+      
+      let u: Vec3 = [1, 0, 0]
+      if (Math.abs(normN[0]) > 0.9) u = [0, 1, 0]
+      const w: Vec3 = [
+        normN[1]*u[2] - normN[2]*u[1],
+        normN[2]*u[0] - normN[0]*u[2],
+        normN[0]*u[1] - normN[1]*u[0]
+      ]
+      const wLen = Math.sqrt(w[0]*w[0] + w[1]*w[1] + w[2]*w[2])
+      w[0] /= wLen; w[1] /= wLen; w[2] /= wLen
+      u = [
+        w[1]*normN[2] - w[2]*normN[1],
+        w[2]*normN[0] - w[0]*normN[2],
+        w[0]*normN[1] - w[1]*normN[0]
+      ]
+      
+      const bottomBoundaryPts: Vec3[] = []
+      const topBoundaryPts: Vec3[] = []
+      const divisions = 32
+      for (let i = 0; i < divisions; i++) {
+        const theta = (i / divisions) * Math.PI * 2
+        const cos = Math.cos(theta) * r
+        const sin = Math.sin(theta) * r
+        const bPt: Vec3 = [
+          centerBottom[0] + cos * u[0] + sin * w[0],
+          centerBottom[1] + cos * u[1] + sin * w[1],
+          centerBottom[2] + cos * u[2] + sin * w[2]
+        ]
+        const tPt: Vec3 = [
+          centerTop[0] + cos * u[0] + sin * w[0],
+          centerTop[1] + cos * u[1] + sin * w[1],
+          centerTop[2] + cos * u[2] + sin * w[2]
+        ]
+        bottomBoundaryPts.push(bPt)
+        topBoundaryPts.push(tPt)
+      }
+      for (let i = 0; i < divisions; i++) {
+        edges.push([bottomBoundaryPts[i], bottomBoundaryPts[(i + 1) % divisions]])
+        edges.push([topBoundaryPts[i], topBoundaryPts[(i + 1) % divisions]])
+        edges.push([bottomBoundaryPts[i], topBoundaryPts[i]])
+      }
+    }
+  }
+
+  const intersectPoints: Vec3[] = []
+  edges.forEach(([a, b]) => {
+    const pt = linePlaneIntersection3D(a, b, p0, normal)
+    if (pt) {
+      const exists = intersectPoints.some(existing => {
+        const dx = existing[0] - pt[0]
+        const dy = existing[1] - pt[1]
+        const dz = existing[2] - pt[2]
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) < 1e-3
+      })
+      if (!exists) {
+        intersectPoints.push(pt)
+      }
+    }
+  })
+
+  if (intersectPoints.length >= 3) {
+    const sorted = sortPointsClockwise3D(intersectPoints, normal)
+    return { isCircle: false, polygon: sorted, normal }
+  }
+  
+  return null
 }
 

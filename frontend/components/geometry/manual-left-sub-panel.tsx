@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { Sparkles, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -7,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useGeometry } from './geometry-context'
+import { arePointsCollinear3D } from './manual-editor'
 
 export function ManualLeftSubPanel() {
   const {
@@ -21,6 +23,7 @@ export function ManualLeftSubPanel() {
     createBox,
     createPyramid,
     createRegularPyramid,
+    createRightPyramid,
     createPrism,
     createSphere,
     createCone,
@@ -32,7 +35,14 @@ export function ManualLeftSubPanel() {
     createCentroid,
     createProjectionByPoints,
     manualDocument,
+    manualDerived,
+    createSolidCut,
   } = useGeometry()
+
+  const [slicePt1, setSlicePt1] = useState('')
+  const [slicePt2, setSlicePt2] = useState('')
+  const [slicePt3, setSlicePt3] = useState('')
+  const [sliceSolidId, setSliceSolidId] = useState('')
 
   const updateDraftHeight = (heightValue: string) => {
     const numericHeight = Number(heightValue)
@@ -68,7 +78,7 @@ export function ManualLeftSubPanel() {
     autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'box', pointIds: [], height: draftOperation.height })
   }
 
-  const handleSolidCreate = (type: 'pyramid' | 'prism' | 'regularPyramid') => {
+  const handleSolidCreate = (type: 'pyramid' | 'prism' | 'regularPyramid' | 'rightPyramid') => {
     const basePolygonId =
       draftOperation?.tool === type
         ? draftOperation.basePolygonId
@@ -78,16 +88,21 @@ export function ManualLeftSubPanel() {
     const height = draftOperation?.tool === type ? draftOperation.height ?? 4 : 4
     const apexPointId = draftOperation?.tool === type ? (draftOperation.apexPointId ?? undefined) : undefined
     const topPointId = draftOperation?.tool === type ? (draftOperation.topPointId ?? undefined) : undefined
+    const apexAnchorPointId = draftOperation?.tool === type ? (draftOperation.apexAnchorPointId ?? undefined) : undefined
 
     if (!basePolygonId) return
     
     let id: string | null = null
     if (type === 'pyramid') {
       if (height <= 0 && !apexPointId) return
-      id = createPyramid(basePolygonId, height, apexPointId === 'auto_generate' ? undefined : apexPointId)
+      id = createPyramid(basePolygonId, height, apexPointId)
     }
     if (type === 'regularPyramid') {
       id = createRegularPyramid(basePolygonId)
+    }
+    if (type === 'rightPyramid') {
+      if (!apexAnchorPointId || height <= 0) return
+      id = createRightPyramid(basePolygonId, apexAnchorPointId, height)
     }
     if (type === 'prism') {
       if (height <= 0 && !topPointId) return
@@ -257,6 +272,7 @@ export function ManualLeftSubPanel() {
             {activeTool === 'perpendicularLine' && '1. Click chọn một Điểm làm gốc.\n2. Click chọn một Đoạn thẳng làm chuẩn.\nĐường thẳng vuông góc sẽ tự động xuất hiện!'}
             {activeTool === 'pyramid' && '1. Click chọn một Đa giác làm mặt đáy.\n2. Thiết lập chiều cao, hoặc chọn một Điểm làm đỉnh (Apex).'}
             {activeTool === 'regularPyramid' && 'Click chọn một Đa giác làm mặt đáy. Hệ thống sẽ tự động dựng hình với đỉnh hình chóp nằm trên đường thẳng vuông góc với mặt đáy tại trọng tâm.'}
+            {activeTool === 'rightPyramid' && '1. Click chọn một Đa giác làm mặt đáy.\n2. Click chọn một Điểm thuộc mặt đáy để làm chân đường vuông góc.\n3. Nhập chiều cao và nhấn nút Tạo hình chóp vuông.'}
             {activeTool === 'cube' && 'Click chọn lần lượt 2 điểm (A, B) để tạo hình lập phương. Hệ thống sẽ tự động dựng hình với cạnh là khoảng cách giữa 2 điểm.'}
             {activeTool === 'prism' && (
               <span>
@@ -311,6 +327,7 @@ export function ManualLeftSubPanel() {
             {activeTool === 'sphere' && '1. Click chọn (hoặc tạo mới) một Điểm làm tâm.\n2. Nhập bán kính trong bảng Thiết lập bên dưới.'}
             {activeTool === 'cone' && '1. Click chọn duy nhất 1 Đường tròn ĐÃ CÓ trên canvas.\n2. Nhập chiều cao (mặc định là 5) và bấm nút "Tạo hình nón".'}
             {activeTool === 'cylinder' && '1. Click chọn duy nhất 1 Đường tròn ĐÃ CÓ trên canvas.\n2. Nhập chiều cao (mặc định là 5) và bấm nút "Tạo hình trụ".'}
+            {activeTool === 'slice' && '1. Nhập nhãn 3 điểm (VD: A, B, C) vào các ô Điểm 1, 2, 3.\n2. Chọn khối 3D cần cắt từ danh sách "Khối 3D cần cắt".\n3. Nhấn "Xác nhận lát cắt" để tạo thiết diện.'}
           </div>
         </CardContent>
       </Card>
@@ -322,6 +339,177 @@ export function ManualLeftSubPanel() {
         <Card className="gap-3 py-4 rounded-2xl shadow-sm border-border/80">
 
           <CardContent className="space-y-3 px-4">
+            {activeTool === 'slice' && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold">Điểm được tạo từ</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-muted-foreground font-semibold">Điểm 1</label>
+                      <Input
+                        className="h-8 text-xs font-medium uppercase"
+                        value={slicePt1}
+                        onChange={(e) => setSlicePt1(e.target.value)}
+                        placeholder="VD: A"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-muted-foreground font-semibold">Điểm 2</label>
+                      <Input
+                        className="h-8 text-xs font-medium uppercase"
+                        value={slicePt2}
+                        onChange={(e) => setSlicePt2(e.target.value)}
+                        placeholder="VD: B"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-muted-foreground font-semibold">Điểm 3</label>
+                      <Input
+                        className="h-8 text-xs font-medium uppercase"
+                        value={slicePt3}
+                        onChange={(e) => setSlicePt3(e.target.value)}
+                        placeholder="VD: C"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {(() => {
+                  if (!slicePt1 || !slicePt2 || !slicePt3) {
+                    return (
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        Vui lòng nhập đủ 3 điểm để tạo mặt phẳng
+                      </p>
+                    )
+                  }
+                  
+                  const p1Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt1.toUpperCase())
+                  const p2Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt2.toUpperCase())
+                  const p3Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt3.toUpperCase())
+
+                  if (!p1Obj || !p2Obj || !p3Obj) {
+                    const missing = []
+                    if (!p1Obj) missing.push(slicePt1.toUpperCase())
+                    if (!p2Obj) missing.push(slicePt2.toUpperCase())
+                    if (!p3Obj) missing.push(slicePt3.toUpperCase())
+                    return (
+                      <p className="text-[11px] font-medium text-red-500">
+                        Không tìm thấy điểm: {missing.join(', ')}
+                      </p>
+                    )
+                  }
+
+                  const p1Coords = manualDerived.pointPositions[p1Obj.id]
+                  const p2Coords = manualDerived.pointPositions[p2Obj.id]
+                  const p3Coords = manualDerived.pointPositions[p3Obj.id]
+
+                  if (!p1Coords || !p2Coords || !p3Coords) {
+                    return (
+                      <p className="text-[11px] font-medium text-red-500">
+                        Tọa độ các điểm chưa sẵn sàng
+                      </p>
+                    )
+                  }
+
+                  const collinear = arePointsCollinear3D(p1Coords, p2Coords, p3Coords)
+                  if (collinear) {
+                    return (
+                      <p className="text-[11px] font-medium text-red-500">
+                        3 điểm thẳng hàng, không thể tạo mặt phẳng
+                      </p>
+                    )
+                  }
+
+                  return (
+                    <p className="text-[11px] font-medium text-green-600 dark:text-green-400">
+                      3 điểm này có thể tạo 1 mặt phẳng
+                    </p>
+                  )
+                })()}
+
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-xs font-semibold">Khối 3D cần cắt</p>
+                  <select
+                    className="w-full h-8 px-2 text-xs rounded-md border border-input bg-background font-medium focus:outline-none focus:ring-1 focus:ring-ring"
+                    value={sliceSolidId}
+                    onChange={(e) => setSliceSolidId(e.target.value)}
+                  >
+                    <option value="">-- Chọn hình khối 3D --</option>
+                    {manualDocument.solids.map((solid) => {
+                      const name = solid.label || solid.id.slice(-4)
+                      const typeLabel = solid.solidType === 'box' ? 'Hình hộp' 
+                                      : solid.solidType === 'cube' ? 'Lập phương'
+                                      : solid.solidType === 'pyramid' ? 'Hình chóp'
+                                      : solid.solidType === 'regularPyramid' ? 'Chóp đều'
+                                      : solid.solidType === 'prism' ? 'Lăng trụ'
+                                      : solid.solidType === 'sphere' ? 'Hình cầu'
+                                      : solid.solidType === 'cone' ? 'Hình nón'
+                                      : 'Hình trụ'
+                      return (
+                        <option key={solid.id} value={solid.id}>
+                          {typeLabel} ({name})
+                        </option>
+                      )
+                    })}
+                  </select>
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      setSlicePt1('')
+                      setSlicePt2('')
+                      setSlicePt3('')
+                      setSliceSolidId('')
+                    }}
+                  >
+                    Reset
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-primary text-primary-foreground font-semibold"
+                    onClick={() => {
+                      const p1Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt1.toUpperCase())
+                      const p2Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt2.toUpperCase())
+                      const p3Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt3.toUpperCase())
+
+                      if (!p1Obj || !p2Obj || !p3Obj || !sliceSolidId) return
+
+                      createSolidCut(sliceSolidId, [p1Obj.label, p2Obj.label, p3Obj.label])
+                      toast.success('Đã tạo lát cắt thành công!')
+                      
+                      setSlicePt1('')
+                      setSlicePt2('')
+                      setSlicePt3('')
+                      setSliceSolidId('')
+                      if (autoRevertToSelect) {
+                        setActiveTool('select')
+                      }
+                    }}
+                    disabled={(() => {
+                      if (!slicePt1 || !slicePt2 || !slicePt3 || !sliceSolidId) return true
+                      const p1Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt1.toUpperCase())
+                      const p2Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt2.toUpperCase())
+                      const p3Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt3.toUpperCase())
+                      if (!p1Obj || !p2Obj || !p3Obj) return true
+                      
+                      const p1Coords = manualDerived.pointPositions[p1Obj.id]
+                      const p2Coords = manualDerived.pointPositions[p2Obj.id]
+                      const p3Coords = manualDerived.pointPositions[p3Obj.id]
+                      if (!p1Coords || !p2Coords || !p3Coords) return true
+                      
+                      return arePointsCollinear3D(p1Coords, p2Coords, p3Coords)
+                    })()}
+                  >
+                    Xác nhận lát cắt
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {draftOperation?.tool === 'polygon' && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -375,11 +563,12 @@ export function ManualLeftSubPanel() {
               </div>
             )}
 
-            {(activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid') && (
+            {(activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid' || activeTool === 'rightPyramid') && (
               <div className="space-y-3">
                 <p className="text-xs font-semibold">
                   {activeTool === 'pyramid' && 'Thông tin chóp'}
                   {activeTool === 'regularPyramid' && 'Thông tin chóp đều'}
+                  {activeTool === 'rightPyramid' && 'Thông tin chóp vuông'}
                   {activeTool === 'prism' && 'Thông tin lăng trụ'}
                 </p>
                 
@@ -427,10 +616,47 @@ export function ManualLeftSubPanel() {
                   </div>
                 )}
 
+                {/* Select Apex Anchor Point for Right Pyramid */}
+                {activeTool === 'rightPyramid' && (
+                  <div className="space-y-2">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Chọn điểm chân đường cao</label>
+                      <select
+                        value={draftOperation?.apexAnchorPointId || ''}
+                        onChange={(e) => {
+                          if (draftOperation) {
+                            setDraftOperation({
+                              ...draftOperation,
+                              apexAnchorPointId: e.target.value || null,
+                            })
+                          }
+                        }}
+                        className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        <option value="">-- Chọn một điểm làm chân đường cao --</option>
+                        {manualDocument.points
+                          .filter(pt => {
+                            const basePoly = manualDocument.polygons.find(p => p.id === draftOperation?.basePolygonId);
+                            return basePoly?.pointIds.includes(pt.id);
+                          })
+                          .map((pt) => (
+                          <option key={pt.id} value={pt.id}>
+                            {pt.label} ({pt.position.map(p => p.toFixed(1)).join(', ')})
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-muted-foreground">
+                        * Hoặc click chọn một điểm có sẵn trên canvas.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Height Form */}
                 {((activeTool === 'pyramid' && (!draftOperation?.apexPointId || draftOperation?.apexPointId === 'auto_generate')) ||
                   (activeTool === 'prism' && (!draftOperation?.topPointId || draftOperation?.topPointId === 'auto_generate')) || 
-                  (activeTool === 'regularPyramid')) && (
+                  (activeTool === 'regularPyramid') ||
+                  (activeTool === 'rightPyramid')) && (
                   <div className="space-y-2">
                       <div className="space-y-1 mt-2">
                         <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
@@ -450,14 +676,15 @@ export function ManualLeftSubPanel() {
                 <Button
                   size="sm"
                   className="w-full rounded-xl h-8 text-xs font-semibold mt-4"
-                  onClick={() => handleSolidCreate(activeTool as 'pyramid' | 'prism' | 'regularPyramid')}
+                  onClick={() => handleSolidCreate(activeTool as 'pyramid' | 'prism' | 'regularPyramid' | 'rightPyramid')}
                   disabled={
                     !draftOperation?.basePolygonId ||
                     (activeTool === 'pyramid' && (!draftOperation?.apexPointId || draftOperation?.apexPointId === 'auto_generate') && (!draftOperation?.height || draftOperation.height <= 0)) ||
-                    (activeTool === 'prism' && (!draftOperation?.topPointId || draftOperation?.topPointId === 'auto_generate') && (!draftOperation?.height || draftOperation.height <= 0))
+                    (activeTool === 'prism' && (!draftOperation?.topPointId || draftOperation?.topPointId === 'auto_generate') && (!draftOperation?.height || draftOperation.height <= 0)) ||
+                    (activeTool === 'rightPyramid' && (!draftOperation?.apexAnchorPointId || !draftOperation?.height || draftOperation.height <= 0))
                   }
                 >
-                  {activeTool === 'pyramid' ? 'Tạo hình chóp' : activeTool === 'regularPyramid' ? 'Tạo hình chóp đều' : 'Tạo lăng trụ'}
+                  {activeTool === 'pyramid' ? 'Tạo hình chóp' : activeTool === 'regularPyramid' ? 'Tạo hình chóp đều' : activeTool === 'rightPyramid' ? 'Tạo hình chóp vuông' : 'Tạo lăng trụ'}
                 </Button>
               </div>
             )}
@@ -1087,7 +1314,7 @@ export function ManualLeftSubPanel() {
               </div>
             )}
 
-            {draftOperation && draftOperation.pointIds && (
+            {draftOperation && draftOperation.pointIds && activeTool !== 'slice' && (
               <div className="space-y-2 pt-3 border-t border-border/60">
                 <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
                   Chọn điểm từ danh sách

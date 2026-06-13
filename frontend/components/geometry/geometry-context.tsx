@@ -17,6 +17,7 @@ import {
   ManualPolygon,
   ManualSegment,
   ManualSolid,
+  ManualCut,
   nextPointLabel,
   resolvePointPositions,
   Vec3,
@@ -189,6 +190,7 @@ interface GeometryContextType {
   updatePointT: (pointId: string, t: number) => void
   updateSegmentLength: (segmentId: string, newLength: number) => void
   updateSolidHeight: (solidId: string, newHeight: number) => void
+  updateManualSolidCuts: (solidId: string, cuts: ManualCut[]) => void
   updateCircleRadius: (circleId: string, newRadius: number) => void
   createCircleAngleDependentPoint: (sourcePointId: string, customAngleRad?: number) => void
   updatePointAngle: (pointId: string, angle: number) => void
@@ -208,6 +210,7 @@ interface GeometryContextType {
   createCube: (pointIdA: string, pointIdB: string) => string | null
   createPyramid: (basePolygonId: string, height: number, apexPointId?: string) => string | null
   createRegularPyramid: (basePolygonId: string) => string | null
+  createRightPyramid: (basePolygonId: string, apexAnchorPointId: string, height: number) => string | null
   createPrism: (basePolygonId: string, height: number, topPointId?: string) => string | null
   createSphere: (centerPointId: string, radius: number, radiusPointId?: string) => string | null
   createCone: (centerPointId: string, radius: number, height: number, baseCircleId?: string) => string | null
@@ -248,6 +251,7 @@ interface GeometryContextType {
   removeSphereRing: (solidId: string, ringId: string) => void
   updateSphereRingOrientation: (solidId: string, ringId: string, phi: number, theta: number) => void
   createSphereAngleDependentPoint: (sourcePointId: string, customAngleRad?: number) => void
+  createSolidCut: (solidId: string, pointLabels: string[]) => void
 }
 
 const isPointCoplanarWithPolygon = (pointId: string, polygonId: string, doc: ManualDocument) => {
@@ -1028,9 +1032,32 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         const point = current.points.find((candidate) => candidate.id === pointId)
         if (!point || point.locked) return current
 
+        const linkedPyramid = current.solids.find((s) => s.solidType === 'pyramid' && s.apexPointId === pointId)
+        if (linkedPyramid) {
+          const resolved = resolvePointPositions(current)
+          const basePolygon = current.polygons.find((p) => p.id === linkedPyramid.basePolygonId)
+          let nextHeight = linkedPyramid.height ?? 4
+          if (basePolygon) {
+            const basePoints = basePolygon.pointIds.map((id) => resolved[id]).filter(Boolean) as Vec3[]
+            if (basePoints.length > 0) {
+              const baseCenter = centroid(basePoints)
+              const baseNormal = getPolygonNormal(basePoints)
+              nextHeight = Math.max(0.1, dotVec3(subVec3(position, baseCenter), baseNormal))
+            }
+          }
+          return {
+            ...current,
+            points: mapEntities(current.points, pointId, (candidate) => ({
+              ...candidate,
+              position: position
+            })),
+            solids: current.solids.map((s) => s.id === linkedPyramid.id ? { ...s, height: nextHeight } : s)
+          }
+        }
+
         const linkedTopSolid = current.solids.find((s) => 
           (s.solidType === 'prism' && s.topPointId === pointId) ||
-          ((s.solidType === 'pyramid' || s.solidType === 'regularPyramid' || s.solidType === 'cone' || s.solidType === 'cylinder') && s.apexPointId === pointId)
+          ((s.solidType === 'regularPyramid' || s.solidType === 'cone' || s.solidType === 'cylinder' || (s.solidType === 'pyramid' && s.apexAnchorPointId)) && s.apexPointId === pointId)
         )
         if (linkedTopSolid) {
           const resolved = resolvePointPositions(current)
@@ -1061,7 +1088,11 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
                  if (basePolygon) {
                    const basePoints = basePolygon.pointIds.map((id) => resolved[id]).filter(Boolean) as Vec3[]
                    if (basePoints.length > 0) {
-                     center = centroid(basePoints)
+                     if (linkedTopSolid.apexAnchorPointId && resolved[linkedTopSolid.apexAnchorPointId]) {
+                       center = resolved[linkedTopSolid.apexAnchorPointId]
+                     } else {
+                       center = centroid(basePoints)
+                     }
                      normal = getPolygonNormal(basePoints)
                    }
                  }
@@ -1852,6 +1883,21 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     [commitManualDocument],
   )
 
+  const updateManualSolidCuts = useCallback(
+    (solidId: string, cuts: ManualCut[]) => {
+      commitManualDocument((current) => {
+        const solid = current.solids.find((s) => s.id === solidId)
+        if (!solid) return current
+        const nextSolids = current.solids.map((s) => (s.id === solidId ? { ...s, cuts } : s))
+        return {
+          ...current,
+          solids: nextSolids,
+        }
+      })
+    },
+    [commitManualDocument]
+  )
+
   const updateSolidHeight = useCallback(
     (solidId: string, newHeight: number) => {
       commitManualDocument((current) => {
@@ -1996,6 +2042,27 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         solids: mapEntities(current.solids, solidId, (s) => ({
           ...s,
           sphereRings: s.sphereRings?.map((r) => r.id === ringId ? { ...r, phi, theta } : r) || []
+        }))
+      }
+    })
+  }, [commitManualDocument])
+
+  const createSolidCut = useCallback((solidId: string, pointLabels: string[]) => {
+    commitManualDocument((current) => {
+      const solid = current.solids.find((s) => s.id === solidId)
+      if (!solid) return current
+      
+      const newCut = {
+        id: createEntityId('solidCut'),
+        planePointIds: [...pointLabels],
+        visible: true,
+      }
+      
+      return {
+        ...current,
+        solids: mapEntities(current.solids, solidId, (s) => ({
+          ...s,
+          cuts: [...(s.cuts || []), newCut]
         }))
       }
     })
@@ -3499,7 +3566,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       let finalApexPointId = apexPointId
       let generatedPoints: ManualPoint[] = []
 
-      if (apexPointId === 'auto_generate') {
+      if (apexPointId === 'auto_generate' || !apexPointId) {
         const apexId = createEntityId('point')
         finalApexPointId = apexId
 
@@ -3518,9 +3585,20 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           targetPos = [cx / N, cy / N, cz / N + (height > 0 ? height : 4)]
         }
 
+        const usedLabels = new Set(manualDocument.points.map((p) => p.label))
+        let apexLabel = 'S'
+        if (usedLabels.has('S')) {
+          for (let i = 0; i < 100; i++) {
+            if (!usedLabels.has(`S${i}`)) {
+              apexLabel = `S${i}`
+              break
+            }
+          }
+        }
+
         const ptS: ManualPoint = {
           id: apexId,
-          label: 'S',
+          label: apexLabel,
           entityType: 'point',
           pointKind: 'free',
           position: targetPos,
@@ -3640,6 +3718,69 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       return solidId
     },
     [commitManualDocument, saveManualState],
+  )
+
+  const createRightPyramid = useCallback(
+    (basePolygonId: string, apexAnchorPointId: string, height: number) => {
+      if (height <= 0) return null
+      
+      saveManualState()
+
+      const solidId = createEntityId('solid')
+      const apexId = createEntityId('point')
+
+      const usedLabels = new Set(manualDocument.points.map((p) => p.label))
+      let apexLabel = 'S'
+      if (usedLabels.has('S')) {
+        for (let i = 0; i < 100; i++) {
+          if (!usedLabels.has(`S${i}`)) {
+            apexLabel = `S${i}`
+            break
+          }
+        }
+      }
+
+      // Point is solidVertex index 0 (apex of the pyramid)
+      const ptS: ManualPoint = {
+        id: apexId,
+        label: apexLabel,
+        entityType: 'point',
+        position: [0, 0, 0],
+        pointKind: 'solidVertex', // Dependent point!
+        solidId: solidId,
+        vertexIndex: 0,
+        createdByTool: 'rightPyramid',
+        dependsOn: [apexAnchorPointId],
+        locked: false,
+        visible: true,
+        selectable: true,
+      }
+
+      const solid: ManualSolid = {
+        id: solidId,
+        label: `Chóp ${manualDocument.solids.length + 1}`,
+        entityType: 'solid',
+        solidType: 'pyramid',
+        basePolygonId,
+        height,
+        apexPointId: apexId,
+        apexAnchorPointId, // Custom anchor point!
+        createdByTool: 'rightPyramid',
+        dependsOn: [basePolygonId, apexAnchorPointId, apexId],
+        locked: false,
+        visible: true,
+        selectable: true,
+      }
+
+      commitManualDocument((current) => ({
+        ...current,
+        points: [...current.points, ptS],
+        solids: [...current.solids, solid],
+      }))
+      setManualSelection({ kind: 'solid', id: solidId })
+      return solidId
+    },
+    [commitManualDocument, manualDocument, saveManualState],
   )
 
   const createPrism = useCallback(
@@ -4152,6 +4293,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updatePointT,
       updateSegmentLength,
       updateSolidHeight,
+      updateManualSolidCuts,
       updateCircleRadius,
       createCircleAngleDependentPoint,
       createSphereAngleDependentPoint,
@@ -4162,6 +4304,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       createCube,
       createPyramid,
       createRegularPyramid,
+      createRightPyramid,
       createPrism,
       createSphere,
       createCone,
@@ -4187,6 +4330,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       addSphereRing,
       removeSphereRing,
       updateSphereRingOrientation,
+      createSolidCut,
     }),
     [
       activeTool,
@@ -4201,6 +4345,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       createPrism,
       createPyramid,
       createRegularPyramid,
+      createRightPyramid,
       createSegment,
       createSphere,
       createCone,
@@ -4245,6 +4390,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updatePointT,
       updateSegmentLength,
       updateSolidHeight,
+      updateManualSolidCuts,
       updateCircleRadius,
       createCircleAngleDependentPoint,
       createSphereAngleDependentPoint,
@@ -4264,6 +4410,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       addSphereRing,
       removeSphereRing,
       updateSphereRingOrientation,
+      createSolidCut,
     ],
   )
 

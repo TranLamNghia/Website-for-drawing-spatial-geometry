@@ -73,10 +73,12 @@ const TOOLS: Array<{
   { id: 'cube', label: 'Hình lập phương', icon: Box },
   { id: 'pyramid', label: 'Hình chóp', icon: Pyramid },
   { id: 'regularPyramid', label: 'Hình chóp đều', icon: Pyramid },
+  { id: 'rightPyramid', label: 'Hình chóp vuông', icon: Pyramid },
   { id: 'prism', label: 'Lăng trụ', icon: Box },
   { id: 'sphere', label: 'Hình cầu', icon: Circle },
   { id: 'cone', label: 'Hình nón', icon: Cone },
   { id: 'cylinder', label: 'Hình trụ', icon: Cylinder },
+  { id: 'slice', label: 'Lát cắt hình 3D', icon: Scissors },
 ]
 
 const CATEGORIES = [
@@ -103,7 +105,7 @@ const CATEGORIES = [
   {
     id: 'solids',
     label: 'Hình khối 3D',
-    tools: ['box', 'cube', 'pyramid', 'regularPyramid', 'prism', 'sphere', 'cone', 'cylinder']
+    tools: ['box', 'cube', 'pyramid', 'regularPyramid', 'rightPyramid', 'prism', 'sphere', 'cone', 'cylinder', 'slice']
   }
 ]
 
@@ -210,11 +212,12 @@ export function ManualLeftPanel({
       return
     }
 
-    if (tool === 'pyramid' || tool === 'prism' || tool === 'regularPyramid') {
+    if (tool === 'pyramid' || tool === 'prism' || tool === 'regularPyramid' || tool === 'rightPyramid') {
       setDraftOperation({
         tool,
         basePolygonId: manualSelection?.kind === 'polygon' ? manualSelection.id : null,
         height: 4,
+        apexAnchorPointId: manualSelection?.kind === 'point' ? manualSelection.id : null,
       })
       return
     }
@@ -278,6 +281,11 @@ export function ManualLeftPanel({
 
     if (tool === 'circle') {
       setDraftOperation({ tool: 'circle', pointIds: [], height: 3, radius: 3 }) // default circleKind is height: 3 (centerPoint / Tâm + Điểm) for 2-click process!
+      return
+    }
+
+    if (tool === 'slice') {
+      setDraftOperation({ tool: 'slice', pointIds: [], targetId: '' })
       return
     }
 

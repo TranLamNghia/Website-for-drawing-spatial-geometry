@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Circle, Pentagon, ChevronRight, PencilRuler, Pyramid, Save, Trash2, Triangle, Square } from 'lucide-react'
+import { Box, Circle, Pentagon, ChevronRight, PencilRuler, Pyramid, Save, Trash2, Triangle, Square, Eye, EyeOff, GripVertical, Layers, Scissors } from 'lucide-react'
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useProjectStore } from '@/hooks/use-project-store'
-import { useGeometry } from './geometry-context'
+import { useGeometry, SectionData } from './geometry-context'
 import {
   ManualPoint,
   ManualPolygon,
@@ -14,6 +15,7 @@ import {
   ManualCircle,
   serializeManualProject,
 } from './manual-editor'
+import { ChunkTree } from './right-sidebar'
 
 function formatCoord(value: number) {
   if (Number.isNaN(value) || !Number.isFinite(value)) return '0'
@@ -24,7 +26,11 @@ function getSolidDisplayName(
   solid: ManualSolid,
   pointPositions: Record<string, [number, number, number]>,
 ) {
-  if (solid.solidType === 'pyramid') return 'Ch\u00f3p'
+  if (solid.solidType === 'pyramid') {
+    if (solid.createdByTool === 'rightPyramid') return 'Ch\u00f3p vu\u00f4ng'
+    return 'Ch\u00f3p'
+  }
+  if (solid.solidType === 'regularPyramid') return 'Ch\u00f3p \u0111\u1ec1u'
   if (solid.solidType === 'prism') return 'L\u0103ng tr\u1ee5'
 
   if (!solid.cornerPointIds) return 'H\u00ecnh h\u1ed9p'
@@ -70,6 +76,7 @@ function PointRow({
   onUpdateAngle,
   angleVal,
   onAddDependentPoint,
+  onToggleVisibility,
 }: {
   point: ManualPoint
   coords: [number, number, number]
@@ -83,6 +90,7 @@ function PointRow({
   onUpdateAngle?: (val: number) => void
   angleVal?: number
   onAddDependentPoint?: () => void
+  onToggleVisibility: () => void
 }) {
   const [cx, cy, cz] = coords
   const [isFocused, setIsFocused] = useState(false)
@@ -130,7 +138,7 @@ function PointRow({
           : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
       }`}
     >
-      <div className="grid grid-cols-[80px_34px_minmax(0,1fr)_36px] items-center gap-2.5 px-2.5 py-2">
+      <div className="grid grid-cols-[80px_34px_minmax(0,1fr)_68px] items-center gap-2 px-2.5 py-2">
         <button onClick={onSelect} className="text-left">
           <TypePill icon={<Circle size={13} fill="currentColor" />} label={'\u0110i\u1ec3m'} />
         </button>
@@ -175,16 +183,28 @@ function PointRow({
           />
         </div>
 
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
-          className="p-1 rounded-md text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
-          title="Xóa điểm"
-        >
-          <Trash2 size={12} />
-        </button>
+        <div className="flex items-center justify-end gap-1.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleVisibility()
+            }}
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            title={point.visible ? 'Ẩn điểm' : 'Hiện điểm'}
+          >
+            {point.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            className="p-1 rounded-md text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+            title="Xóa điểm"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
       </div>
 
       {selected && onUpdateT !== undefined && (
@@ -268,6 +288,7 @@ function ObjectRow({
   onAddRing,
   onUpdateRing,
   onRemoveRing,
+  onToggleVisibility,
 }: {
   typeLabel: string
   icon: React.ReactNode
@@ -282,6 +303,7 @@ function ObjectRow({
   onAddRing?: () => void
   onUpdateRing?: (ringId: string, phi: number, theta: number) => void
   onRemoveRing?: (ringId: string) => void
+  onToggleVisibility: () => void
 }) {
   const [heightDraft, setHeightDraft] = useState(heightVal ? heightVal.toString() : '')
 
@@ -300,7 +322,7 @@ function ObjectRow({
 
   return (
     <div
-      className={`grid grid-cols-[80px_88px_minmax(0,1fr)_36px] items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-all ${
+      className={`grid grid-cols-[80px_88px_minmax(0,1fr)_72px] items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-all ${
         selected
           ? 'border-primary/35 bg-primary/10 shadow-sm'
           : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
@@ -325,14 +347,28 @@ function ObjectRow({
         ))}
       </button>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-lg border border-border/70"
-        onClick={onDelete}
-      >
-        <Trash2 size={14} />
-      </Button>
+      <div className="flex items-center justify-end gap-1.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleVisibility()
+          }}
+          title={solid?.visible ? 'Ẩn hình 3D' : 'Hiện hình 3D'}
+        >
+          {solid?.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+          onClick={onDelete}
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
 
       {isEditable && (
         <div className="col-span-full mt-1.5 flex flex-wrap items-center gap-2 rounded bg-background/50 p-2 shadow-inner">
@@ -454,6 +490,7 @@ function SegmentRow({
   onDelete,
   onUpdateLength,
   lengthVal,
+  onToggleVisibility,
 }: {
   segment: ManualSegment
   typeLabel: string
@@ -463,6 +500,7 @@ function SegmentRow({
   onDelete: () => void
   onUpdateLength?: (newLength: number) => void
   lengthVal?: number
+  onToggleVisibility: () => void
 }) {
   const [lengthDraft, setLengthDraft] = useState(lengthVal ? lengthVal.toString() : '')
 
@@ -485,8 +523,8 @@ function SegmentRow({
     <div
       className={`grid ${
         isEditable
-          ? 'grid-cols-[80px_60px_minmax(0,1fr)_80px_36px]'
-          : 'grid-cols-[80px_88px_minmax(0,1fr)_36px]'
+          ? 'grid-cols-[80px_60px_minmax(0,1fr)_80px_72px]'
+          : 'grid-cols-[80px_88px_minmax(0,1fr)_72px]'
       } items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${
         selected
           ? 'border-primary/35 bg-primary/10 shadow-sm'
@@ -525,14 +563,28 @@ function SegmentRow({
         </div>
       )}
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-lg border border-border/70"
-        onClick={onDelete}
-      >
-        <Trash2 size={14} />
-      </Button>
+      <div className="flex items-center justify-end gap-1.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleVisibility()
+          }}
+          title={segment.visible ? 'Ẩn đoạn thẳng' : 'Hiện đoạn thẳng'}
+        >
+          {segment.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+          onClick={onDelete}
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
     </div>
   )
 }
@@ -545,6 +597,7 @@ function CircleRow({
   onDelete,
   onUpdateRadius,
   radiusVal,
+  onToggleVisibility,
 }: {
   circle: any
   desc: string
@@ -553,6 +606,7 @@ function CircleRow({
   onDelete: () => void
   onUpdateRadius?: (newRadius: number) => void
   radiusVal?: number
+  onToggleVisibility: () => void
 }) {
   const [radiusDraft, setRadiusDraft] = useState(radiusVal ? radiusVal.toString() : '')
 
@@ -575,8 +629,8 @@ function CircleRow({
     <div
       className={`grid ${
         isEditable
-          ? 'grid-cols-[80px_76px_minmax(0,1fr)_80px_36px]'
-          : 'grid-cols-[80px_88px_minmax(0,1fr)_36px]'
+          ? 'grid-cols-[80px_76px_minmax(0,1fr)_80px_72px]'
+          : 'grid-cols-[80px_88px_minmax(0,1fr)_72px]'
       } items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${
         selected
           ? 'border-primary/35 bg-primary/10 shadow-sm'
@@ -608,14 +662,28 @@ function CircleRow({
         </div>
       )}
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-lg border border-border/70"
-        onClick={onDelete}
-      >
-        <Trash2 size={14} />
-      </Button>
+      <div className="flex items-center justify-end gap-1.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleVisibility()
+          }}
+          title={circle.visible ? 'Ẩn đường tròn' : 'Hiện đường tròn'}
+        >
+          {circle.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+          onClick={onDelete}
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
     </div>
   )
 }
@@ -630,6 +698,7 @@ function PolygonRow({
   onSelect,
   onDelete,
   isSpecialShape,
+  onToggleVisibility,
 }: {
   polygon: ManualPolygon
   typeLabel: string
@@ -639,6 +708,7 @@ function PolygonRow({
   onSelect: () => void
   onDelete: () => void
   isSpecialShape: boolean
+  onToggleVisibility: () => void
 }) {
   return (
     <div
@@ -648,7 +718,7 @@ function PolygonRow({
           : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
       }`}
     >
-      <div className="grid grid-cols-[80px_88px_minmax(0,1fr)_36px] items-center gap-2.5">
+      <div className="grid grid-cols-[80px_88px_minmax(0,1fr)_72px] items-center gap-2.5">
         <button onClick={onSelect} className="text-left">
           <TypePill icon={icon} label={typeLabel} />
         </button>
@@ -668,14 +738,28 @@ function PolygonRow({
           ))}
         </button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-lg border border-border/70"
-          onClick={onDelete}
-        >
-          <Trash2 size={14} />
-        </Button>
+        <div className="flex items-center justify-end gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleVisibility()
+            }}
+            title={polygon.visible ? 'Ẩn đa giác' : 'Hiện đa giác'}
+          >
+            {polygon.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+            onClick={onDelete}
+          >
+            <Trash2 size={14} />
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -693,6 +777,7 @@ export function ManualRightPanel() {
     renameManualEntity,
     updateSegmentLength,
     updateSolidHeight,
+    updateManualSolidCuts,
     updateCircleRadius,
     updatePointT,
     updatePointAngle,
@@ -704,17 +789,87 @@ export function ManualRightPanel() {
     showAxes,
     showGrid,
     showLabels,
+    bitmaskVisibility,
+    setBitmaskVisibility,
+    toggleManualVisibility,
   } = useGeometry()
   const { addProject } = useProjectStore()
+
+  const solidsWithCuts = useMemo(() => {
+    return manualDocument.solids.filter(s => s.cuts && s.cuts.some(c => c.visible))
+  }, [manualDocument.solids])
 
   const [projectName, setProjectName] = useState('Bản vẽ tự vẽ')
   const [isSaving, setIsSaving] = useState(false)
 
+  const migrateVisibility = (solidId: string, oldCuts: import('./manual-editor').ManualCut[], newCuts: import('./manual-editor').ManualCut[]) => {
+    const next: Record<string, boolean> = { ...bitmaskVisibility }
+    const numNew = newCuts.length
+    if (numNew === 0) return next
+
+    const numOld = oldCuts.length
+    const numBits = 1 << numNew
+
+    for (let i = 0; i < numBits; i++) {
+      const bitStr = i.toString(2).padStart(numNew, '0')
+      const key = `${solidId}_${bitStr}`
+
+      if (numOld === 0) {
+        next[key] = true
+        continue
+      }
+
+      let compatibleOldBits: string[] = []
+      for (let j = 0; j < (1 << numOld); j++) {
+        const oldBitStr = j.toString(2).padStart(numOld, '0')
+        let match = true
+        for (let k = 0; k < numNew; k++) {
+          const planeId = newCuts[k].id
+          const oldIdx = oldCuts.findIndex(c => c.id === planeId)
+          if (oldIdx !== -1) {
+            if (oldBitStr[oldIdx] !== bitStr[k]) {
+              match = false
+              break
+            }
+          }
+        }
+        if (match) compatibleOldBits.push(oldBitStr)
+      }
+
+      if (compatibleOldBits.length === 0) {
+        next[key] = true
+      } else {
+        const isVisible = compatibleOldBits.some(b => bitmaskVisibility[`${solidId}_${b}`] !== false)
+        next[key] = isVisible
+      }
+    }
+    return next
+  }
+
+  const onDragEnd = (solidId: string, allCuts: import('./manual-editor').ManualCut[], result: DropResult) => {
+    if (!result.destination) return
+
+    // Extract visible cuts and hidden cuts to keep them
+    const visibleCuts = allCuts.filter(c => c.visible)
+    const hiddenCuts = allCuts.filter(c => !c.visible)
+
+    const items = Array.from(visibleCuts)
+    const [reorderedItem] = items.splice(result.source.index, 1)
+    items.splice(result.destination.index, 0, reorderedItem)
+
+    const nextVis = migrateVisibility(solidId, visibleCuts, items)
+    setBitmaskVisibility(nextVis)
+    
+    // Merge back the hidden ones (we just append them)
+    updateManualSolidCuts(solidId, [...items, ...hiddenCuts])
+  }
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     points: true,
     segments: true,
-    polygons: true,
-    solids: true,
+    shapes2D: true,
+    solids3D: true,
+    cuts: true,
   })
 
   const pointLabelMap = useMemo(() => {
@@ -810,7 +965,7 @@ export function ManualRightPanel() {
             </button>
             {openGroups.points && (
               <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
-                {manualDocument.points.filter(p => p.visible !== false).map((point) => {
+                {manualDocument.points.map((point) => {
             const coords = manualDerived.pointPositions[point.id]
             if (!coords) return null
 
@@ -861,6 +1016,7 @@ export function ManualRightPanel() {
                           }
                         : undefined)
                 }
+                onToggleVisibility={() => toggleManualVisibility('point', point.id)}
               />
             )
           })}
@@ -944,6 +1100,7 @@ export function ManualRightPanel() {
                 onDelete={() => removeManualEntity('segment', segment.id)}
                 onUpdateLength={isEditable ? (newLen) => updateSegmentLength(segment.id, newLen) : undefined}
                 lengthVal={isEditable ? lengthVal : undefined}
+                onToggleVisibility={() => toggleManualVisibility('segment', segment.id)}
               />
             )
           })}
@@ -951,97 +1108,173 @@ export function ManualRightPanel() {
             )}
           </div>
 
-          <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
-            <button
-              onClick={() => setOpenGroups({ ...openGroups, polygons: !openGroups.polygons })}
-              className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
-            >
-              <span>Mặt phẳng</span>
-              <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.polygons ? 'rotate-90' : ''}`} />
-            </button>
-            {openGroups.polygons && (
-              <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
-                {manualDocument.polygons.map((polygon: ManualPolygon) => {
-            const numPoints = polygon.pointIds.length
-            const typeLabel = numPoints === 3 ? 'Tam giác' : numPoints === 4 ? 'Tứ giác' : 'Đa giác'
-            const IconComponent = numPoints === 3 ? Triangle : numPoints === 4 ? Square : Pentagon
-            return (
-              <PolygonRow
-                key={polygon.id}
-                polygon={polygon}
-                typeLabel={typeLabel}
-                icon={<IconComponent size={14} />}
-                values={polygonPointMap[polygon.id] ?? []}
-                selected={manualSelection?.kind === 'polygon' && manualSelection.id === polygon.id}
-                onSelect={() => setManualSelection({ kind: 'polygon', id: polygon.id })}
-                onDelete={() => removeManualEntity('polygon', polygon.id)}
-                isSpecialShape={true}
-              />
-            )
-          })}
-              </div>
-            )}
-          </div>
+          {((manualDocument.polygons && manualDocument.polygons.length > 0) || (manualDocument.circles && manualDocument.circles.length > 0)) && (
+            <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
+              <button
+                onClick={() => setOpenGroups({ ...openGroups, shapes2D: !openGroups.shapes2D })}
+                className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
+              >
+                <span>Hình 2D</span>
+                <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.shapes2D ? 'rotate-90' : ''}`} />
+              </button>
+              {openGroups.shapes2D && (
+                <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
+                  {manualDocument.polygons.map((polygon: ManualPolygon) => {
+                    const numPoints = polygon.pointIds.length
+                    const typeLabel = numPoints === 3 ? 'Tam giác' : numPoints === 4 ? 'Tứ giác' : 'Đa giác'
+                    const IconComponent = numPoints === 3 ? Triangle : numPoints === 4 ? Square : Pentagon
+                    return (
+                      <PolygonRow
+                        key={polygon.id}
+                        polygon={polygon}
+                        typeLabel={typeLabel}
+                        icon={<IconComponent size={14} />}
+                        values={polygonPointMap[polygon.id] ?? []}
+                        selected={manualSelection?.kind === 'polygon' && manualSelection.id === polygon.id}
+                        onSelect={() => setManualSelection({ kind: 'polygon', id: polygon.id })}
+                        onDelete={() => removeManualEntity('polygon', polygon.id)}
+                        isSpecialShape={true}
+                        onToggleVisibility={() => toggleManualVisibility('polygon', polygon.id)}
+                      />
+                    )
+                  })}
+                  {manualDocument.circles && manualDocument.circles.map((circle: ManualCircle) => {
+                    const centerLabel = circle.centerPointId ? pointLabelMap[circle.centerPointId] ?? '?' : '?'
+                    const radiusPointLabel = circle.radiusPointId ? pointLabelMap[circle.radiusPointId] ?? '?' : '?'
+                    let desc = ''
+                    let isEditable = false
+                    if (circle.circleKind === 'threePoints') {
+                      const labels = circle.sourcePointIds?.map((pid: string) => pointLabelMap[pid] ?? '?') ?? []
+                      desc = `Qua ${labels.join(', ')}`
+                    } else if (circle.circleKind === 'centerRadius') {
+                      desc = `Tâm ${centerLabel}`
+                      isEditable = true
+                    } else {
+                      desc = `Tâm ${centerLabel}, qua ${radiusPointLabel}`
+                    }
+                    return (
+                      <CircleRow
+                        key={circle.id}
+                        circle={circle}
+                        desc={desc}
+                        selected={manualSelection?.kind === 'circle' && manualSelection.id === circle.id}
+                        onSelect={() => setManualSelection({ kind: 'circle', id: circle.id })}
+                        onDelete={() => removeManualEntity('circle', circle.id)}
+                        onUpdateRadius={isEditable ? (newRad) => updateCircleRadius(circle.id, newRad) : undefined}
+                        radiusVal={isEditable ? Number(circle.radius) : undefined}
+                        onToggleVisibility={() => toggleManualVisibility('circle', circle.id)}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
-          <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
-            <button
-              onClick={() => setOpenGroups({ ...openGroups, solids: !openGroups.solids })}
-              className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
-            >
-              <span>Khối và hình</span>
-              <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.solids ? 'rotate-90' : ''}`} />
-            </button>
-            {openGroups.solids && (
-              <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
-                {manualDocument.solids.map((solid: ManualSolid) => (
-            <ObjectRow
-              key={solid.id}
-              typeLabel={getSolidDisplayName(solid, manualDerived.pointPositions)}
-              icon={solid.solidType === 'pyramid' ? <Pyramid size={14} /> : <Box size={14} />}
-              name={solid.label}
-              values={solidValueMap[solid.id] ?? []}
-              selected={manualSelection?.kind === 'solid' && manualSelection.id === solid.id}
-              onSelect={() => setManualSelection({ kind: 'solid', id: solid.id })}
-              onDelete={() => removeManualEntity('solid', solid.id)}
-              onUpdateHeight={solid.height !== undefined ? (newH) => updateSolidHeight(solid.id, newH) : undefined}
-              heightVal={solid.height}
-              solid={solid}
-              onAddRing={() => addSphereRing(solid.id)}
-              onUpdateRing={(ringId, phi, theta) => updateSphereRingOrientation(solid.id, ringId, phi, theta)}
-              onRemoveRing={(ringId) => removeSphereRing(solid.id, ringId)}
-            />
-          ))}
+          {solidsWithCuts.length > 0 && (
+            <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
+              <button
+                onClick={() => setOpenGroups({ ...openGroups, cuts: !openGroups.cuts })}
+                className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
+              >
+                <span>Lát cắt</span>
+                <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.cuts ? 'rotate-90' : ''}`} />
+              </button>
+              {openGroups.cuts && (
+                <div className="p-2 pt-1 flex flex-col gap-4 border-t border-border/40">
+                  {solidsWithCuts.map(solid => {
+                    const solidCuts = solid.cuts!.filter(c => c.visible)
+                    const N = solidCuts.length
+                    return (
+                      <div key={solid.id} className="space-y-2 border border-border/60 rounded-lg p-2 bg-card/60">
+                        <div className="flex justify-between items-center mb-2 pb-1 border-b border-border/40">
+                          <span className="font-bold text-xs">{getSolidDisplayName(solid, manualDerived.pointPositions)} - {solid.label}</span>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500/70 hover:text-red-500 hover:bg-red-500/10" onClick={() => updateManualSolidCuts(solid.id, [])}>
+                            <Trash2 size={12} />
+                          </Button>
+                        </div>
+                        
+                        <DragDropContext onDragEnd={(result) => onDragEnd(solid.id, solid.cuts!, result)}>
+                          <Droppable droppableId={`cuts-${solid.id}`}>
+                            {(provided) => (
+                              <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-1.5 mb-2">
+                                {solidCuts.map((cut, index) => {
+                                  const label = cut.planePointIds.slice(0, 3).join('') || `P`
+                                  return (
+                                    <Draggable key={cut.id} draggableId={cut.id} index={index}>
+                                      {(provided, snapshot) => (
+                                        <div
+                                          ref={provided.innerRef}
+                                          {...provided.draggableProps}
+                                          className={`flex items-center gap-2 px-2 py-1.5 rounded-md border text-[11px] font-mono ${snapshot.isDragging ? 'bg-accent/20 border-accent text-accent shadow-md' : 'bg-card border-border/60 hover:bg-accent/5 hover:border-accent/30'}`}
+                                        >
+                                          <div {...provided.dragHandleProps} className="text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing p-0.5">
+                                            <GripVertical size={12} />
+                                          </div>
+                                          <span className="font-bold w-4 text-muted-foreground">{index + 1}.</span>
+                                          <span className="flex-1">Cắt bởi ({label})</span>
+                                        </div>
+                                      )}
+                                    </Draggable>
+                                  )
+                                })}
+                                {provided.placeholder}
+                              </div>
+                            )}
+                          </Droppable>
+                        </DragDropContext>
 
-          {manualDocument.circles?.map((circle: ManualCircle) => {
-            const centerLabel = circle.centerPointId ? pointLabelMap[circle.centerPointId] ?? '?' : '?'
-            const radiusPointLabel = circle.radiusPointId ? pointLabelMap[circle.radiusPointId] ?? '?' : '?'
-            let desc = ''
-            let isEditable = false
-            if (circle.circleKind === 'threePoints') {
-              const labels = circle.sourcePointIds?.map((pid: string) => pointLabelMap[pid] ?? '?') ?? []
-              desc = `Qua ${labels.join(', ')}`
-            } else if (circle.circleKind === 'centerRadius') {
-              desc = `Tâm ${centerLabel}`
-              isEditable = true
-            } else {
-              desc = `Tâm ${centerLabel}, qua ${radiusPointLabel}`
-            }
-            return (
-              <CircleRow
-                key={circle.id}
-                circle={circle}
-                desc={desc}
-                selected={manualSelection?.kind === 'circle' && manualSelection.id === circle.id}
-                onSelect={() => setManualSelection({ kind: 'circle', id: circle.id })}
-                onDelete={() => removeManualEntity('circle', circle.id)}
-                onUpdateRadius={isEditable ? (newRad) => updateCircleRadius(circle.id, newRad) : undefined}
-                radiusVal={isEditable ? Number(circle.radius) : undefined}
-              />
-            )
-          })}
-              </div>
-            )}
-          </div>
+                        <ChunkTree
+                          activeSectionsList={solidCuts.map(c => ({ id: c.id, cuttingPlane: c.planePointIds })) as any}
+                          depth={0}
+                          bitPrefix=""
+                          bitmaskVisibility={bitmaskVisibility}
+                          setBitmaskVisibility={setBitmaskVisibility}
+                          totalActivePlanes={N}
+                          baseId={solid.id}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {manualDocument.solids && manualDocument.solids.length > 0 && (
+            <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
+              <button
+                onClick={() => setOpenGroups({ ...openGroups, solids3D: !openGroups.solids3D })}
+                className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
+              >
+                <span>Hình 3D</span>
+                <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.solids3D ? 'rotate-90' : ''}`} />
+              </button>
+              {openGroups.solids3D && (
+                <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
+                  {manualDocument.solids.map((solid: ManualSolid) => (
+                    <ObjectRow
+                      key={solid.id}
+                      typeLabel={getSolidDisplayName(solid, manualDerived.pointPositions)}
+                      icon={solid.solidType === 'pyramid' ? <Pyramid size={14} /> : <Box size={14} />}
+                      name={solid.label}
+                      values={solidValueMap[solid.id] ?? []}
+                      selected={manualSelection?.kind === 'solid' && manualSelection.id === solid.id}
+                      onSelect={() => setManualSelection({ kind: 'solid', id: solid.id })}
+                      onDelete={() => removeManualEntity('solid', solid.id)}
+                      onUpdateHeight={solid.height !== undefined ? (newH) => updateSolidHeight(solid.id, newH) : undefined}
+                      heightVal={solid.height}
+                      solid={solid}
+                      onAddRing={() => addSphereRing(solid.id)}
+                      onUpdateRing={(ringId, phi, theta) => updateSphereRingOrientation(solid.id, ringId, phi, theta)}
+                      onRemoveRing={(ringId) => removeSphereRing(solid.id, ringId)}
+                      onToggleVisibility={() => toggleManualVisibility('solid', solid.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {totalEntities === 0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-background/75 px-6 py-12 text-center">

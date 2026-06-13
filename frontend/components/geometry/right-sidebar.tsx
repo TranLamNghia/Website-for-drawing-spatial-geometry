@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Scissors, Expand, Layers, ChevronRight, ChevronDown, Box, Cuboid, GripVertical, Check, Save, Sparkles } from 'lucide-react'
+import { Scissors, Expand, Layers, ChevronRight, ChevronDown, Box, Cuboid, GripVertical, Check, Save, Sparkles, Eye, EyeOff } from 'lucide-react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { useGeometry } from './geometry-context'
 import type { SectionData } from './geometry-context'
@@ -21,22 +21,27 @@ interface ChunkTreeProps {
   bitmaskVisibility: Record<string, boolean>
   setBitmaskVisibility: (v: Record<string, boolean>) => void
   totalActivePlanes: number
+  baseId?: string
 }
 
-function ChunkTree({
+export function ChunkTree({
   activeSectionsList,
   depth,
   bitPrefix,
   bitmaskVisibility,
   setBitmaskVisibility,
   totalActivePlanes,
+  baseId,
 }: ChunkTreeProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const isLeafLevel = depth === activeSectionsList.length - 1
   const N = totalActivePlanes
 
-  const buildBitStr = (prefix: string) => prefix.padEnd(N, '0')
+  const buildBitStr = (prefix: string) => {
+    const bitStr = prefix.padEnd(N, '0')
+    return baseId ? `${baseId}_${bitStr}` : bitStr
+  }
 
   const sides = [
     { bit: '0' },
@@ -143,6 +148,7 @@ function ChunkTree({
                       bitmaskVisibility={bitmaskVisibility}
                       setBitmaskVisibility={setBitmaskVisibility}
                       totalActivePlanes={totalActivePlanes}
+                      baseId={baseId}
                     />
                   </>
                 )}
