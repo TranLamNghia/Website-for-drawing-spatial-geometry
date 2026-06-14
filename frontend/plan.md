@@ -68,14 +68,14 @@ Giai đoạn này tập trung vào các đường/tia hình học đặc biệt 
 ## Phase 4: Nhóm Khối 3D & Vật thể Không gian nâng cao (3D Solids Suite)
 Xây dựng các khối 3D bằng cơ chế "Đùn" (Extrude) và phát triển từ các mặt phẳng đáy 2D (kế thừa từ Phase 2 và Phase 3).
 
-- [ ] **Hệ thống Hình chóp & Tứ diện (Pyramids & Tetrahedrons)**:
+- [x] **Hệ thống Hình chóp & Tứ diện (Pyramids & Tetrahedrons)**:
   - **Chóp thường / Tứ diện thường:** Chọn công cụ -> Pick 1 Đa giác làm đáy -> Pick 1 điểm tự do làm Đỉnh chóp -> Tự động sinh các cạnh bên.
   - **Chóp đều / Tứ diện đều:** Chọn công cụ -> Pick 1 Đa giác đều làm đáy -> Điểm Đỉnh chóp bị giới hạn chạy trên trục vuông góc với mặt đáy tại Trọng tâm đáy. Click (hoặc nhập số) chốt chiều cao.
-- [ ] **Hệ thống Lăng trụ & Hình hộp (Prisms & Cuboids)**:
+- [x] **Hệ thống Lăng trụ & Hình hộp (Prisms & Cuboids)**:
   - **Lăng trụ xiên / Hộp song song:** Chọn công cụ -> Pick mặt đáy -> Pick 1 điểm lơ lửng làm 1 đỉnh mặt trên -> Tự động tịnh tiến đáy lên theo vector để sinh mặt trên.
   - **Lăng trụ đứng / Hộp chữ nhật:** Chọn công cụ -> Pick mặt đáy -> Kéo chuột theo trục vuông góc với đáy (hoặc nhập chiều cao) -> Sinh lăng trụ đứng.
   - **Lập phương:** Pick hình vuông làm đáy -> Tự động lấy độ dài cạnh đáy làm chiều cao để sinh khối lập phương thẳng đứng.
-- [ ] **Khối tròn xoay (Round Solids)**:
+- [x] **Khối tròn xoay (Round Solids)**:
   - **Hình nón (Cone) / Hình trụ (Cylinder):** Chọn công cụ -> Pick 1 Đường tròn làm đáy -> Kéo chuột / Nhập chiều cao dọc theo trục trung tâm -> Tự động đùn lên thành khối nón hoặc trụ phụ thuộc vào đáy.
 
 ---

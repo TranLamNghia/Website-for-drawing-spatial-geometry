@@ -15,6 +15,7 @@ type InteractiveHit = {
   kind: 'point' | 'segment' | 'polygon' | 'solid' | 'circle'
   id: string
   solidId?: string
+  bitmaskKey?: string
   facePointIds?: string[]
   isVirtual?: boolean
 }
@@ -199,6 +200,61 @@ function getPolygonNormal(pts: Vec3[]): Vec3 {
   return len > 1e-9 ? scaleVec3(normal, 1 / len) : [0, 0, 1]
 }
 
+function applyBitmaskGroupPreview(
+  groups: Map<string, THREE.Group>,
+  previewKeys: string[],
+) {
+  const previewSet = new Set(previewKeys)
+  const hasPreview = previewSet.size > 0
+
+  groups.forEach((group, key) => {
+    const isTarget = previewSet.has(key)
+    const baseVisible = group.userData.baseVisible !== false
+    group.visible = hasPreview ? (baseVisible || isTarget) : baseVisible
+
+    group.traverse((object) => {
+      if (
+        !(object instanceof THREE.Mesh) &&
+        !(object instanceof THREE.Line) &&
+        !(object instanceof THREE.LineSegments) &&
+        !(object instanceof THREE.Points)
+      ) return
+
+      const materials = Array.isArray(object.material) ? object.material : [object.material]
+      materials.forEach((material) => {
+        if (material.userData.skipChunkPreview) return
+
+        if (material.userData.chunkOriginalOpacity === undefined) {
+          material.userData.chunkOriginalOpacity = material.opacity
+          material.userData.chunkOriginalTransparent = material.transparent
+          material.userData.chunkOriginalDepthWrite = material.depthWrite
+        }
+
+        const originalOpacity = material.userData.chunkOriginalOpacity as number
+        const originalTransparent = material.userData.chunkOriginalTransparent as boolean
+        const originalDepthWrite = material.userData.chunkOriginalDepthWrite as boolean
+
+        if (!hasPreview) {
+          material.opacity = originalOpacity
+          material.transparent = originalTransparent
+          material.depthWrite = originalDepthWrite
+        } else if (isTarget) {
+          material.opacity = originalOpacity < 0.9
+            ? Math.max(originalOpacity, baseVisible ? 0.42 : 0.28)
+            : originalOpacity
+          material.transparent = material.opacity < 1
+          material.depthWrite = originalDepthWrite
+        } else {
+          material.opacity = Math.min(originalOpacity * 0.18, 0.08)
+          material.transparent = true
+          material.depthWrite = false
+        }
+        material.needsUpdate = true
+      })
+    })
+  })
+}
+
 export function ManualCanvas3D() {
   const mountRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -216,6 +272,8 @@ export function ManualCanvas3D() {
   const smartGuideMeshRef = useRef<THREE.Line | null>(null)
   const pointMeshesRef = useRef<Array<{ id: string; mesh: THREE.Mesh }>>([])
   const segmentMeshesRef = useRef<Array<{ id: string; mesh: THREE.Line }>>([])
+  const bitmaskGroupsRef = useRef<Map<string, THREE.Group>>(new Map())
+  const previewBitmaskKeysRef = useRef<string[]>([])
   const hoveredEntityIdRef = useRef<string | null>(null)
   const [showGizmo, setShowGizmo] = useState(true)
 
@@ -300,8 +358,11 @@ export function ManualCanvas3D() {
     setShowSmartGuides,
     autoRevertToSelect,
     bitmaskVisibility,
+    previewBitmaskKeys,
+    setSelectedBitmaskKey,
     explodeAmount,
   } = useGeometry()
+  previewBitmaskKeysRef.current = previewBitmaskKeys
 
   const snapEnabled = true
   const snapThreshold = 10
@@ -450,7 +511,7 @@ export function ManualCanvas3D() {
         if (entity.isVirtual && activeTool !== 'projection') {
           continue
         }
-        const key = `${entity.kind}_${entity.id}`
+        const key = `${entity.kind}_${entity.id}_${entity.bitmaskKey ?? ''}`
         if (!seenIds.has(key)) {
           seenIds.add(key)
           results.push(entity)
@@ -1095,6 +1156,7 @@ export function ManualCanvas3D() {
     if (!group) return
     pointMeshesRef.current = []
     segmentMeshesRef.current = []
+    bitmaskGroupsRef.current.clear()
 
     while (group.children.length > 0) {
       const child = group.children[0]
@@ -1548,10 +1610,14 @@ export function ManualCanvas3D() {
         // For each of the 2^N bitmask groups
         for (let i = 0; i < (1 << actualN); i++) {
           const bitStr = i.toString(2).padStart(actualN, '0')
-          const isVisible = bitmaskVisibility[`${solid.id}_${bitStr}`] !== false
-          if (!isVisible) continue
+          const bitmaskKey = `${solid.id}_${bitStr}`
+          const isVisible = bitmaskVisibility[bitmaskKey] !== false
 
           const bitmaskGroup = new THREE.Group()
+          bitmaskGroup.visible = isVisible
+          bitmaskGroup.userData.baseVisible = isVisible
+          bitmaskGroup.userData.bitmaskKey = bitmaskKey
+          bitmaskGroupsRef.current.set(bitmaskKey, bitmaskGroup)
 
           // Calculate translation offset based on explodeAmount
           const offsetVec = new THREE.Vector3()
@@ -1584,6 +1650,33 @@ export function ManualCanvas3D() {
               }
               faceGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
               faceGeometry.computeVertexNormals()
+
+              if (polygon.isVirtual) {
+                const virtualMaterial = new THREE.MeshBasicMaterial({
+                  colorWrite: false,
+                  depthWrite: false,
+                  transparent: true,
+                  opacity: 0,
+                  side: THREE.DoubleSide,
+                  clippingPlanes: clips,
+                })
+                virtualMaterial.userData.skipChunkPreview = true
+
+                const virtualMesh = new THREE.Mesh(faceGeometry, virtualMaterial)
+                virtualMesh.userData.entity = {
+                  kind: 'solid',
+                  id: polygon.id,
+                  solidId: solid.id,
+                  facePointIds: polygon.pointIds,
+                  isVirtual: true,
+                  bitmaskKey,
+                } satisfies InteractiveHit
+                virtualMesh.userData.isVirtualPlane = true
+                virtualMesh.userData.virtualLabel = polygon.label
+                bitmaskGroup.add(virtualMesh)
+                return
+              }
+
               const isSelected = manualSelection?.kind === 'solid' && manualSelection.id === solid.id
               const material = new THREE.MeshBasicMaterial({
                 color: isSelected ? colors.pointSelected : colors.solid,
@@ -1846,6 +1939,12 @@ export function ManualCanvas3D() {
               const capGeometry = new THREE.CircleGeometry(intersection.circleRadius, 64)
 
               const capMesh = new THREE.Mesh(capGeometry, capMat)
+              capMesh.userData.entity = {
+                kind: 'solid',
+                id: solid.id,
+                solidId: solid.id,
+                bitmaskKey,
+              } satisfies InteractiveHit
               capMesh.position.copy(center)
               capMesh.quaternion.copy(quaternion)
               bitmaskGroup.add(capMesh)
@@ -1869,7 +1968,14 @@ export function ManualCanvas3D() {
                 )
               }
               const outlineGeometry = new THREE.BufferGeometry().setFromPoints(ringPoints)
-              bitmaskGroup.add(new THREE.Line(outlineGeometry, outlineMat))
+              const outline = new THREE.Line(outlineGeometry, outlineMat)
+              outline.userData.entity = {
+                kind: 'solid',
+                id: solid.id,
+                solidId: solid.id,
+                bitmaskKey,
+              } satisfies InteractiveHit
+              bitmaskGroup.add(outline)
               continue
             }
 
@@ -1886,7 +1992,14 @@ export function ManualCanvas3D() {
             const capGeometry = new THREE.BufferGeometry()
             capGeometry.setAttribute('position', new THREE.Float32BufferAttribute(capPositions, 3))
             capGeometry.computeVertexNormals()
-            bitmaskGroup.add(new THREE.Mesh(capGeometry, capMat))
+            const capMesh = new THREE.Mesh(capGeometry, capMat)
+            capMesh.userData.entity = {
+              kind: 'solid',
+              id: solid.id,
+              solidId: solid.id,
+              bitmaskKey,
+            } satisfies InteractiveHit
+            bitmaskGroup.add(capMesh)
             bitmaskGroup.add(new THREE.Mesh(capGeometry.clone(), blockerMat))
 
             const outlinePositions: number[] = []
@@ -1900,12 +2013,25 @@ export function ManualCanvas3D() {
               'position',
               new THREE.Float32BufferAttribute(outlinePositions, 3),
             )
-            bitmaskGroup.add(new THREE.LineSegments(outlineGeometry, outlineMat))
+            const outline = new THREE.LineSegments(outlineGeometry, outlineMat)
+            outline.userData.entity = {
+              kind: 'solid',
+              id: solid.id,
+              solidId: solid.id,
+              bitmaskKey,
+            } satisfies InteractiveHit
+            bitmaskGroup.add(outline)
           }
 
+          bitmaskGroup.traverse((object) => {
+            const entity = object.userData.entity as InteractiveHit | undefined
+            if (entity) entity.bitmaskKey = bitmaskKey
+          })
           group.add(bitmaskGroup)
         }
       })
+
+    applyBitmaskGroupPreview(bitmaskGroupsRef.current, previewBitmaskKeysRef.current)
 
     const preview = draftOperation
     if (preview?.tool === 'segment' && preview.pointIds?.length === 1 && preview.previewPosition) {
@@ -2042,6 +2168,10 @@ export function ManualCanvas3D() {
   ])
 
   useEffect(() => {
+    applyBitmaskGroupPreview(bitmaskGroupsRef.current, previewBitmaskKeys)
+  }, [previewBitmaskKeys])
+
+  useEffect(() => {
     const renderer = rendererRef.current
     const controls = controlsRef.current
     if (!renderer || !controls) return
@@ -2064,6 +2194,7 @@ export function ManualCanvas3D() {
       const fallbackPosition = snapTarget?.position ?? snappedPlanePoint ?? null
 
       if (activeTool === 'select') {
+        setSelectedBitmaskKey(hit?.bitmaskKey ?? null)
         if (hit?.kind === 'solid' && hit.solidId) {
           setManualSelection({ kind: 'solid', id: hit.solidId })
         } else {

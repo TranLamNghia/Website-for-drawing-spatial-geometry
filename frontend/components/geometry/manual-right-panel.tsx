@@ -56,8 +56,8 @@ function TypePill({
   label: string
 }) {
   return (
-    <div className="flex min-w-[72px] items-center gap-1.5 rounded-lg border border-border/70 bg-muted/35 px-2 py-1.5 text-[10px] font-medium text-muted-foreground">
-      <span className="flex h-4 w-4 items-center justify-center text-foreground">{icon}</span>
+    <div className="flex w-[84px] shrink-0 items-center gap-1.5 rounded-lg border border-border/70 bg-muted/35 px-2 py-1.5 text-[10px] font-medium text-muted-foreground">
+      <span className="flex h-4 w-4 items-center justify-center text-foreground shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
     </div>
   )
@@ -289,6 +289,8 @@ function ObjectRow({
   onUpdateRing,
   onRemoveRing,
   onToggleVisibility,
+  onRename,
+  basePoints = [],
 }: {
   typeLabel: string
   icon: React.ReactNode
@@ -304,12 +306,19 @@ function ObjectRow({
   onUpdateRing?: (ringId: string, phi: number, theta: number) => void
   onRemoveRing?: (ringId: string) => void
   onToggleVisibility: () => void
+  onRename: (newName: string) => void
+  basePoints?: string[]
 }) {
   const [heightDraft, setHeightDraft] = useState(heightVal ? heightVal.toString() : '')
+  const [labelDraft, setLabelDraft] = useState(name)
 
   useEffect(() => {
     if (heightVal !== undefined) setHeightDraft(heightVal.toString())
   }, [heightVal])
+
+  useEffect(() => {
+    setLabelDraft(name)
+  }, [name])
 
   const commitHeight = () => {
     const numeric = Number(heightDraft)
@@ -318,60 +327,99 @@ function ObjectRow({
     }
   }
 
+  const commitLabel = () => {
+    const trimmed = labelDraft.trim().substring(0, 30)
+    if (trimmed && trimmed !== name) {
+      onRename(trimmed)
+    }
+  }
+
   const isEditable = onUpdateHeight !== undefined && heightVal !== undefined
 
   return (
     <div
-      className={`grid grid-cols-[80px_88px_minmax(0,1fr)_72px] items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-all ${
+      onClick={onSelect}
+      className={`flex flex-col gap-2 rounded-xl border p-3 transition-all cursor-pointer ${
         selected
           ? 'border-primary/35 bg-primary/10 shadow-sm'
           : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
       }`}
     >
-      <button onClick={onSelect} className="text-left">
-        <TypePill icon={icon} label={typeLabel} />
-      </button>
+      {/* Row 1: Icon/Type, Name, Actions */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <TypePill icon={icon} label={typeLabel} />
+          <Input
+            value={labelDraft}
+            onChange={(event) => setLabelDraft(event.target.value)}
+            onBlur={commitLabel}
+            onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onSelect()
+            }}
+            maxLength={30}
+            className="h-7 border-none bg-transparent p-0 text-left text-[14px] font-semibold tracking-tight focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:bg-background/80 truncate w-full"
+            title="Click để đổi tên hình"
+          />
+        </div>
 
-      <button onClick={onSelect} className="truncate text-left text-[13px] font-semibold tracking-tight">
-        {name}
-      </button>
-
-      <button onClick={onSelect} className="flex min-w-0 flex-wrap gap-1.5 text-left">
-        {values.map((value, idx) => (
-          <span
-            key={`${name}-${value}-${idx}`}
-            className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2 text-[11px] font-medium text-foreground"
+        <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
+            onClick={onToggleVisibility}
+            title={solid?.visible ? 'Ẩn hình 3D' : 'Hiện hình 3D'}
           >
-            {value}
-          </span>
-        ))}
-      </button>
-
-      <div className="flex items-center justify-end gap-1.5">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleVisibility()
-          }}
-          title={solid?.visible ? 'Ẩn hình 3D' : 'Hiện hình 3D'}
-        >
-          {solid?.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-          onClick={onDelete}
-        >
-          <Trash2 size={14} />
-        </Button>
+            {solid?.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+            onClick={onDelete}
+            title="Xóa hình 3D"
+          >
+            <Trash2 size={14} />
+          </Button>
+        </div>
       </div>
 
+      {/* Row 2: Base Points */}
+      {basePoints.length > 0 && (
+        <div 
+          className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none" 
+          style={{ maxWidth: '100%' }}
+          onClick={e => e.stopPropagation()}
+        >
+          {basePoints.map((label, idx) => (
+            <div
+              key={`${name}-pt-${label}-${idx}`}
+              className="flex h-6 w-6 min-w-[24px] items-center justify-center rounded-md border border-zinc-700/60 bg-zinc-950 text-[11px] font-extrabold text-zinc-100 select-none shadow-sm"
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Row 3: Values */}
+      {values.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {values.map((value, idx) => (
+            <span
+              key={`${name}-${value}-${idx}`}
+              className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2 text-[11px] font-medium text-foreground"
+            >
+              {value}
+            </span>
+          ))}
+        </div>
+      )}
+
       {isEditable && (
-        <div className="col-span-full mt-1.5 flex flex-wrap items-center gap-2 rounded bg-background/50 p-2 shadow-inner">
+        <div className="mt-1 flex flex-wrap items-center gap-2 rounded bg-background/50 p-2 shadow-inner" onClick={e => e.stopPropagation()}>
           <label className="text-[11px] font-medium text-muted-foreground">Chiều cao:</label>
           <input
             type="number"
@@ -518,6 +566,7 @@ function SegmentRow({
   }
 
   const isEditable = onUpdateLength !== undefined && lengthVal !== undefined
+  const displayLabel = segment.label.replace(/-/g, '')
 
   return (
     <div
@@ -536,7 +585,7 @@ function SegmentRow({
       </button>
 
       <button onClick={onSelect} className="truncate text-left text-[13px] font-semibold tracking-tight">
-        {segment.label}
+        {displayLabel}
       </button>
 
       <button onClick={onSelect} className="flex min-w-0 flex-wrap gap-1.5 text-left">
@@ -598,6 +647,8 @@ function CircleRow({
   onUpdateRadius,
   radiusVal,
   onToggleVisibility,
+  onRename,
+  basePoints = [],
 }: {
   circle: any
   desc: string
@@ -607,14 +658,21 @@ function CircleRow({
   onUpdateRadius?: (newRadius: number) => void
   radiusVal?: number
   onToggleVisibility: () => void
+  onRename: (newName: string) => void
+  basePoints?: string[]
 }) {
   const [radiusDraft, setRadiusDraft] = useState(radiusVal ? radiusVal.toString() : '')
+  const [labelDraft, setLabelDraft] = useState(circle.label)
 
   useEffect(() => {
     if (radiusVal !== undefined) {
       setRadiusDraft(radiusVal.toString())
     }
   }, [radiusVal])
+
+  useEffect(() => {
+    setLabelDraft(circle.label)
+  }, [circle.label])
 
   const commitRadius = () => {
     const numeric = Number(radiusDraft)
@@ -623,67 +681,102 @@ function CircleRow({
     }
   }
 
+  const commitLabel = () => {
+    const trimmed = labelDraft.trim().substring(0, 30)
+    if (trimmed && trimmed !== circle.label) {
+      onRename(trimmed)
+    }
+  }
+
   const isEditable = onUpdateRadius !== undefined && radiusVal !== undefined
 
   return (
     <div
-      className={`grid ${
-        isEditable
-          ? 'grid-cols-[80px_76px_minmax(0,1fr)_80px_72px]'
-          : 'grid-cols-[80px_88px_minmax(0,1fr)_72px]'
-      } items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${
+      onClick={onSelect}
+      className={`flex flex-col gap-2 rounded-xl border p-3 transition-all cursor-pointer ${
         selected
           ? 'border-primary/35 bg-primary/10 shadow-sm'
           : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
       }`}
     >
-      <button onClick={onSelect} className="text-left">
-        <TypePill icon={<Circle size={13} />} label="Đường tròn" />
-      </button>
+      {/* Row 1: Icon/Type, Name, Actions */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <TypePill icon={<Circle size={13} />} label="Đường tròn" />
+          <Input
+            value={labelDraft}
+            onChange={(event) => setLabelDraft(event.target.value)}
+            onBlur={commitLabel}
+            onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onSelect()
+            }}
+            maxLength={30}
+            className="h-7 border-none bg-transparent p-0 text-left text-[13px] font-semibold tracking-tight focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:bg-background/80 truncate w-full"
+            title="Click để đổi tên hình"
+          />
+        </div>
 
-      <button onClick={onSelect} className="truncate text-left text-[13px] font-semibold tracking-tight">
-        {circle.label}
-      </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
+            onClick={onToggleVisibility}
+            title={circle.visible ? 'Ẩn đường tròn' : 'Hiện đường tròn'}
+          >
+            {circle.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+            onClick={onDelete}
+            title="Xóa đường tròn"
+          >
+            <Trash2 size={14} />
+          </Button>
+        </div>
+      </div>
 
-      <button onClick={onSelect} className="truncate text-left text-[11px] text-muted-foreground font-medium">
+      {/* Row 2: Base Points */}
+      {basePoints.length > 0 && (
+        <div 
+          className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none" 
+          style={{ maxWidth: '100%' }}
+          onClick={e => e.stopPropagation()}
+        >
+          {basePoints.map((label, idx) => (
+            <div
+              key={`${circle.label}-pt-${label}-${idx}`}
+              className="flex h-6 w-6 min-w-[24px] items-center justify-center rounded-md border border-zinc-700/60 bg-zinc-950 text-[11px] font-extrabold text-zinc-100 select-none shadow-sm"
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Description */}
+      <div className="text-[11px] text-muted-foreground font-medium">
         {desc}
-      </button>
+      </div>
 
       {isEditable && (
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <span className="text-[10px] text-muted-foreground">R:</span>
-          <Input
+        <div className="mt-1 flex flex-wrap items-center gap-2 rounded bg-background/50 p-2 shadow-inner" onClick={e => e.stopPropagation()}>
+          <label className="text-[11px] font-medium text-muted-foreground">R:</label>
+          <input
+            type="number"
+            step="0.5"
+            className="h-6 w-16 rounded border bg-background px-1.5 text-[11px] font-semibold tracking-tight outline-none focus:border-primary/50"
             value={radiusDraft}
             onChange={(e) => setRadiusDraft(e.target.value)}
             onBlur={commitRadius}
             onKeyDown={(e) => e.key === 'Enter' && commitRadius()}
-            className="h-7 w-12 rounded-md border-border/70 bg-background px-1 text-center text-[11px]"
           />
         </div>
       )}
-
-      <div className="flex items-center justify-end gap-1.5">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleVisibility()
-          }}
-          title={circle.visible ? 'Ẩn đường tròn' : 'Hiện đường tròn'}
-        >
-          {circle.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-          onClick={onDelete}
-        >
-          <Trash2 size={14} />
-        </Button>
-      </div>
     </div>
   )
 }
@@ -693,60 +786,72 @@ function PolygonRow({
   polygon,
   typeLabel,
   icon,
-  values,
   selected,
   onSelect,
   onDelete,
   isSpecialShape,
   onToggleVisibility,
+  onRename,
+  basePoints = [],
 }: {
   polygon: ManualPolygon
   typeLabel: string
   icon: React.ReactNode
-  values: string[]
   selected: boolean
   onSelect: () => void
   onDelete: () => void
   isSpecialShape: boolean
   onToggleVisibility: () => void
+  onRename: (newName: string) => void
+  basePoints?: string[]
 }) {
+  const [labelDraft, setLabelDraft] = useState(polygon.label)
+
+  useEffect(() => {
+    setLabelDraft(polygon.label)
+  }, [polygon.label])
+
+  const commitLabel = () => {
+    const trimmed = labelDraft.trim().substring(0, 30)
+    if (trimmed && trimmed !== polygon.label) {
+      onRename(trimmed)
+    }
+  }
+
   return (
     <div
-      className={`flex flex-col gap-2 rounded-xl border px-2.5 py-2 transition-all ${
+      onClick={onSelect}
+      className={`flex flex-col gap-2 rounded-xl border p-3 transition-all cursor-pointer ${
         selected
           ? 'border-primary/35 bg-primary/10 shadow-sm'
           : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
       }`}
     >
-      <div className="grid grid-cols-[80px_88px_minmax(0,1fr)_72px] items-center gap-2.5">
-        <button onClick={onSelect} className="text-left">
+      {/* Row 1: Icon/Type, Name, Actions */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <TypePill icon={icon} label={typeLabel} />
-        </button>
+          <Input
+            value={labelDraft}
+            onChange={(event) => setLabelDraft(event.target.value)}
+            onBlur={commitLabel}
+            onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
+            onClick={(e) => {
+              e.stopPropagation()
+              onSelect()
+            }}
+            maxLength={30}
+            className="h-7 border-none bg-transparent p-0 text-left text-[13px] font-semibold tracking-tight focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:bg-background/80 truncate w-full"
+            title="Click để đổi tên hình"
+          />
+        </div>
 
-        <button onClick={onSelect} className="truncate text-left text-[13px] font-semibold tracking-tight">
-          {polygon.label}
-        </button>
-
-        <button onClick={onSelect} className="flex min-w-0 flex-wrap gap-1.5 text-left">
-          {values.map((value, idx) => (
-            <span
-              key={`${polygon.label}-${value}-${idx}`}
-              className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2 text-[11px] font-medium text-foreground"
-            >
-              {value}
-            </span>
-          ))}
-        </button>
-
-        <div className="flex items-center justify-end gap-1.5">
+        <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggleVisibility()
-            }}
+            onClick={onToggleVisibility}
             title={polygon.visible ? 'Ẩn đa giác' : 'Hiện đa giác'}
           >
             {polygon.visible ? <Eye size={14} /> : <EyeOff size={14} />}
@@ -756,11 +861,30 @@ function PolygonRow({
             size="icon"
             className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
             onClick={onDelete}
+            title="Xóa đa giác"
           >
             <Trash2 size={14} />
           </Button>
         </div>
       </div>
+
+      {/* Row 2: Base Points */}
+      {basePoints.length > 0 && (
+        <div 
+          className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none" 
+          style={{ maxWidth: '100%' }}
+          onClick={e => e.stopPropagation()}
+        >
+          {basePoints.map((label, idx) => (
+            <div
+              key={`${polygon.label}-pt-${label}-${idx}`}
+              className="flex h-6 w-6 min-w-[24px] items-center justify-center rounded-md border border-zinc-700/60 bg-zinc-950 text-[11px] font-extrabold text-zinc-100 select-none shadow-sm"
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -878,9 +1002,18 @@ export function ManualRightPanel() {
     ) as Record<string, string>
   }, [manualDocument.points])
 
+  const panelPoints = useMemo(() => {
+    const seenLabels = new Set<string>()
+    return manualDocument.points.filter((point) => {
+      if (seenLabels.has(point.label)) return false
+      seenLabels.add(point.label)
+      return true
+    })
+  }, [manualDocument.points])
+
   const polygonPointMap = useMemo(() => {
     return Object.fromEntries(
-      manualDocument.polygons.map((polygon) => [
+      manualDocument.polygons.filter((polygon) => !polygon.internal).map((polygon) => [
         polygon.id,
         polygon.pointIds.map((pointId) => pointLabelMap[pointId] ?? pointId),
       ]),
@@ -888,26 +1021,70 @@ export function ManualRightPanel() {
   }, [manualDocument.polygons, pointLabelMap])
 
   const solidValueMap = useMemo(() => {
-    const generatedPoints = manualDerived.displayPoints.filter(
-      (point) => point.sourceKind === 'solid' && point.generated,
-    )
-
-    const generatedBySolid = generatedPoints.reduce<Record<string, string[]>>((acc, point) => {
-      acc[point.sourceId] = [...(acc[point.sourceId] ?? []), point.label]
-      return acc
-    }, {})
-
     const result: Record<string, string[]> = {}
     manualDocument.solids.forEach((solid) => {
-      if (solid.solidType === 'box') {
-        result[solid.id] = generatedBySolid[solid.id] ?? []
-        return
+      let vertices: string[] = []
+      if (solid.solidType === 'pyramid' || solid.solidType === 'regularPyramid') {
+        const baseLabels = solid.basePolygonId ? (polygonPointMap[solid.basePolygonId] ?? []) : []
+        let apexLabel = ''
+        if (solid.apexPointId) {
+          apexLabel = pointLabelMap[solid.apexPointId] ?? ''
+        } else {
+          const genApex = manualDocument.points.find(
+            p => p.solidId === solid.id && p.pointKind === 'solidVertex'
+          )
+          if (genApex) {
+            apexLabel = genApex.label
+          }
+        }
+        if (apexLabel) {
+          vertices = [apexLabel, ...baseLabels]
+        } else {
+          vertices = baseLabels
+        }
+      } else if (solid.solidType === 'box' || solid.solidType === 'cube') {
+        const cornerLabels = solid.cornerPointIds 
+          ? solid.cornerPointIds.map(id => pointLabelMap[id] ?? '') 
+          : []
+        const labels: string[] = new Array(8).fill('')
+        if (cornerLabels[0]) labels[0] = cornerLabels[0]
+        if (cornerLabels[1]) labels[1] = cornerLabels[1]
+        if (cornerLabels[2]) labels[2] = cornerLabels[2]
+        manualDocument.points.forEach(p => {
+          if (p.solidId === solid.id && p.pointKind === 'solidVertex' && p.vertexIndex !== undefined && p.vertexIndex < 8) {
+            labels[p.vertexIndex] = p.label
+          }
+        })
+        vertices = labels.filter(Boolean)
+      } else if (solid.solidType === 'prism') {
+        const baseLabels = solid.basePolygonId ? (polygonPointMap[solid.basePolygonId] ?? []) : []
+        const n = baseLabels.length
+        const topLabels: string[] = new Array(n).fill('')
+        manualDocument.points.forEach(p => {
+          if (p.solidId === solid.id && p.pointKind === 'solidVertex' && p.vertexIndex !== undefined && p.vertexIndex >= n && p.vertexIndex < 2 * n) {
+            topLabels[p.vertexIndex - n] = p.label
+          }
+        })
+        const resolvedTopLabels = topLabels.map((l, idx) => l || `${baseLabels[idx]}'`)
+        vertices = [...baseLabels, ...resolvedTopLabels]
+      } else if (solid.solidType === 'cone') {
+        const apexLabel = solid.apexPointId ? (pointLabelMap[solid.apexPointId] ?? '') : ''
+        const centerLabel = solid.centerPointId ? (pointLabelMap[solid.centerPointId] ?? '') : ''
+        const radiusLabel = solid.radiusPointId ? (pointLabelMap[solid.radiusPointId] ?? '') : ''
+        vertices = [apexLabel, centerLabel, radiusLabel].filter(Boolean)
+      } else if (solid.solidType === 'cylinder') {
+        const centerLabel = solid.centerPointId ? (pointLabelMap[solid.centerPointId] ?? '') : ''
+        const radiusLabel = solid.radiusPointId ? (pointLabelMap[solid.radiusPointId] ?? '') : ''
+        const topLabel = solid.topPointId ? (pointLabelMap[solid.topPointId] ?? '') : ''
+        vertices = [centerLabel, radiusLabel, topLabel].filter(Boolean)
+      } else if (solid.solidType === 'sphere') {
+        const centerLabel = solid.centerPointId ? (pointLabelMap[solid.centerPointId] ?? '') : ''
+        vertices = [centerLabel].filter(Boolean)
       }
-      const baseLabels = solid.basePolygonId ? polygonPointMap[solid.basePolygonId] ?? [] : []
-      result[solid.id] = [...baseLabels, ...(generatedBySolid[solid.id] ?? [])]
+      result[solid.id] = vertices
     })
     return result
-  }, [manualDerived.displayPoints, manualDocument.solids, polygonPointMap])
+  }, [manualDocument.solids, manualDocument.points, polygonPointMap, pointLabelMap])
 
   const totalEntities =
     manualDocument.points.filter(p => p.visible !== false).length +
@@ -965,7 +1142,7 @@ export function ManualRightPanel() {
             </button>
             {openGroups.points && (
               <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
-                {manualDocument.points.map((point) => {
+                {panelPoints.map((point) => {
             const coords = manualDerived.pointPositions[point.id]
             if (!coords) return null
 
@@ -1119,7 +1296,7 @@ export function ManualRightPanel() {
               </button>
               {openGroups.shapes2D && (
                 <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
-                  {manualDocument.polygons.map((polygon: ManualPolygon) => {
+                  {manualDocument.polygons.filter((polygon: ManualPolygon) => !polygon.internal).map((polygon: ManualPolygon) => {
                     const numPoints = polygon.pointIds.length
                     const typeLabel = numPoints === 3 ? 'Tam giác' : numPoints === 4 ? 'Tứ giác' : 'Đa giác'
                     const IconComponent = numPoints === 3 ? Triangle : numPoints === 4 ? Square : Pentagon
@@ -1129,12 +1306,13 @@ export function ManualRightPanel() {
                         polygon={polygon}
                         typeLabel={typeLabel}
                         icon={<IconComponent size={14} />}
-                        values={polygonPointMap[polygon.id] ?? []}
+                        basePoints={polygonPointMap[polygon.id] ?? []}
                         selected={manualSelection?.kind === 'polygon' && manualSelection.id === polygon.id}
                         onSelect={() => setManualSelection({ kind: 'polygon', id: polygon.id })}
                         onDelete={() => removeManualEntity('polygon', polygon.id)}
                         isSpecialShape={true}
                         onToggleVisibility={() => toggleManualVisibility('polygon', polygon.id)}
+                        onRename={(newName: string) => renameManualEntity('polygon', polygon.id, newName)}
                       />
                     )
                   })}
@@ -1143,26 +1321,34 @@ export function ManualRightPanel() {
                     const radiusPointLabel = circle.radiusPointId ? pointLabelMap[circle.radiusPointId] ?? '?' : '?'
                     let desc = ''
                     let isEditable = false
+                    let circlePoints: string[] = []
+
                     if (circle.circleKind === 'threePoints') {
                       const labels = circle.sourcePointIds?.map((pid: string) => pointLabelMap[pid] ?? '?') ?? []
                       desc = `Qua ${labels.join(', ')}`
+                      circlePoints = circle.sourcePointIds?.map((pid: string) => pointLabelMap[pid] ?? '?') ?? []
                     } else if (circle.circleKind === 'centerRadius') {
                       desc = `Tâm ${centerLabel}`
                       isEditable = true
+                      circlePoints = [centerLabel]
                     } else {
                       desc = `Tâm ${centerLabel}, qua ${radiusPointLabel}`
+                      circlePoints = [centerLabel, radiusPointLabel]
                     }
+
                     return (
                       <CircleRow
                         key={circle.id}
                         circle={circle}
                         desc={desc}
+                        basePoints={circlePoints}
                         selected={manualSelection?.kind === 'circle' && manualSelection.id === circle.id}
                         onSelect={() => setManualSelection({ kind: 'circle', id: circle.id })}
                         onDelete={() => removeManualEntity('circle', circle.id)}
                         onUpdateRadius={isEditable ? (newRad) => updateCircleRadius(circle.id, newRad) : undefined}
                         radiusVal={isEditable ? Number(circle.radius) : undefined}
                         onToggleVisibility={() => toggleManualVisibility('circle', circle.id)}
+                        onRename={(newName: string) => renameManualEntity('circle', circle.id, newName)}
                       />
                     )
                   })}
@@ -1258,7 +1444,8 @@ export function ManualRightPanel() {
                       typeLabel={getSolidDisplayName(solid, manualDerived.pointPositions)}
                       icon={solid.solidType === 'pyramid' ? <Pyramid size={14} /> : <Box size={14} />}
                       name={solid.label}
-                      values={solidValueMap[solid.id] ?? []}
+                      values={[]}
+                      basePoints={solidValueMap[solid.id] ?? []}
                       selected={manualSelection?.kind === 'solid' && manualSelection.id === solid.id}
                       onSelect={() => setManualSelection({ kind: 'solid', id: solid.id })}
                       onDelete={() => removeManualEntity('solid', solid.id)}
@@ -1269,6 +1456,7 @@ export function ManualRightPanel() {
                       onUpdateRing={(ringId, phi, theta) => updateSphereRingOrientation(solid.id, ringId, phi, theta)}
                       onRemoveRing={(ringId) => removeSphereRing(solid.id, ringId)}
                       onToggleVisibility={() => toggleManualVisibility('solid', solid.id)}
+                      onRename={(newName: string) => renameManualEntity('solid', solid.id, newName)}
                     />
                   ))}
                 </div>

@@ -89,6 +89,7 @@ export interface ClippingPlaneData {
 
 export interface SectionData {
   id: string
+  targetSolid?: string
   cuttingPlane: string[]
   polygon: string[]
   generatedPoints?: Record<string, { x: number, y: number, z: number }>
@@ -114,6 +115,12 @@ export interface GeometryData {
   sections?: SectionData[]
 }
 
+export interface SolveArtifact {
+  problemText: string
+  rawResult: unknown
+  geometryData: GeometryData
+}
+
 export interface ValidationResult {
   isConsistent: boolean
   issues: string[]
@@ -127,6 +134,8 @@ interface GeometryContextType {
   setWorkspaceMode: (mode: WorkspaceMode) => void
   geometryData: GeometryData | null
   setGeometryData: (data: GeometryData | null) => void
+  solveArtifact: SolveArtifact | null
+  setSolveArtifact: (artifact: SolveArtifact | null) => void
   selectedEntity: string | null
   setSelectedEntity: (entity: string | null) => void
   validation: ValidationResult
@@ -151,6 +160,10 @@ interface GeometryContextType {
   setSelectedQueryId: (id: string | null) => void
   bitmaskVisibility: BitmaskVisibility
   setBitmaskVisibility: (vis: BitmaskVisibility) => void
+  previewBitmaskKeys: string[]
+  setPreviewBitmaskKeys: (keys: string[]) => void
+  selectedBitmaskKey: string | null
+  setSelectedBitmaskKey: (key: string | null) => void
   explodeAmount: number
   setExplodeAmount: (amount: number) => void
   orderedSectionIds: string[]
@@ -863,6 +876,7 @@ function resolvePointPlacement(
 export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('solver')
   const [geometryData, setGeometryData] = useState<GeometryData | null>(null)
+  const [solveArtifact, setSolveArtifact] = useState<SolveArtifact | null>(null)
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null)
   const [validation, setValidation] = useState<ValidationResult>({
     isConsistent: true,
@@ -881,6 +895,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const [queries, setQueries] = useState<Query[]>([])
   const [selectedQueryId, setSelectedQueryId] = useState<string | null>(null)
   const [bitmaskVisibility, setBitmaskVisibility] = useState<BitmaskVisibility>({})
+  const [previewBitmaskKeys, setPreviewBitmaskKeys] = useState<string[]>([])
+  const [selectedBitmaskKey, setSelectedBitmaskKey] = useState<string | null>(null)
   const [explodeAmount, setExplodeAmount] = useState(0)
   const [orderedSectionIds, setOrderedSectionIds] = useState<string[]>([])
   const [showAxes, setShowAxes] = useState(true)
@@ -4237,6 +4253,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       setWorkspaceMode,
       geometryData,
       setGeometryData,
+      solveArtifact,
+      setSolveArtifact,
       selectedEntity,
       setSelectedEntity,
       validation,
@@ -4255,6 +4273,10 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       setSelectedQueryId,
       bitmaskVisibility,
       setBitmaskVisibility,
+      previewBitmaskKeys,
+      setPreviewBitmaskKeys,
+      selectedBitmaskKey,
+      setSelectedBitmaskKey,
       explodeAmount,
       setExplodeAmount,
       orderedSectionIds,
@@ -4336,6 +4358,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       activeTool,
       autoRevertToSelect,
       bitmaskVisibility,
+      previewBitmaskKeys,
+      selectedBitmaskKey,
       cameraControls,
       cancelManualDraft,
       createBox,

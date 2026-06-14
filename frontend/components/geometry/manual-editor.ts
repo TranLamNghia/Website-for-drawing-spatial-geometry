@@ -112,6 +112,7 @@ export interface ManualSegment extends ManualEntityMeta {
 export interface ManualPolygon extends ManualEntityMeta {
   entityType: 'polygon'
   pointIds: string[]
+  internal?: boolean
 }
 
 export interface ManualCircle extends ManualEntityMeta {
@@ -280,11 +281,30 @@ export interface ManualDerived {
 
 export interface ManualProjectSnapshot {
   mode: 'manual'
+  schemaVersion?: number
   manualDocument: ManualDocument
   viewState?: {
     showAxes?: boolean
     showGrid?: boolean
     showLabels?: boolean
+    cameraControls?: {
+      rotateX: number
+      rotateY: number
+      zoom: number
+      panX: number
+      panY: number
+    }
+    bitmaskVisibility?: Record<string, boolean>
+    orderedSectionIds?: string[]
+    explodeAmount?: number
+  }
+  previewGeometryData?: GeometryData | null
+  source?: {
+    kind: 'manual' | 'ai-import'
+    problemText?: string
+    importedAt?: string
+    warnings?: string[]
+    construction?: unknown
   }
 }
 
@@ -468,11 +488,15 @@ export function isManualProjectSnapshot(value: unknown): value is ManualProjectS
 export function serializeManualProject(
   manualDocument: ManualDocument,
   viewState?: ManualProjectSnapshot['viewState'],
+  extras?: Partial<Pick<ManualProjectSnapshot, 'schemaVersion' | 'previewGeometryData' | 'source'>>,
 ) {
   return JSON.stringify({
     mode: 'manual',
+    schemaVersion: extras?.schemaVersion ?? 2,
     manualDocument,
     viewState,
+    previewGeometryData: extras?.previewGeometryData ?? null,
+    source: extras?.source,
   } satisfies ManualProjectSnapshot)
 }
 
@@ -1347,6 +1371,43 @@ function buildPolygonEdges(
   return edges
 }
 
+function addPolygonBoundarySegments(
+  document: ManualDocument,
+  polygon: ManualPolygon,
+  pointMap: Map<string, ManualPoint>,
+) {
+  if (polygon.internal) return
+  const pointIds = polygon.pointIds
+  if (!pointIds || pointIds.length < 3) return
+
+  for (let index = 0; index < pointIds.length; index += 1) {
+    const startPointId = pointIds[index]
+    const endPointId = pointIds[(index + 1) % pointIds.length]
+    const startPoint = pointMap.get(startPointId)
+    const endPoint = pointMap.get(endPointId)
+    if (!startPoint || !endPoint) continue
+
+    const exists = document.segments.some((segment) => (
+      (segment.startPointId === startPointId && segment.endPointId === endPointId) ||
+      (segment.startPointId === endPointId && segment.endPointId === startPointId)
+    ))
+    if (exists) continue
+
+    document.segments.push({
+      id: createEntityId(`seg_${polygon.id}_${index}`),
+      label: `${startPoint.label}${endPoint.label}`,
+      createdByTool: 'segment',
+      dependsOn: [startPointId, endPointId],
+      locked: true,
+      visible: true,
+      selectable: true,
+      entityType: 'segment',
+      startPointId,
+      endPointId,
+    })
+  }
+}
+
 function pushGeometryPoint(geometry: GeometryData, label: string, point: Vec3) {
   geometry.points[label] = point
 }
@@ -1468,6 +1529,20 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
   // Build a quick lookup: solidId → solid for checking solid visibility
   const solidMap = new Map(document.solids.map((s) => [s.id, s]))
 
+  // Build a set of basePolygonIds that belong to hidden solids
+  const hiddenBasePolygonIds = new Set<string>(
+    document.solids
+      .filter((s) => s.visible === false && s.basePolygonId)
+      .map((s) => s.basePolygonId!)
+  )
+
+  // Build a set of baseCircleIds that belong to hidden solids
+  const hiddenBaseCircleIds = new Set<string>(
+    document.solids
+      .filter((s) => s.visible === false && s.baseCircleId)
+      .map((s) => s.baseCircleId!)
+  )
+
   document.points.forEach((point) => {
     const resolved = pointPositions[point.id]
     if (!resolved) return
@@ -1510,6 +1585,35 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     const endPoint = pointMap.get(segment.endPointId)
     if (!start || !end || !startPoint || !endPoint) return
 
+    // Find all parent polygons that contain this segment as a boundary edge
+    const parentPolygons = document.polygons.filter((poly) => {
+      const pids = poly.pointIds
+      const n = pids.length
+      for (let i = 0; i < n; i++) {
+        const p1 = pids[i]
+        const p2 = pids[(i + 1) % n]
+        if (
+          (p1 === segment.startPointId && p2 === segment.endPointId) ||
+          (p2 === segment.startPointId && p1 === segment.endPointId)
+        ) {
+          return true
+        }
+      }
+      return false
+    })
+
+    // A segment is hidden if all polygons it belongs to are hidden
+    let effectiveSegmentVisible = segment.visible
+    if (parentPolygons.length > 0) {
+      const allParentsHidden = parentPolygons.every((poly) => {
+        const isPolyHidden = poly.visible === false || hiddenBasePolygonIds.has(poly.id)
+        return isPolyHidden
+      })
+      if (allParentsHidden) {
+        effectiveSegmentVisible = false
+      }
+    }
+
     displaySegments.push({
       id: segment.id,
       label: segment.label,
@@ -1517,7 +1621,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       end,
       sourceKind: 'segment',
       sourceId: segment.id,
-      visible: segment.visible,
+      visible: effectiveSegmentVisible,
     })
 
     pushGeometryEdge(geometry, startPoint.label, endPoint.label)
@@ -1529,14 +1633,8 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     }
   })
 
-  // Build a set of basePolygonIds that belong to hidden solids
-  const hiddenBasePolygonIds = new Set<string>(
-    document.solids
-      .filter((s) => s.visible === false && s.basePolygonId)
-      .map((s) => s.basePolygonId!)
-  )
-
   document.polygons.forEach((polygon) => {
+    if (polygon.internal) return
     const polygonPoints = polygon.pointIds
       .map((pointId) => pointPositions[pointId])
       .filter(Boolean) as Vec3[]
@@ -1559,9 +1657,23 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       visible: effectivePolygonVisible,
     })
 
-    buildPolygonEdges(polygon.id, polygonLabels, polygonPoints, effectivePolygonVisible).forEach(
-      (edge) => displaySegments.push(edge),
-    )
+    const polygonEdgeSegments = buildPolygonEdges(polygon.id, polygonLabels, polygonPoints, effectivePolygonVisible)
+    polygonEdgeSegments.forEach((edge, index) => {
+      const startLabel = polygonLabels[index]
+      const endLabel = polygonLabels[(index + 1) % polygonLabels.length]
+      const hasRealSegment = document.segments.some((segment) => {
+        const start = pointMap.get(segment.startPointId)?.label
+        const end = pointMap.get(segment.endPointId)?.label
+        if (!start || !end) return false
+        return (
+          (start === startLabel && end === endLabel) ||
+          (start === endLabel && end === startLabel)
+        )
+      })
+      if (!hasRealSegment) {
+        displaySegments.push(edge)
+      }
+    })
     pushGeometryPlane(geometry, polygonLabels, '#0f766e', 0.14)
     for (let index = 0; index < polygonLabels.length; index += 1) {
       pushGeometryEdge(
@@ -2473,6 +2585,8 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         }
       }
 
+      const effectiveCircleVisible = hiddenBaseCircleIds.has(circle.id) ? false : circle.visible
+
       displayCircles.push({
         id: circle.id,
         label: circle.label,
@@ -2481,7 +2595,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         normal,
         sourceKind: 'circle',
         sourceId: circle.id,
-        visible: circle.visible,
+        visible: effectiveCircleVisible,
       })
     })
   }

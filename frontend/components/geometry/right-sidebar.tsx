@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +10,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { useGeometry } from './geometry-context'
 import type { SectionData } from './geometry-context'
 import { addProject, createProject } from './dashboard-view'
+import { buildImportedManualProjectJson } from './import/ai-to-manual'
 
 // ─────────────────────────────────────────────────────────────
 // ChunkTree – Recursive component that renders the cut tree
@@ -22,6 +24,11 @@ interface ChunkTreeProps {
   setBitmaskVisibility: (v: Record<string, boolean>) => void
   totalActivePlanes: number
   baseId?: string
+  getSideLabel?: (depth: number, bit: '0' | '1') => string
+  previewBitmaskKeys?: string[]
+  selectedBitmaskKey?: string | null
+  onPreviewBitmaskKeys?: (keys: string[]) => void
+  onSelectBitmaskKey?: (key: string) => void
 }
 
 export function ChunkTree({
@@ -32,6 +39,11 @@ export function ChunkTree({
   setBitmaskVisibility,
   totalActivePlanes,
   baseId,
+  getSideLabel,
+  previewBitmaskKeys = [],
+  selectedBitmaskKey,
+  onPreviewBitmaskKeys,
+  onSelectBitmaskKey,
 }: ChunkTreeProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
@@ -44,9 +56,36 @@ export function ChunkTree({
   }
 
   const sides = [
-    { bit: '0' },
-    { bit: '1' },
+    { bit: '0' as const },
+    { bit: '1' as const },
   ]
+
+  const selectedBitStr = selectedBitmaskKey
+    ? (baseId && selectedBitmaskKey.startsWith(`${baseId}_`)
+      ? selectedBitmaskKey.slice(baseId.length + 1)
+      : selectedBitmaskKey)
+    : null
+
+  useEffect(() => {
+    if (!selectedBitStr?.startsWith(bitPrefix)) return
+    const selectedPrefix = selectedBitStr.slice(0, depth + 1)
+    if (selectedPrefix.length !== depth + 1) return
+    setExpanded((current) => (
+      current[selectedPrefix] === true
+        ? current
+        : { ...current, [selectedPrefix]: true }
+    ))
+  }, [bitPrefix, depth, selectedBitStr])
+
+  useEffect(() => {
+    if (depth !== 0 || !selectedBitmaskKey) return
+    const frame = requestAnimationFrame(() => {
+      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-chunk-key]'))
+        .find((element) => element.dataset.chunkKey === selectedBitmaskKey)
+      target?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [depth, selectedBitmaskKey])
 
   return (
     <div className="space-y-1">
@@ -64,7 +103,10 @@ export function ChunkTree({
           return buildBitStr(childPrefix + suffix)
         })
         const allHidden = leafBits.every(b => bitmaskVisibility[b] === false)
-        const spatialLabel = `${bit === '0' ? 'Không gian A' : 'Không gian B'} (${chunkName_range(parseInt(childPrefix, 2), remainingLevels)})`
+        const sideLabel = getSideLabel?.(depth, bit) ?? (bit === '0' ? 'Không gian A' : 'Không gian B')
+        const spatialLabel = `${sideLabel} (${chunkName_range(parseInt(childPrefix, 2), remainingLevels)})`
+        const isPreviewed = leafBits.some((key) => previewBitmaskKeys.includes(key))
+        const isSelectedBranch = !!selectedBitmaskKey && leafBits.includes(selectedBitmaskKey)
 
         return (
           <div key={nodeKey} className="space-y-1 pl-3">
@@ -76,9 +118,17 @@ export function ChunkTree({
               </div>
               <button
                 onClick={() => setExpanded(prev => ({ ...prev, [nodeKey]: !isOpen }))}
+                onMouseEnter={() => onPreviewBitmaskKeys?.(leafBits)}
+                onMouseLeave={() => onPreviewBitmaskKeys?.([])}
+                onFocus={() => onPreviewBitmaskKeys?.(leafBits)}
+                onBlur={() => onPreviewBitmaskKeys?.([])}
                 className={`flex-1 px-2.5 py-1.5 rounded-md transition-all flex items-center gap-2 border text-left ${allHidden
                     ? 'bg-orange-500/5 border-orange-500/20 text-orange-400 opacity-60'
-                    : 'bg-accent/5 border-accent/20 text-accent hover:bg-accent/10'
+                    : isSelectedBranch
+                      ? 'bg-primary/15 border-primary/50 text-primary shadow-sm'
+                      : isPreviewed
+                        ? 'bg-accent/15 border-accent/50 text-accent'
+                        : 'bg-accent/5 border-accent/20 text-accent hover:bg-accent/10'
                   }`}
               >
                 {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -117,10 +167,28 @@ export function ChunkTree({
                       <div className="w-3 h-px bg-border/60" />
                     </div>
                     <div
+                      data-chunk-key={buildBitStr(childPrefix)}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onSelectBitmaskKey?.(buildBitStr(childPrefix))}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onSelectBitmaskKey?.(buildBitStr(childPrefix))
+                        }
+                      }}
+                      onMouseEnter={() => onPreviewBitmaskKeys?.([buildBitStr(childPrefix)])}
+                      onMouseLeave={() => onPreviewBitmaskKeys?.([])}
+                      onFocus={() => onPreviewBitmaskKeys?.([buildBitStr(childPrefix)])}
+                      onBlur={() => onPreviewBitmaskKeys?.([])}
                       className={`flex-1 px-3 py-2 rounded-md border text-left flex items-center justify-between ${bitmaskVisibility[buildBitStr(childPrefix)] !== false
-                          ? 'bg-card/40 border-border/40 text-foreground'
+                          ? selectedBitmaskKey === buildBitStr(childPrefix)
+                            ? 'bg-primary/15 border-primary/50 text-primary shadow-sm'
+                            : previewBitmaskKeys.includes(buildBitStr(childPrefix))
+                              ? 'bg-accent/15 border-accent/50 text-accent'
+                              : 'bg-card/40 border-border/40 text-foreground hover:border-accent/40'
                           : 'bg-red-500/5 text-red-500/50 border-red-500/10'
-                        }`}
+                        } cursor-pointer transition-colors`}
                     >
                       <div className="flex items-center gap-2">
                         <Cuboid size={13} className="opacity-50" />
@@ -149,6 +217,11 @@ export function ChunkTree({
                       setBitmaskVisibility={setBitmaskVisibility}
                       totalActivePlanes={totalActivePlanes}
                       baseId={baseId}
+                      getSideLabel={getSideLabel}
+                      previewBitmaskKeys={previewBitmaskKeys}
+                      selectedBitmaskKey={selectedBitmaskKey}
+                      onPreviewBitmaskKeys={onPreviewBitmaskKeys}
+                      onSelectBitmaskKey={onSelectBitmaskKey}
                     />
                   </>
                 )}
@@ -172,14 +245,20 @@ function chunkName_range(prefixInt: number, remainingLevels: number): string {
 // RightSidebar
 // ─────────────────────────────────────────────────────────────
 export function RightSidebar() {
+  const router = useRouter()
   const {
     geometryData,
+    solveArtifact,
     orderedSectionIds,
     setOrderedSectionIds,
     bitmaskVisibility,
     setBitmaskVisibility,
     explodeAmount,
     setExplodeAmount,
+    cameraControls,
+    showAxes,
+    showGrid,
+    showLabels,
   } = useGeometry()
 
   const [isSaving, setIsSaving] = useState(false)
@@ -190,13 +269,27 @@ export function RightSidebar() {
     setIsSaving(true)
 
     const name = `Bản vẽ AI ${new Date().toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}`
-    const json = JSON.stringify(geometryData)
-    const project = createProject(name, '', json)
+    const imported = buildImportedManualProjectJson(solveArtifact, {
+      problemText: solveArtifact?.problemText || '',
+      showAxes,
+      showGrid,
+      showLabels,
+      cameraControls,
+      bitmaskVisibility,
+      orderedSectionIds,
+      explodeAmount,
+    }, geometryData)
+    const json = imported.geometryJson
+    const project = createProject(name, solveArtifact?.problemText || '', json)
     const ok = addProject(project)
 
     setIsSaving(false)
     if (ok) {
       setIsSaved(true)
+      if (imported.warnings.length) {
+        console.warn('[geometry import warnings]', imported.warnings)
+      }
+      router.push(`/che-do-tu-ve?id=${project.id}`)
       setTimeout(() => { setIsSaved(false) }, 2000)
     } else {
       alert('Đã đạt giới hạn 10 bản vẽ. Vui lòng xóa bản vẽ cũ trước.')
