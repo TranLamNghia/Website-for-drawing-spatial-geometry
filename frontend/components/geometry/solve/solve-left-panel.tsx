@@ -44,12 +44,13 @@ export function SolveLeftPanel() {
     setIsConsistent,
     setErrorMessage,
     setQueries,
+    setSolveArtifact,
     errorMessage,
   } = useGeometry()
 
   const setters = useMemo(
-    () => ({ setGeometryData, setValidation, setIsConsistent, setErrorMessage, setQueries }),
-    [setGeometryData, setValidation, setIsConsistent, setErrorMessage, setQueries],
+    () => ({ setGeometryData, setValidation, setIsConsistent, setErrorMessage, setQueries, setSolveArtifact }),
+    [setGeometryData, setValidation, setIsConsistent, setErrorMessage, setQueries, setSolveArtifact],
   )
 
   const [problem, setProblem] = useState(SAMPLE_PROBLEM)
@@ -63,6 +64,9 @@ export function SolveLeftPanel() {
     setErrorMessage('')
     try {
       const result = await solveProblemText(problem)
+      if (result && typeof result === 'object') {
+        ;(result as any).problemText = problem
+      }
       setLastResultRaw(result)
       setJsonInput(JSON.stringify(result, null, 2))
       applyBackendResultToState(result, setters)

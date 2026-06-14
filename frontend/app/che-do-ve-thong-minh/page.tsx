@@ -4,6 +4,7 @@ import { useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SolverView } from '@/components/geometry/solver-view'
 import { GeometryProvider, useGeometry } from '@/components/geometry/geometry-context'
+import { isManualProjectSnapshot } from '@/components/geometry/manual-editor'
 import { useProjectStore } from '@/hooks/use-project-store'
 
 function SmartSolverContent() {
@@ -11,35 +12,77 @@ function SmartSolverContent() {
   const searchParams = useSearchParams()
   const projectId = searchParams.get('id')
   const { projects } = useProjectStore()
-  const { setGeometryData } = useGeometry()
+  const {
+    setGeometryData,
+    setSolveArtifact,
+    setCameraControls,
+    setShowAxes,
+    setShowGrid,
+    setShowLabels,
+    setOrderedSectionIds,
+    setBitmaskVisibility,
+    setExplodeAmount,
+  } = useGeometry()
 
   useEffect(() => {
     if (projectId && projects.length > 0) {
-      const project = projects.find(p => p.id === projectId)
+      const project = projects.find((p) => p.id === projectId)
       if (project) {
         try {
           const data = JSON.parse(project.geometryJson)
+          if (isManualProjectSnapshot(data)) {
+            setGeometryData(data.previewGeometryData ?? null)
+            setSolveArtifact(data.previewGeometryData
+              ? {
+                  problemText: data.source?.problemText || '',
+                  rawResult: {
+                    manualDocument: data.manualDocument,
+                    construction: data.source?.construction,
+                    problemText: data.source?.problemText || '',
+                  },
+                  geometryData: data.previewGeometryData,
+                }
+              : null)
+            if (data.viewState?.cameraControls) setCameraControls(data.viewState.cameraControls)
+            if (typeof data.viewState?.showAxes === 'boolean') setShowAxes(data.viewState.showAxes)
+            if (typeof data.viewState?.showGrid === 'boolean') setShowGrid(data.viewState.showGrid)
+            if (typeof data.viewState?.showLabels === 'boolean') setShowLabels(data.viewState.showLabels)
+            if (Array.isArray(data.viewState?.orderedSectionIds)) setOrderedSectionIds(data.viewState.orderedSectionIds)
+            if (data.viewState?.bitmaskVisibility) setBitmaskVisibility(data.viewState.bitmaskVisibility)
+            if (typeof data.viewState?.explodeAmount === 'number') setExplodeAmount(data.viewState.explodeAmount)
+            return
+          }
           setGeometryData(data)
         } catch (e) {
-          console.error("Lỗi khi load dữ liệu bản vẽ:", e)
+          console.error('Loi khi load du lieu ban ve:', e)
         }
       }
     }
-  }, [projectId, projects, setGeometryData])
+  }, [
+    projectId,
+    projects,
+    setGeometryData,
+    setSolveArtifact,
+    setCameraControls,
+    setShowAxes,
+    setShowGrid,
+    setShowLabels,
+    setOrderedSectionIds,
+    setBitmaskVisibility,
+    setExplodeAmount,
+  ])
 
   const handleBack = () => {
     router.push('/')
   }
 
-  return (
-    <SolverView onBack={handleBack} />
-  )
+  return <SolverView onBack={handleBack} />
 }
 
 export default function SmartSolverPage() {
   return (
     <GeometryProvider>
-      <Suspense fallback={<div className="h-screen bg-background flex items-center justify-center text-muted-foreground">Đang tải trợ lý AI...</div>}>
+      <Suspense fallback={<div className="h-screen bg-background flex items-center justify-center text-muted-foreground">Dang tai tro ly AI...</div>}>
         <SmartSolverContent />
       </Suspense>
     </GeometryProvider>

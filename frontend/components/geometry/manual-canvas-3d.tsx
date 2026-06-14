@@ -9,12 +9,13 @@ import { ViewHelper } from 'three/examples/jsm/helpers/ViewHelper.js'
 import { useTheme } from 'next-themes'
 import { Crosshair, Eye, Layers, RefreshCcw, Sparkles, Compass } from 'lucide-react'
 import { useGeometry } from './geometry-context'
-import { ManualDisplayPolygon, ManualDisplaySegment, ManualSnapTarget, Vec3, resolveCircleProps } from './manual-editor'
+import { ManualDisplayPolygon, ManualDisplaySegment, ManualSolid, ManualCircle, serializeManualProject, computeSolidPlaneIntersection, ManualSnapTarget, Vec3, resolveCircleProps } from './manual-editor'
 
 type InteractiveHit = {
   kind: 'point' | 'segment' | 'polygon' | 'solid' | 'circle'
   id: string
   solidId?: string
+  bitmaskKey?: string
   facePointIds?: string[]
   isVirtual?: boolean
 }
@@ -199,6 +200,61 @@ function getPolygonNormal(pts: Vec3[]): Vec3 {
   return len > 1e-9 ? scaleVec3(normal, 1 / len) : [0, 0, 1]
 }
 
+function applyBitmaskGroupPreview(
+  groups: Map<string, THREE.Group>,
+  previewKeys: string[],
+) {
+  const previewSet = new Set(previewKeys)
+  const hasPreview = previewSet.size > 0
+
+  groups.forEach((group, key) => {
+    const isTarget = previewSet.has(key)
+    const baseVisible = group.userData.baseVisible !== false
+    group.visible = hasPreview ? (baseVisible || isTarget) : baseVisible
+
+    group.traverse((object) => {
+      if (
+        !(object instanceof THREE.Mesh) &&
+        !(object instanceof THREE.Line) &&
+        !(object instanceof THREE.LineSegments) &&
+        !(object instanceof THREE.Points)
+      ) return
+
+      const materials = Array.isArray(object.material) ? object.material : [object.material]
+      materials.forEach((material) => {
+        if (material.userData.skipChunkPreview) return
+
+        if (material.userData.chunkOriginalOpacity === undefined) {
+          material.userData.chunkOriginalOpacity = material.opacity
+          material.userData.chunkOriginalTransparent = material.transparent
+          material.userData.chunkOriginalDepthWrite = material.depthWrite
+        }
+
+        const originalOpacity = material.userData.chunkOriginalOpacity as number
+        const originalTransparent = material.userData.chunkOriginalTransparent as boolean
+        const originalDepthWrite = material.userData.chunkOriginalDepthWrite as boolean
+
+        if (!hasPreview) {
+          material.opacity = originalOpacity
+          material.transparent = originalTransparent
+          material.depthWrite = originalDepthWrite
+        } else if (isTarget) {
+          material.opacity = originalOpacity < 0.9
+            ? Math.max(originalOpacity, baseVisible ? 0.42 : 0.28)
+            : originalOpacity
+          material.transparent = material.opacity < 1
+          material.depthWrite = originalDepthWrite
+        } else {
+          material.opacity = Math.min(originalOpacity * 0.18, 0.08)
+          material.transparent = true
+          material.depthWrite = false
+        }
+        material.needsUpdate = true
+      })
+    })
+  })
+}
+
 export function ManualCanvas3D() {
   const mountRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -216,6 +272,8 @@ export function ManualCanvas3D() {
   const smartGuideMeshRef = useRef<THREE.Line | null>(null)
   const pointMeshesRef = useRef<Array<{ id: string; mesh: THREE.Mesh }>>([])
   const segmentMeshesRef = useRef<Array<{ id: string; mesh: THREE.Line }>>([])
+  const bitmaskGroupsRef = useRef<Map<string, THREE.Group>>(new Map())
+  const previewBitmaskKeysRef = useRef<string[]>([])
   const hoveredEntityIdRef = useRef<string | null>(null)
   const [showGizmo, setShowGizmo] = useState(true)
 
@@ -299,7 +357,12 @@ export function ManualCanvas3D() {
     showSmartGuides,
     setShowSmartGuides,
     autoRevertToSelect,
+    bitmaskVisibility,
+    previewBitmaskKeys,
+    setSelectedBitmaskKey,
+    explodeAmount,
   } = useGeometry()
+  previewBitmaskKeysRef.current = previewBitmaskKeys
 
   const snapEnabled = true
   const snapThreshold = 10
@@ -448,7 +511,7 @@ export function ManualCanvas3D() {
         if (entity.isVirtual && activeTool !== 'projection') {
           continue
         }
-        const key = `${entity.kind}_${entity.id}`
+        const key = `${entity.kind}_${entity.id}_${entity.bitmaskKey ?? ''}`
         if (!seenIds.has(key)) {
           seenIds.add(key)
           results.push(entity)
@@ -700,6 +763,7 @@ export function ManualCanvas3D() {
     cameraRef.current = camera
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.localClippingEnabled = true
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(container.clientWidth, container.clientHeight)
     container.appendChild(renderer.domElement)
@@ -1092,6 +1156,7 @@ export function ManualCanvas3D() {
     if (!group) return
     pointMeshesRef.current = []
     segmentMeshesRef.current = []
+    bitmaskGroupsRef.current.clear()
 
     while (group.children.length > 0) {
       const child = group.children[0]
@@ -1103,6 +1168,12 @@ export function ManualCanvas3D() {
       }
     }
 
+    const isSolidIdSliced = (id?: string) => {
+      if (!id) return false
+      const s = manualDocument.solids.find(x => x.id === id)
+      return !!(s && s.cuts && s.cuts.some(c => c.visible))
+    }
+
     const pointGeometry = new THREE.SphereGeometry(0.12, 18, 18)
     const lineMaterial = new THREE.LineBasicMaterial({ color: colors.segment })
     const previewMaterial = new THREE.LineDashedMaterial({
@@ -1112,7 +1183,7 @@ export function ManualCanvas3D() {
     })
 
     manualDerived.displayPolygons
-      .filter((polygon) => polygon.visible)
+      .filter((polygon) => polygon.visible && !(polygon.sourceKind === 'solid' && isSolidIdSliced(polygon.sourceId)))
       .forEach((polygon, pIdx) => {
         if (polygon.points.length < 3) return
 
@@ -1187,7 +1258,7 @@ export function ManualCanvas3D() {
       })
 
     manualDerived.displaySegments
-      .filter((segment) => segment.visible)
+      .filter((segment) => segment.visible && !(segment.sourceKind === 'solid' && isSolidIdSliced(segment.sourceId)))
       .forEach((segment) => {
         const geometry = new THREE.BufferGeometry().setFromPoints([
           new THREE.Vector3(...segment.start),
@@ -1231,7 +1302,7 @@ export function ManualCanvas3D() {
       })
 
     manualDerived.displayPoints
-      .filter((point) => point.visible)
+      .filter((point) => point.visible && !(point.sourceKind === 'solid' && isSolidIdSliced(point.sourceId)))
       .forEach((point) => {
         const isDraftSelected =
           draftOperation &&
@@ -1292,7 +1363,7 @@ export function ManualCanvas3D() {
     if (manualDerived.displayCircles) {
       const processedSpheres = new Set<string>()
       manualDerived.displayCircles
-        .filter((c) => c.visible && c.sourceKind === 'solid')
+        .filter((c) => c.visible && c.sourceKind === 'solid' && !isSolidIdSliced(c.sourceId))
         .forEach((c) => {
           if (processedSpheres.has(c.sourceId)) return
           processedSpheres.add(c.sourceId)
@@ -1331,7 +1402,7 @@ export function ManualCanvas3D() {
 
     // Add depth blocker and semi-transparent solid meshes for cones and cylinders
     manualDocument.solids
-      .filter((solid) => solid.visible && (solid.solidType === 'cone' || solid.solidType === 'cylinder'))
+      .filter((solid) => solid.visible && (solid.solidType === 'cone' || solid.solidType === 'cylinder') && !isSolidIdSliced(solid.id))
       .forEach((solid) => {
         const hasBaseCircle = !!solid.baseCircleId
         let center: Vec3 = [0, 0, 0]
@@ -1419,7 +1490,7 @@ export function ManualCanvas3D() {
     // Render derived circles (including sphere wireframe rings)
     if (manualDerived.displayCircles) {
       manualDerived.displayCircles
-        .filter((c) => c.visible)
+        .filter((c) => c.visible && !(c.sourceKind === 'solid' && isSolidIdSliced(c.sourceId)))
         .forEach((circle) => {
           const circlePts: THREE.Vector3[] = []
           const segments = 64
@@ -1494,6 +1565,474 @@ export function ManualCanvas3D() {
         })
     }
 
+    // Render Sliced Solids (each solid with visible cuts gets rendered in 2^N bitmask groups)
+    manualDocument.solids
+      .filter((solid) => solid.visible && solid.cuts && solid.cuts.some(c => c.visible))
+      .forEach((solid) => {
+        const activeCuts = solid.cuts!.filter(c => c.visible)
+        const N = activeCuts.length
+
+        // Retrieve plane normal and coplanar point for each cut
+        const cutsPlanesData = activeCuts.map(cut => {
+          const pts = cut.planePointIds.map(id => {
+            const pObj = manualDocument.points.find(p => p.label === id)
+            return pObj ? manualDerived.pointPositions[pObj.id] : null
+          }).filter(Boolean) as Vec3[]
+          if (pts.length < 3) return null
+
+          const p0 = new THREE.Vector3(...pts[0])
+          const p1 = new THREE.Vector3(...pts[1])
+          const p2 = new THREE.Vector3(...pts[2])
+          const u = new THREE.Vector3().subVectors(p1, p0)
+          const v = new THREE.Vector3().subVectors(p2, p0)
+          const normal = new THREE.Vector3().crossVectors(u, v).normalize()
+          return {
+            id: cut.id,
+            plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, p0),
+            normal,
+            p0,
+            planePoints: pts
+          }
+        }).filter((x): x is NonNullable<typeof x> => !!x)
+
+        const actualN = cutsPlanesData.length
+        if (actualN === 0) return
+
+        const cutIntersections = cutsPlanesData.map(({ planePoints }) =>
+          computeSolidPlaneIntersection(
+            solid,
+            planePoints,
+            manualDerived.pointPositions,
+            manualDocument,
+          ),
+        )
+
+        // For each of the 2^N bitmask groups
+        for (let i = 0; i < (1 << actualN); i++) {
+          const bitStr = i.toString(2).padStart(actualN, '0')
+          const bitmaskKey = `${solid.id}_${bitStr}`
+          const isVisible = bitmaskVisibility[bitmaskKey] !== false
+
+          const bitmaskGroup = new THREE.Group()
+          bitmaskGroup.visible = isVisible
+          bitmaskGroup.userData.baseVisible = isVisible
+          bitmaskGroup.userData.bitmaskKey = bitmaskKey
+          bitmaskGroupsRef.current.set(bitmaskKey, bitmaskGroup)
+
+          // Calculate translation offset based on explodeAmount
+          const offsetVec = new THREE.Vector3()
+          const dist = (explodeAmount / 100) * 8
+          for (let b = 0; b < actualN; b++) {
+            const isPositive = bitStr[b] === '1'
+            offsetVec.add(cutsPlanesData[b].normal.clone().multiplyScalar(isPositive ? dist : -dist))
+          }
+          bitmaskGroup.position.copy(offsetVec)
+
+          // Set up clipping planes for this group
+          const clips: THREE.Plane[] = []
+          for (let b = 0; b < actualN; b++) {
+            const isPositive = bitStr[b] === '1'
+            const originalPlane = cutsPlanesData[b].plane
+            const p = isPositive ? originalPlane.clone() : originalPlane.clone().negate()
+            p.translate(offsetVec)
+            clips.push(p)
+          }
+
+          // 1. Polygons
+          manualDerived.displayPolygons
+            .filter((poly) => poly.visible && poly.sourceKind === 'solid' && poly.sourceId === solid.id)
+            .forEach((polygon, pIdx) => {
+              if (polygon.points.length < 3) return
+              const faceGeometry = new THREE.BufferGeometry()
+              const positions: number[] = []
+              for (let idx = 1; idx < polygon.points.length - 1; idx += 1) {
+                positions.push(...polygon.points[0], ...polygon.points[idx], ...polygon.points[idx + 1])
+              }
+              faceGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+              faceGeometry.computeVertexNormals()
+
+              if (polygon.isVirtual) {
+                const virtualMaterial = new THREE.MeshBasicMaterial({
+                  colorWrite: false,
+                  depthWrite: false,
+                  transparent: true,
+                  opacity: 0,
+                  side: THREE.DoubleSide,
+                  clippingPlanes: clips,
+                })
+                virtualMaterial.userData.skipChunkPreview = true
+
+                const virtualMesh = new THREE.Mesh(faceGeometry, virtualMaterial)
+                virtualMesh.userData.entity = {
+                  kind: 'solid',
+                  id: polygon.id,
+                  solidId: solid.id,
+                  facePointIds: polygon.pointIds,
+                  isVirtual: true,
+                  bitmaskKey,
+                } satisfies InteractiveHit
+                virtualMesh.userData.isVirtualPlane = true
+                virtualMesh.userData.virtualLabel = polygon.label
+                bitmaskGroup.add(virtualMesh)
+                return
+              }
+
+              const isSelected = manualSelection?.kind === 'solid' && manualSelection.id === solid.id
+              const material = new THREE.MeshBasicMaterial({
+                color: isSelected ? colors.pointSelected : colors.solid,
+                transparent: true,
+                opacity: polygon.opacity,
+                side: THREE.DoubleSide,
+                clippingPlanes: clips,
+                polygonOffset: true,
+                polygonOffsetFactor: 1 + pIdx * 0.1,
+                polygonOffsetUnits: 1,
+              })
+              const mesh = new THREE.Mesh(faceGeometry, material)
+              mesh.userData.entity = {
+                kind: 'solid',
+                id: solid.id,
+                solidId: solid.id,
+              } satisfies InteractiveHit
+              bitmaskGroup.add(mesh)
+
+              const blockerMaterial = new THREE.MeshBasicMaterial({
+                colorWrite: false,
+                depthWrite: true,
+                side: THREE.DoubleSide,
+                clippingPlanes: clips,
+                polygonOffset: true,
+                polygonOffsetFactor: 1 + pIdx * 0.1,
+                polygonOffsetUnits: 1,
+              })
+              const blockerMesh = new THREE.Mesh(faceGeometry, blockerMaterial)
+              blockerMesh.renderOrder = 1
+              bitmaskGroup.add(blockerMesh)
+            })
+
+          // 2. Segments
+          manualDerived.displaySegments
+            .filter((seg) => seg.visible && seg.sourceKind === 'solid' && seg.sourceId === solid.id)
+            .forEach((segment) => {
+              const geometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(...segment.start),
+                new THREE.Vector3(...segment.end),
+              ])
+              const isSelected = manualSelection?.kind === 'solid' && manualSelection.id === solid.id
+              const material = new THREE.LineBasicMaterial({
+                color: isSelected ? colors.pointSelected : colors.solid,
+                clippingPlanes: clips,
+              })
+              const line = new THREE.Line(geometry, material)
+              line.renderOrder = 10
+              line.userData.entity = {
+                kind: 'solid',
+                id: solid.id,
+              } satisfies InteractiveHit
+              bitmaskGroup.add(line)
+
+              const dashedMaterial = new THREE.LineDashedMaterial({
+                color: isSelected ? colors.pointSelected : colors.solid,
+                dashSize: 0.15,
+                gapSize: 0.1,
+                depthFunc: THREE.GreaterDepth,
+                transparent: true,
+                opacity: 0.5,
+                clippingPlanes: clips,
+              })
+              const dashedLine = new THREE.Line(geometry, dashedMaterial)
+              dashedLine.renderOrder = 11
+              dashedLine.computeLineDistances()
+              bitmaskGroup.add(dashedLine)
+            })
+
+          // 3. Sphere, Cone, Cylinder meshes
+          if (solid.solidType === 'cone' || solid.solidType === 'cylinder') {
+            const hasBaseCircle = !!solid.baseCircleId
+            let center: Vec3 = [0, 0, 0]
+            let r = solid.radius ?? 3
+            let normal: Vec3 = [0, 0, 1]
+
+            if (hasBaseCircle) {
+              const circle = manualDocument.circles.find((c) => c.id === solid.baseCircleId)
+              if (circle) {
+                const props = resolveCircleProps(circle, manualDerived.pointPositions)
+                if (props) {
+                  center = props.center
+                  r = props.radius
+                  normal = props.normal
+                }
+              }
+            } else if (solid.centerPointId) {
+              const cPos = manualDerived.pointPositions[solid.centerPointId]
+              if (cPos) center = cPos
+            }
+
+            let h = solid.height ?? 5
+            if (solid.apexPointId && manualDerived.pointPositions[solid.apexPointId]) {
+              const apex = manualDerived.pointPositions[solid.apexPointId]
+              h = dotVec3(subVec3(apex, center), normal)
+            }
+
+            if (Math.abs(h) >= 1e-3) {
+              const normalVec = new THREE.Vector3(...normal).normalize()
+              const defaultY = new THREE.Vector3(0, 1, 0)
+              const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultY, normalVec)
+              const meshCenter = addVec3(center, scaleVec3(normal, h / 2))
+
+              let geom: THREE.BufferGeometry
+              let blockerGeom: THREE.BufferGeometry
+
+              if (solid.solidType === 'cone') {
+                geom = new THREE.ConeGeometry(r, Math.abs(h), 32)
+                blockerGeom = new THREE.ConeGeometry(r * 0.993, Math.abs(h) * 0.993, 32)
+                if (h < 0) {
+                  geom.scale(1, -1, 1)
+                  blockerGeom.scale(1, -1, 1)
+                }
+              } else {
+                geom = new THREE.CylinderGeometry(r, r, Math.abs(h), 32)
+                blockerGeom = new THREE.CylinderGeometry(r * 0.993, r * 0.993, Math.abs(h) * 0.993, 32)
+                if (h < 0) {
+                  geom.scale(1, -1, 1)
+                  blockerGeom.scale(1, -1, 1)
+                }
+              }
+
+              const blockerMaterial = new THREE.MeshBasicMaterial({
+                colorWrite: false,
+                depthWrite: true,
+                side: THREE.DoubleSide,
+                clippingPlanes: clips,
+              })
+              const blockerMesh = new THREE.Mesh(blockerGeom, blockerMaterial)
+              blockerMesh.position.set(meshCenter[0], meshCenter[1], meshCenter[2])
+              blockerMesh.quaternion.copy(quaternion)
+              blockerMesh.renderOrder = 1
+              bitmaskGroup.add(blockerMesh)
+
+              const isSelected = manualSelection?.kind === 'solid' && manualSelection.id === solid.id
+              const material = new THREE.MeshBasicMaterial({
+                color: isSelected ? colors.pointSelected : colors.solid,
+                transparent: true,
+                opacity: 0.12,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                clippingPlanes: clips,
+              })
+              const mesh = new THREE.Mesh(geom, material)
+              mesh.position.set(meshCenter[0], meshCenter[1], meshCenter[2])
+              mesh.quaternion.copy(quaternion)
+              mesh.userData.entity = {
+                kind: 'solid',
+                id: solid.id,
+                solidId: solid.id,
+              } satisfies InteractiveHit
+              bitmaskGroup.add(mesh)
+            }
+          } else if (solid.solidType === 'sphere') {
+            const sphereRing = manualDerived.displayCircles?.find(c => c.visible && c.sourceKind === 'solid' && c.sourceId === solid.id)
+            if (sphereRing) {
+              const blockerGeometry = new THREE.SphereGeometry(sphereRing.radius * 0.993, 32, 32)
+              const blockerMaterial = new THREE.MeshBasicMaterial({
+                colorWrite: false,
+                depthWrite: true,
+                side: THREE.DoubleSide,
+                clippingPlanes: clips,
+              })
+              const blockerMesh = new THREE.Mesh(blockerGeometry, blockerMaterial)
+              blockerMesh.position.set(sphereRing.center[0], sphereRing.center[1], sphereRing.center[2])
+              blockerMesh.renderOrder = 1
+              bitmaskGroup.add(blockerMesh)
+
+              const isSelected = manualSelection?.kind === 'solid' && manualSelection.id === solid.id
+              const sphereGeometry = new THREE.SphereGeometry(sphereRing.radius, 32, 32)
+              const sphereMaterial = new THREE.MeshBasicMaterial({
+                color: isSelected ? colors.pointSelected : colors.solid,
+                transparent: true,
+                opacity: 0.12,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                clippingPlanes: clips,
+              })
+              const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial)
+              sphereMesh.position.set(sphereRing.center[0], sphereRing.center[1], sphereRing.center[2])
+              sphereMesh.userData.entity = {
+                kind: 'solid',
+                id: solid.id,
+                solidId: solid.id,
+              } satisfies InteractiveHit
+              bitmaskGroup.add(sphereMesh)
+            }
+          }
+
+          // 4. Points (Vertices of this solid)
+          manualDerived.displayPoints
+            .filter((p) => p.visible && p.sourceKind === 'solid' && p.sourceId === solid.id)
+            .forEach((point) => {
+              const isSelected = manualSelection?.kind === 'point' && (manualSelection.id === point.id || manualSelection.id === point.sourceId)
+              const material = new THREE.MeshBasicMaterial({
+                color: isSelected ? colors.pointSelected : colors.solid,
+                clippingPlanes: clips,
+              })
+              const mesh = new THREE.Mesh(pointGeometry, material)
+              mesh.position.set(...point.position)
+              mesh.userData.entity = {
+                kind: 'point',
+                id: point.id,
+              } satisfies InteractiveHit
+              bitmaskGroup.add(mesh)
+            })
+
+          // 5. Finite section caps, matching the smart-draw renderer.
+          for (let b = 0; b < actualN; b++) {
+            const intersection = cutIntersections[b]
+            if (!intersection) continue
+
+            const capClips: THREE.Plane[] = []
+            for (let otherB = 0; otherB < actualN; otherB++) {
+              if (otherB === b) continue
+              const isPositive = bitStr[otherB] === '1'
+              const originalPlane = cutsPlanesData[otherB].plane
+              const p = isPositive ? originalPlane.clone() : originalPlane.clone().negate()
+              p.translate(offsetVec)
+              capClips.push(p)
+            }
+
+            const capMat = new THREE.MeshBasicMaterial({
+              color: '#ff6b6b',
+              side: THREE.DoubleSide,
+              transparent: true,
+              opacity: 0.3,
+              clippingPlanes: capClips,
+              polygonOffset: true,
+              polygonOffsetFactor: -1 - b * 0.1,
+              polygonOffsetUnits: -1,
+            })
+            const blockerMat = new THREE.MeshBasicMaterial({
+              colorWrite: false,
+              depthWrite: true,
+              side: THREE.DoubleSide,
+              clippingPlanes: capClips,
+              polygonOffset: true,
+              polygonOffsetFactor: -1 - b * 0.1,
+              polygonOffsetUnits: -1,
+            })
+            const outlineMat = new THREE.LineBasicMaterial({
+              color: 0xff4444,
+              depthTest: false,
+              clippingPlanes: capClips,
+            })
+
+            if (
+              intersection.isCircle &&
+              intersection.circleCenter &&
+              intersection.circleRadius &&
+              intersection.normal
+            ) {
+              const center = new THREE.Vector3(...intersection.circleCenter)
+              const normal = new THREE.Vector3(...intersection.normal).normalize()
+              const quaternion = new THREE.Quaternion().setFromUnitVectors(
+                new THREE.Vector3(0, 0, 1),
+                normal,
+              )
+              const capGeometry = new THREE.CircleGeometry(intersection.circleRadius, 64)
+
+              const capMesh = new THREE.Mesh(capGeometry, capMat)
+              capMesh.userData.entity = {
+                kind: 'solid',
+                id: solid.id,
+                solidId: solid.id,
+                bitmaskKey,
+              } satisfies InteractiveHit
+              capMesh.position.copy(center)
+              capMesh.quaternion.copy(quaternion)
+              bitmaskGroup.add(capMesh)
+
+              const blockerMesh = new THREE.Mesh(capGeometry.clone(), blockerMat)
+              blockerMesh.position.copy(center)
+              blockerMesh.quaternion.copy(quaternion)
+              bitmaskGroup.add(blockerMesh)
+
+              const ringPoints: THREE.Vector3[] = []
+              for (let ringIndex = 0; ringIndex <= 128; ringIndex++) {
+                const angle = (ringIndex / 128) * Math.PI * 2
+                ringPoints.push(
+                  new THREE.Vector3(
+                    Math.cos(angle) * intersection.circleRadius,
+                    Math.sin(angle) * intersection.circleRadius,
+                    0,
+                  )
+                    .applyQuaternion(quaternion)
+                    .add(center),
+                )
+              }
+              const outlineGeometry = new THREE.BufferGeometry().setFromPoints(ringPoints)
+              const outline = new THREE.Line(outlineGeometry, outlineMat)
+              outline.userData.entity = {
+                kind: 'solid',
+                id: solid.id,
+                solidId: solid.id,
+                bitmaskKey,
+              } satisfies InteractiveHit
+              bitmaskGroup.add(outline)
+              continue
+            }
+
+            if (!intersection.polygon || intersection.polygon.length < 3) continue
+
+            const capPositions: number[] = []
+            for (let polygonIndex = 1; polygonIndex < intersection.polygon.length - 1; polygonIndex++) {
+              capPositions.push(
+                ...intersection.polygon[0],
+                ...intersection.polygon[polygonIndex],
+                ...intersection.polygon[polygonIndex + 1],
+              )
+            }
+            const capGeometry = new THREE.BufferGeometry()
+            capGeometry.setAttribute('position', new THREE.Float32BufferAttribute(capPositions, 3))
+            capGeometry.computeVertexNormals()
+            const capMesh = new THREE.Mesh(capGeometry, capMat)
+            capMesh.userData.entity = {
+              kind: 'solid',
+              id: solid.id,
+              solidId: solid.id,
+              bitmaskKey,
+            } satisfies InteractiveHit
+            bitmaskGroup.add(capMesh)
+            bitmaskGroup.add(new THREE.Mesh(capGeometry.clone(), blockerMat))
+
+            const outlinePositions: number[] = []
+            for (let polygonIndex = 0; polygonIndex < intersection.polygon.length; polygonIndex++) {
+              const current = intersection.polygon[polygonIndex]
+              const next = intersection.polygon[(polygonIndex + 1) % intersection.polygon.length]
+              outlinePositions.push(...current, ...next)
+            }
+            const outlineGeometry = new THREE.BufferGeometry()
+            outlineGeometry.setAttribute(
+              'position',
+              new THREE.Float32BufferAttribute(outlinePositions, 3),
+            )
+            const outline = new THREE.LineSegments(outlineGeometry, outlineMat)
+            outline.userData.entity = {
+              kind: 'solid',
+              id: solid.id,
+              solidId: solid.id,
+              bitmaskKey,
+            } satisfies InteractiveHit
+            bitmaskGroup.add(outline)
+          }
+
+          bitmaskGroup.traverse((object) => {
+            const entity = object.userData.entity as InteractiveHit | undefined
+            if (entity) entity.bitmaskKey = bitmaskKey
+          })
+          group.add(bitmaskGroup)
+        }
+      })
+
+    applyBitmaskGroupPreview(bitmaskGroupsRef.current, previewBitmaskKeysRef.current)
+
     const preview = draftOperation
     if (preview?.tool === 'segment' && preview.pointIds?.length === 1 && preview.previewPosition) {
       const start = manualDerived.pointPositions[preview.pointIds[0]]
@@ -1546,7 +2085,7 @@ export function ManualCanvas3D() {
       }
     }
 
-    if ((preview?.tool === 'pyramid' || preview?.tool === 'prism') && preview.basePolygonId) {
+    if ((preview?.tool === 'pyramid' || preview?.tool === 'prism' || preview?.tool === 'rightPyramid') && preview.basePolygonId) {
       const basePolygon = manualDerived.displayPolygons.find(
         (polygon) => polygon.sourceKind === 'polygon' && polygon.sourceId === preview.basePolygonId,
       )
@@ -1554,12 +2093,18 @@ export function ManualCanvas3D() {
         const basePoints = basePolygon.points
         const center = polygonCenter(basePoints)
 
-        if (preview.tool === 'pyramid') {
+        if (preview.tool === 'pyramid' || preview.tool === 'rightPyramid') {
           const hasApex = !!(preview.apexPointId && manualDerived.pointPositions[preview.apexPointId])
           const normal = getPolygonNormal(basePoints)
+          
+          let anchorPos = center
+          if (preview.tool === 'rightPyramid' && preview.apexAnchorPointId && manualDerived.pointPositions[preview.apexAnchorPointId]) {
+            anchorPos = manualDerived.pointPositions[preview.apexAnchorPointId]
+          }
+
           const apex: Vec3 = hasApex
             ? manualDerived.pointPositions[preview.apexPointId!]
-            : addVec3(center, scaleVec3(normal, preview.height ?? 4))
+            : addVec3(anchorPos, scaleVec3(normal, preview.height ?? 4))
 
           basePoints.forEach((point, index) => {
             const next = basePoints[(index + 1) % basePoints.length]
@@ -1618,7 +2163,13 @@ export function ManualCanvas3D() {
     manualDocument.segments,
     manualSelection,
     showLabels,
+    bitmaskVisibility,
+    explodeAmount,
   ])
+
+  useEffect(() => {
+    applyBitmaskGroupPreview(bitmaskGroupsRef.current, previewBitmaskKeys)
+  }, [previewBitmaskKeys])
 
   useEffect(() => {
     const renderer = rendererRef.current
@@ -1643,6 +2194,7 @@ export function ManualCanvas3D() {
       const fallbackPosition = snapTarget?.position ?? snappedPlanePoint ?? null
 
       if (activeTool === 'select') {
+        setSelectedBitmaskKey(hit?.bitmaskKey ?? null)
         if (hit?.kind === 'solid' && hit.solidId) {
           setManualSelection({ kind: 'solid', id: hit.solidId })
         } else {
@@ -1718,7 +2270,21 @@ export function ManualCanvas3D() {
         return
       }
 
-      // Click 2 for Pyramid / Prism / RegularPyramid
+      // Click 2 for Pyramid / Prism / RegularPyramid / RightPyramid
+      if (activeTool === 'rightPyramid' && draftOperation?.basePolygonId) {
+        if (snapTarget?.kind === 'point' && snapTarget.pointId) {
+          const basePoly = manualDocument.polygons.find(p => p.id === draftOperation.basePolygonId)
+          if (basePoly && basePoly.pointIds.includes(snapTarget.pointId)) {
+            setDraftOperation({
+              ...draftOperation,
+              apexAnchorPointId: snapTarget.pointId,
+            })
+            setManualSelection({ kind: 'point', id: snapTarget.pointId })
+          }
+          return
+        }
+      }
+
       if ((activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid') && draftOperation?.basePolygonId) {
         const isSkew = activeTool === 'pyramid' ? !!draftOperation.apexPointId : !!draftOperation.topPointId;
         
@@ -1754,8 +2320,8 @@ export function ManualCanvas3D() {
         }
       }
 
-      // Click 1 for Pyramid / Prism / RegularPyramid
-      if ((activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid') && hit?.kind === 'polygon') {
+      // Click 1 for Pyramid / Prism / RegularPyramid / RightPyramid
+      if ((activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid' || activeTool === 'rightPyramid') && hit?.kind === 'polygon') {
         if (activeTool === 'regularPyramid') {
           const id = createRegularPyramid(hit.id)
           if (id) autoRevertToSelect ? setActiveTool('select') : setDraftOperation(null)
@@ -1768,6 +2334,7 @@ export function ManualCanvas3D() {
           height: draftOperation?.tool === activeTool ? draftOperation.height : 4,
           apexPointId: draftOperation?.tool === activeTool ? draftOperation.apexPointId : undefined,
           topPointId: draftOperation?.tool === activeTool ? draftOperation.topPointId : undefined,
+          apexAnchorPointId: draftOperation?.tool === activeTool && draftOperation.basePolygonId === hit.id ? draftOperation.apexAnchorPointId : undefined,
         })
         return
       }
@@ -2744,22 +3311,28 @@ export function ManualCanvas3D() {
         })
       }
 
-      if (draftOperation && !interactionRef.current.creatingPointId && ray) {
-        if ((draftOperation.tool === 'pyramid' || draftOperation.tool === 'prism') && draftOperation.basePolygonId) {
-           const isSkew = draftOperation.tool === 'pyramid' ? !!draftOperation.apexPointId : !!draftOperation.topPointId;
-           if (!isSkew) {
-             const basePolygon = manualDerived.displayPolygons.find((p) => p.sourceId === draftOperation.basePolygonId)
-             if (basePolygon && basePolygon.points.length >= 3) {
-               const normal = getPolygonNormal(basePolygon.points)
-               const center = polygonCenter(basePolygon.points)
-               let h = closestHeightFromRay(ray.origin, ray.direction, center, normal)
-               h = snapCoordinate(h)
-               if (h < 0.1) h = 0.1
-               if (!draftOperation.heightManuallySet && draftOperation.height !== undefined && draftOperation.height !== h) {
-                  setDraftOperation({ ...draftOperation, height: h })
-               }
-             }
-           }
+      if (!interactionRef.current.creatingPointId && ray) {
+        if ((draftOperation.tool === 'pyramid' || draftOperation.tool === 'prism' || draftOperation.tool === 'rightPyramid') && draftOperation.basePolygonId) {
+            const isSkew = draftOperation.tool === 'pyramid' ? !!draftOperation.apexPointId : 
+                           draftOperation.tool === 'prism' ? !!draftOperation.topPointId : false;
+            if (!isSkew) {
+              const basePolygon = manualDerived.displayPolygons.find((p) => p.sourceId === draftOperation.basePolygonId)
+              if (basePolygon && basePolygon.points.length >= 3) {
+                const normal = getPolygonNormal(basePolygon.points)
+                
+                let anchorPos = polygonCenter(basePolygon.points)
+                if (draftOperation.tool === 'rightPyramid' && draftOperation.apexAnchorPointId && manualDerived.pointPositions[draftOperation.apexAnchorPointId]) {
+                  anchorPos = manualDerived.pointPositions[draftOperation.apexAnchorPointId]
+                }
+
+                let h = closestHeightFromRay(ray.origin, ray.direction, anchorPos, normal)
+                h = snapCoordinate(h)
+                if (h < 0.1) h = 0.1
+                if (!draftOperation.heightManuallySet && draftOperation.height !== undefined && draftOperation.height !== h) {
+                   setDraftOperation({ ...draftOperation, height: h })
+                }
+              }
+            }
         }
         if ((draftOperation.tool === 'cone' || draftOperation.tool === 'cylinder') && draftOperation.baseCircleId) {
              const baseCircle = manualDerived.displayCircles.find((c) => c.sourceId === draftOperation.baseCircleId)
@@ -2893,7 +3466,7 @@ export function ManualCanvas3D() {
       const snappedPlanePoint = planePoint ? snapPosition(planePoint) : null
       const snapTarget = getSnapTarget(event, snappedPlanePoint)
 
-      const drawingTools = ['select', 'point', 'segment', 'polygon', 'box', 'sphere', 'cone', 'cylinder', 'pyramid', 'prism']
+      const drawingTools = ['select', 'point', 'segment', 'polygon', 'box', 'sphere', 'cone', 'cylinder', 'pyramid', 'prism', 'regularPyramid', 'rightPyramid']
 
       if (drawingTools.includes(activeTool) && snapTarget?.kind === 'point' && snapTarget.pointId) {
         const pos = snapTarget.position
@@ -2908,7 +3481,7 @@ export function ManualCanvas3D() {
 
       const hitEntity = findIntersectionEntity(event)
       const isCircleClick = (activeTool === 'cone' || activeTool === 'cylinder') && hitEntity?.kind === 'circle'
-      const isPolygonClick = (activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid') && hitEntity?.kind === 'polygon'
+      const isPolygonClick = (activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid' || activeTool === 'rightPyramid') && hitEntity?.kind === 'polygon'
 
       const isSkewMode = (activeTool === 'pyramid') ||
                          (activeTool === 'prism' && draftOperation?.topPointId);
@@ -3193,6 +3766,8 @@ export function ManualCanvas3D() {
                       ? 'Hình chóp'
                     : activeTool === 'regularPyramid'
                       ? 'Chóp đều'
+                    : activeTool === 'rightPyramid'
+                      ? 'Chóp vuông'
                     : activeTool === 'prism'
                       ? 'Lăng trụ'
                     : activeTool === 'sphere'

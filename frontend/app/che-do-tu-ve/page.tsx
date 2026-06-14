@@ -16,6 +16,10 @@ function ManualDrawingContent() {
     setGeometryData,
     setManualDocument,
     setWorkspaceMode,
+    setCameraControls,
+    setOrderedSectionIds,
+    setBitmaskVisibility,
+    setExplodeAmount,
     setShowAxes,
     setShowGrid,
     setShowLabels,
@@ -34,7 +38,11 @@ function ManualDrawingContent() {
       const data = JSON.parse(project.geometryJson)
       if (isManualProjectSnapshot(data)) {
         setManualDocument(data.manualDocument)
-        setGeometryData(null)
+        setGeometryData(data.previewGeometryData ?? null)
+        if (data.viewState?.cameraControls) setCameraControls(data.viewState.cameraControls)
+        if (Array.isArray(data.viewState?.orderedSectionIds)) setOrderedSectionIds(data.viewState.orderedSectionIds)
+        if (data.viewState?.bitmaskVisibility) setBitmaskVisibility(data.viewState.bitmaskVisibility)
+        if (typeof data.viewState?.explodeAmount === 'number') setExplodeAmount(data.viewState.explodeAmount)
         if (typeof data.viewState?.showAxes === 'boolean') setShowAxes(data.viewState.showAxes)
         if (typeof data.viewState?.showGrid === 'boolean') setShowGrid(data.viewState.showGrid)
         if (typeof data.viewState?.showLabels === 'boolean') setShowLabels(data.viewState.showLabels)
@@ -49,6 +57,10 @@ function ManualDrawingContent() {
     projects,
     setGeometryData,
     setManualDocument,
+    setCameraControls,
+    setOrderedSectionIds,
+    setBitmaskVisibility,
+    setExplodeAmount,
     setShowAxes,
     setShowGrid,
     setShowLabels,
@@ -81,4 +93,3 @@ export default function ManualDrawingPage() {
     </GeometryProvider>
   )
 }
-

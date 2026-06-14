@@ -8,6 +8,7 @@ export type GeometrySetters = {
   setIsConsistent: (consistent: boolean) => void
   setErrorMessage: (message: string) => void
   setQueries: (queries: any[]) => void
+  setSolveArtifact?: (artifact: any | null) => void
 }
 
 export const SOLVE_ENDPOINT_URL = 'http://localhost:5000/api/Geometry/process'
@@ -67,6 +68,11 @@ export function applyBackendResultToState(result: any, setters: GeometrySetters)
   const mappedData = mapBackendResultToGeometryData(result)
 
   setters.setGeometryData(mappedData)
+  setters.setSolveArtifact?.({
+    problemText: result.problemText || '',
+    rawResult: result,
+    geometryData: mappedData,
+  })
   setters.setIsConsistent(mappedData.is_consistent)
   setters.setQueries(mappedData.queries || [])
   setters.setValidation({
