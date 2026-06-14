@@ -289,7 +289,7 @@ export function RightSidebar() {
       if (imported.warnings.length) {
         console.warn('[geometry import warnings]', imported.warnings)
       }
-      router.push(`/che-do-tu-ve?id=${project.id}`)
+      router.push(`/chedotuve?id=${project.id}`)
       setTimeout(() => { setIsSaved(false) }, 2000)
     } else {
       alert('Đã đạt giới hạn 10 bản vẽ. Vui lòng xóa bản vẽ cũ trước.')

@@ -106,7 +106,7 @@ export function SolveLeftPanel() {
           variant="outline"
           size="sm"
           onClick={() => {
-            const targetUrl = projectId ? `/che-do-tu-ve?id=${projectId}` : '/che-do-tu-ve'
+            const targetUrl = projectId ? `/chedotuve?id=${projectId}` : '/chedotuve'
             router.push(targetUrl)
           }}
           className="w-full flex items-center justify-center gap-1.5 rounded-xl text-xs py-1.5 h-8 font-semibold bg-background hover:bg-accent/40"

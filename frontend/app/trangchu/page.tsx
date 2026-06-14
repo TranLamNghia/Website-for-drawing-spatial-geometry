@@ -8,11 +8,11 @@ export default function DashboardPage() {
   const router = useRouter()
 
   const handleNewProject = () => {
-    router.push('/che-do-tu-ve')
+    router.push('/chedotuve')
   }
 
   const handleOpenProject = (project: SavedProject) => {
-    router.push(`/che-do-tu-ve?id=${project.id}`)
+    router.push(`/chedotuve?id=${project.id}`)
   }
 
   return <DashboardView onNewProject={handleNewProject} onOpenProject={handleOpenProject} />

@@ -8,7 +8,7 @@ import {
   User,
   MessageSquare,
   Zap,
-  FlaskConical,
+  Boxes,
   BookOpen,
   ChevronRight,
 } from 'lucide-react'
@@ -17,12 +17,12 @@ type NavId = 'drawings' | 'docs' | 'feedback' | 'settings' | 'profile' | 'upgrad
 
 const NAV_TOP: { id: NavId; icon: React.ReactNode; label: string }[] = [
   { id: 'drawings', icon: <LayoutGrid size={18} />, label: 'Danh sách bản vẽ' },
-  { id: 'docs', icon: <BookOpen size={18} />, label: 'Tài liệu' },
+  { id: 'docs', icon: <BookOpen size={18} />, label: 'Hướng dẫn sử dụng' },
 ]
 const NAV_BOTTOM: { id: NavId; icon: React.ReactNode; label: string; special?: boolean }[] = [
   { id: 'feedback', icon: <MessageSquare size={18} />, label: 'Hòm thư góp ý' },
   { id: 'settings', icon: <Settings size={18} />, label: 'Cài đặt' },
-  { id: 'profile', icon: <User size={18} />, label: 'Thông tin cá nhân' },
+  { id: 'profile', icon: <User size={18} />, label: 'Thông tin chủ sở hữu' },
   { id: 'upgrade', icon: <Zap size={18} />, label: 'Gói nâng cấp', special: true },
 ]
 
@@ -65,8 +65,10 @@ function NavItem({
 }
 
 function getActiveNav(pathname: string): NavId {
-  if (pathname.startsWith('/dashboard/settings')) return 'settings'
-  if (pathname.startsWith('/dashboard')) return 'drawings'
+  if (pathname.startsWith('/trangchu/caidat')) return 'settings'
+  if (pathname.startsWith('/trangchu/homthu')) return 'feedback'
+  if (pathname.startsWith('/trangchu/thongtin')) return 'profile'
+  if (pathname.startsWith('/trangchu/huongdan')) return 'docs'
   return 'drawings'
 }
 
@@ -76,9 +78,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const activeNav = useMemo(() => getActiveNav(pathname), [pathname])
 
   const handleNav = (id: NavId) => {
-    if (id === 'drawings') router.push('/dashboard')
-    else if (id === 'settings') router.push('/dashboard/settings')
-    else router.push('/dashboard') // MVP: stubs route back to dashboard
+    if (id === 'drawings') router.push('/trangchu')
+    else if (id === 'docs') router.push('/trangchu/huongdan')
+    else if (id === 'settings') router.push('/trangchu/caidat')
+    else if (id === 'feedback') router.push('/trangchu/homthu')
+    else if (id === 'profile') router.push('/trangchu/thongtin')
+    else router.push('/trangchu')
   }
 
   return (
@@ -86,11 +91,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className="w-[240px] flex-shrink-0 bg-card border-r border-border flex flex-col py-5 z-10">
         <div className="px-4 mb-6 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center ring-1 ring-primary/20 flex-shrink-0">
-            <FlaskConical size={18} className="text-primary" />
+            <Boxes size={18} className="text-primary" />
           </div>
           <div className="min-w-0">
-            <p className="text-[13px] font-bold text-foreground leading-tight">Phòng thí nghiệm Hình học</p>
-            <p className="text-[10px] text-muted-foreground">Hỗ trợ bởi AI</p>
+            <p className="text-[13px] font-bold text-foreground leading-tight">Vẽ hình không &quot;khó&quot;</p>
           </div>
         </div>
 

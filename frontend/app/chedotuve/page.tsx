@@ -71,7 +71,7 @@ function ManualDrawingContent() {
   }
 
   const handleSwitchToSolver = () => {
-    const targetUrl = projectId ? `/che-do-ve-thong-minh?id=${projectId}` : '/che-do-ve-thong-minh'
+    const targetUrl = projectId ? `/chedovethongminh?id=${projectId}` : '/chedovethongminh'
     router.push(targetUrl)
   }
 
