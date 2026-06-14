@@ -1334,6 +1334,7 @@ public class GeometryCompiler : IGeometryCompiler
                 context.Sections.Add(new Application.DTOs.SectionDataDto
                 {
                     Id = $"SEC_SPH_{System.Guid.NewGuid().ToString().Substring(0,4)}",
+                    TargetSolid = solidStr,
                     CuttingPlane = planeVertices,
                     IsCircle = true,
                     CircleCenter = new Application.DTOs.GeneratedPointDto { X = Math.Round(hx, 6), Y = Math.Round(hy, 6), Z = Math.Round(hz, 6) },
@@ -1435,6 +1436,7 @@ public class GeometryCompiler : IGeometryCompiler
                 context.Sections.Add(new Application.DTOs.SectionDataDto
                 {
                     Id = $"SEC_{System.Guid.NewGuid().ToString().Substring(0,4)}",
+                    TargetSolid = solidStr,
                     CuttingPlane = planeVertices,
                     Polygon = orderedPoints
                 });

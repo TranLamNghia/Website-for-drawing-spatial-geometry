@@ -8,6 +8,9 @@ public class SectionDataDto
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
+    [JsonPropertyName("targetSolid")]
+    public string? TargetSolid { get; set; }
+
     [JsonPropertyName("cuttingPlane")]
     public List<string> CuttingPlane { get; set; } = [];
 

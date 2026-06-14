@@ -214,6 +214,17 @@ public class GeometryController : ControllerBase
                 return new { centerBottom = displayBottom, centerTop = displayTop, radius = Math.Round(c.Radius, 4), color = c.Color, opacity = c.Opacity };
             }),
             ["queries"] = cleanedQueries,
+            ["construction"] = new
+            {
+                schemaVersion = 1,
+                metadata = dto.Metadata,
+                entities = dto.Entities,
+                facts = dto.Facts,
+                queries = dto.Queries,
+                aliases = context.PointAliases,
+                points = context.Points,
+                sections = context.Sections,
+            },
             ["validation"] = new 
             {
                 allPassed = context.ValidationReport?.AllPassed ?? true,
