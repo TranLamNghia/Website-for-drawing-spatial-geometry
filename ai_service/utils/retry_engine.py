@@ -34,12 +34,12 @@ class RetryEngine:
 
         print("     [RETRY_ENGINE] Requesting AI to fix error...")
         try:
-            return llm_provider.get_completion(messages)
+            return llm_provider.get_completion(messages, allow_fallback=False)
         except Exception as e:
             print(f"     [RETRY_ENGINE] ❌ Repair failed: {str(e)}")
             return raw_json # Return original if fix fails completely
 
-    def run(self, raw_json: str) -> str:
+    def run(self, raw_json: str, enable_retry: bool = True) -> str:
         is_valid, error = validate_json(raw_json)
 
         if is_valid:
@@ -47,6 +47,10 @@ class RetryEngine:
             return raw_json
 
         print(f"[RETRY_ENGINE] ❌ ORIGINAL JSON ERROR: {simplify_error(error)}")
+        if not enable_retry or self.max_retries <= 0:
+            print("[RETRY_ENGINE] Fail-fast mode enabled. Skipping automatic fix attempts.")
+            raise ValueError(f"AI failed to generate valid geometry schema: {simplify_error(error)}")
+
         print(f"[RETRY_ENGINE] Proceeding with automatic fix maximum {self.max_retries} times...")
 
         # Error-fixing loop

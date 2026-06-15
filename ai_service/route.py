@@ -9,6 +9,17 @@ router = APIRouter()
 ai_engine = GeometryAIEngine() # Dependency Injection
 sympy_engine = SympyAIEngine()
 
+
+def build_error_payload(stage: str, message: str, status_code: int = 502, code: str = "AI_SERVICE_ERROR"):
+    return {
+        "status": "error",
+        "code": code,
+        "stage": stage,
+        "retryable": False,
+        "message": message,
+        "statusCode": status_code,
+    }
+
 class ProblemRequest(BaseModel):
     problem_text: str
 
@@ -19,11 +30,11 @@ async def extract_geometry(request: ProblemRequest):
         parsed_data = json.loads(raw_json)
         return {"status": "success", "data": parsed_data}
     except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
+        raise HTTPException(status_code=502, detail=build_error_payload("extract", str(ve)))
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Result is not valid JSON format")
+        raise HTTPException(status_code=502, detail=build_error_payload("extract", "Result is not valid JSON format"))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        raise HTTPException(status_code=502, detail=build_error_payload("extract", f"Internal Server Error: {str(e)}"))
 
 class MathSolverRequest(BaseModel):
     problem_text: str
@@ -40,11 +51,11 @@ async def solve_math_geometry(request: MathSolverRequest):
             request.facts_json, 
             request.current_points, 
             request.validation_failures,
-            request.base_a_value
+            request.base_a_value,
         )
         if result.get("status") == "error":
             error_detail = result.get("details", result.get("message"))
-            raise HTTPException(status_code=400, detail=error_detail)
+            raise HTTPException(status_code=502, detail=build_error_payload("solve-math", str(error_detail)))
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Math Solver Error: {str(e)}")
+        raise HTTPException(status_code=502, detail=build_error_payload("solve-math", f"Math Solver Error: {str(e)}"))

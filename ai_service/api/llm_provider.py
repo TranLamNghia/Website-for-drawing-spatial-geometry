@@ -1,7 +1,6 @@
 import json
 import time
 
-import openai
 import requests
 from google.auth import default as google_auth_default
 from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -9,8 +8,6 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from .llm_config import (
     VERTEX_PROJECT_ID,
     VERTEX_LOCATION,
-    OPENROUTER_API_KEY,
-    OPENROUTER_BASE_URL,
     PRIMARY_MODEL,
     FALLBACK_MODEL,
     DEFAULT_TIMEOUT,
@@ -67,16 +64,6 @@ _VERTEX_SCOPES = ("https://www.googleapis.com/auth/cloud-platform",)
 
 class LLMProvider:
     def __init__(self):
-        self.openrouter_headers = {
-            "HTTP-Referer": "http://localhost:8001",
-            "X-Title": "SpatialGeometry Math Engine",
-        }
-        self.openrouter_client = openai.Client(
-            base_url=OPENROUTER_BASE_URL,
-            api_key=OPENROUTER_API_KEY,
-            timeout=FALLBACK_TIMEOUT,
-            default_headers=self.openrouter_headers,
-        )
         self._vertex_credentials = None
 
     def _vertex_bearer_token(self) -> str:
@@ -94,7 +81,11 @@ class LLMProvider:
         return creds.token
 
     def _vertex_generate_url(self, model: str) -> str:
-        host = f"{VERTEX_LOCATION}-aiplatform.googleapis.com"
+        if VERTEX_LOCATION.lower() == "global":
+            host = "aiplatform.googleapis.com"
+        else:
+            host = f"{VERTEX_LOCATION}-aiplatform.googleapis.com"
+            
         return (
             f"https://{host}/v1/projects/{VERTEX_PROJECT_ID}/locations/{VERTEX_LOCATION}"
             f"/publishers/google/models/{model}:generateContent"
@@ -124,7 +115,7 @@ class LLMProvider:
         data = resp.json()
         return _vertex_response_text(data)
 
-    def get_completion(self, messages, model=None, temperature=0.1, timeout=None):
+    def get_completion(self, messages, model=None, temperature=0.1, timeout=None, allow_fallback=True):
         target_model = model or PRIMARY_MODEL
         actual_timeout = timeout or DEFAULT_TIMEOUT
 
@@ -150,7 +141,7 @@ class LLMProvider:
                 f"[LLM_PROVIDER] ⚠️ {error_type} from {target_model} after {duration:.2f}s: {str(e)}"
             )
 
-            if target_model == PRIMARY_MODEL:
+            if allow_fallback and target_model == PRIMARY_MODEL:
                 print(f"[LLM_PROVIDER] [FALLBACK] Switching to {FALLBACK_MODEL}...")
                 return self._call_fallback(messages, temperature)
             raise e
@@ -158,17 +149,14 @@ class LLMProvider:
     def _call_fallback(self, messages, temperature=0.1):
         start_time = time.time()
         try:
-            response = self.openrouter_client.chat.completions.create(
-                model=FALLBACK_MODEL,
-                messages=messages,
-                temperature=temperature,
-                timeout=FALLBACK_TIMEOUT,
+            text = self._vertex_generate(
+                FALLBACK_MODEL, messages, temperature, FALLBACK_TIMEOUT
             )
             duration = time.time() - start_time
             print(
                 f"[LLM_PROVIDER] [FALLBACK] <<< Success from {FALLBACK_MODEL} after {duration:.2f}s."
             )
-            return response.choices[0].message.content
+            return text
         except Exception as fe:
             print(
                 f"[LLM_PROVIDER] ❌ [FALLBACK] {FALLBACK_MODEL} also failed: {str(fe)}"

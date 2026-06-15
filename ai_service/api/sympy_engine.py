@@ -10,7 +10,7 @@ class SympyAIEngine:
     def __init__(self):
         self.sandbox_url = "http://localhost:8002/execute"
 
-    def generate_and_solve(self, problem_text: str, facts_json: dict, current_points: dict, validation_failures: list, base_a_value: float) -> dict:
+    def generate_and_solve(self, problem_text: str, facts_json: dict, current_points: dict, validation_failures: list, base_a_value: float, fail_fast: bool = False) -> dict:
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         print(f"\n[SYMPY_ENGINE] Starting calling LLM to write Python script...")
@@ -40,11 +40,11 @@ class SympyAIEngine:
             {"role": "user", "content": user_prompt}
         ]
 
-        MAX_RETRIES = 3
+        MAX_RETRIES = 1 if fail_fast else 3
         for attempt in range(1, MAX_RETRIES + 1):
             print(f"\n[SYMPY_ENGINE] --- ATTEMPT {attempt}/{MAX_RETRIES} ---")
             try:
-                raw_code = llm_provider.get_completion(messages)
+                raw_code = llm_provider.get_completion(messages, allow_fallback=not fail_fast)
                 print(f"[SYMPY_ENGINE] Received Script from LLM ({len(raw_code)} ký tự).")
             except Exception as e:
                 print(f"[SYMPY_ENGINE] ❌ Error calling LLM API: {str(e)}")
@@ -109,6 +109,6 @@ class SympyAIEngine:
                     })
                 else:
                     print(f"[SYMPY_ENGINE] 💣 FAILED! Tried {MAX_RETRIES} times but still failed. Return error to BE.")
-                    return {"status": "error", "message": "Sandbox execute code error (Failed 3 times).", "details": data}
+                    return {"status": "error", "message": "Sandbox execute code error.", "details": data}
                     
         return {"status": "error", "message": "Unknown error in Loop."}

@@ -14,12 +14,12 @@ class GeometryAIEngine:
         # We now use the central llm_provider instead of managing our own client
         self.retry_engine = RetryEngine()
 
-    def extract_json(self, problem_text: str) -> str:
+    def extract_json(self, problem_text: str, fail_fast: bool = False) -> str:
         print(f"\n[LLM_CLIENT] Starting processing problem: '{problem_text[:40]}...'")
         messages = build_prompt(problem_text)
         
         try:
-            raw_json = llm_provider.get_completion(messages)
+            raw_json = llm_provider.get_completion(messages, allow_fallback=not fail_fast)
         except Exception as e:
             print(f"[LLM_CLIENT] ❌ All attempts failed (Primary & Fallback): {str(e)}")
             raise e
@@ -27,4 +27,4 @@ class GeometryAIEngine:
         print(f"[LLM_CLIENT] Received raw JSON from AI. Cleaning Markdown...")
         clean_json = clean_markdown_json(raw_json)
         print(f"[LLM_CLIENT] Starting to push into Validator...")
-        return self.retry_engine.run(clean_json)
+        return self.retry_engine.run(clean_json, enable_retry=not fail_fast)
