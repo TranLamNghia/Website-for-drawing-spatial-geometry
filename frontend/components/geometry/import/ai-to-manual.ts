@@ -430,7 +430,9 @@ function parseSimpleBelongsToData(data: any) {
   return { point, target }
 }
 
-function createFallbackGeometryDocument(geometryData: GeometryData) {
+function createFallbackGeometryDocument(
+  geometryData: GeometryData,
+) {
   const document = createEmptyManualDocument()
   const pointMap = new Map<string, string>()
   const segmentMap = new Map<string, string>()
@@ -444,23 +446,6 @@ function createFallbackGeometryDocument(geometryData: GeometryData) {
     const pos = toVec3(coords)
     positions[normalized] = pos
     ensurePoint(document, pointMap, usedIds, normalized, pos, 'free')
-  })
-
-  ;(geometryData.edges || []).forEach((edge) => {
-    const labels = parseVertexLabels(edge)
-    if (labels.length >= 2) {
-      ensureSegment(document, segmentMap, usedIds, pointMap, labels[0], labels[1])
-    }
-  })
-
-  ;(geometryData.planes || []).forEach((plane, index) => {
-    if (plane.isSolidFace) return
-    const labels = Array.isArray(plane.points) ? plane.points.map(normalizeLabel) : []
-    ensurePolygon(document, polygonMap, segmentMap, usedIds, pointMap, labels, `plane_${index}`)
-  })
-
-  ;(geometryData.circles || []).forEach((circle) => {
-    ensureCircle(document, circleMap, usedIds, pointMap, circle.center, circle.radius, 'centerRadius')
   })
 
   ;(geometryData.spheres || []).forEach((sphere) => {
@@ -524,20 +509,6 @@ function createFallbackGeometryDocument(geometryData: GeometryData) {
     })
   })
 
-  ;(geometryData.sections || []).forEach((section) => {
-    const targetSolid = section.targetSolid
-    const labels = (section.cuttingPlane || []).map(normalizeLabel)
-    if (!targetSolid || labels.length < 3) return
-    const solid = document.solids.find((item) => item.label === targetSolid)
-    if (!solid) return
-    const cut: ManualCut = {
-      id: section.id,
-      planePointIds: labels,
-      visible: true,
-    }
-    solid.cuts = [...(solid.cuts || []), cut]
-  })
-
   return { document, pointMap, segmentMap, polygonMap, circleMap, positions }
 }
 
@@ -573,109 +544,69 @@ function buildConstructionAwareDocument(
     }
   })
 
-  ;(construction.entities?.segments || []).forEach((segment) => {
-    const labels = parseEntityLabels(segment)
-    if (labels.length >= 2) {
-      ensureSegment(document, segmentMap, usedIds, pointMap, labels[0], labels[1])
-    }
-  })
-
   ;(construction.entities?.solids || []).forEach((solidStr) => {
     parseSolidDefinition(solidStr, geometryData, positions, document, pointMap, polygonMap, segmentMap, usedIds, warnings)
   })
 
-  ;(construction.facts || []).forEach((fact) => {
-    const type = String(fact.type || '').toLowerCase()
-    const data = fact.data || {}
-
-    if (type === 'midpoint') {
-      const { point, labels } = parseSimpleMidpointData(data)
-      if (point && labels.length >= 2 && positions[point]) {
-        ensurePoint(document, pointMap, usedIds, point, positions[point], 'midpoint', {
-          sourcePointIds: labels.slice(0, 2).map((label) => pointMap.get(label) || '').filter(Boolean),
-          dependsOn: labels.slice(0, 2).map((label) => pointMap.get(label) || '').filter(Boolean),
-          segmentId: segmentMap.get(labels.slice(0, 2).sort().join('-')),
-        })
-      }
-      return
-    }
-
-    if (type === 'projection') {
-      const { point, from, onto } = parseSimpleProjectionData(data)
-      if (!point || !positions[point]) return
-      const targetLabels = parseEntityLabels(onto)
-      const targetSegmentId = targetLabels.length >= 2 ? segmentMap.get(targetLabels.slice(0, 2).sort().join('-')) : undefined
-      ensurePoint(document, pointMap, usedIds, point, positions[point], 'projection', {
-        sourcePointId: pointMap.get(from) || undefined,
-        targetSegmentId,
-        targetPointIds: targetLabels.map((label: string) => pointMap.get(label) || '').filter(Boolean),
-        dependsOn: [pointMap.get(from), targetSegmentId].filter(Boolean) as string[],
-      })
-      return
-    }
-
-    if (type === 'intersection') {
-      const { objects, value } = parseSimpleIntersectionData(data)
-      if (!value || !positions[value]) return
-      const sourceSegmentIds: string[] = objects
-        .flatMap((item: string) => parseEntityLabels(item))
-        .slice(0, 4)
-      ensurePoint(document, pointMap, usedIds, value, positions[value], 'intersection', {
-        sourceSegmentIds: sourceSegmentIds.length >= 2
-          ? [segmentMap.get([sourceSegmentIds[0], sourceSegmentIds[1]].sort().join('-')) || '', segmentMap.get([sourceSegmentIds[2], sourceSegmentIds[3]].sort().join('-')) || ''].filter(Boolean) as [string, string]
-          : undefined,
-        dependsOn: sourceSegmentIds.map((label: string) => pointMap.get(label) || '').filter(Boolean),
-      })
-      return
-    }
-
-    if (type === 'belongs_to') {
-      const { point, target } = parseSimpleBelongsToData(data)
-      if (!point || !positions[point]) return
-      const targetLabels = parseEntityLabels(target)
-      const targetSegmentId = targetLabels.length >= 2 ? segmentMap.get(targetLabels.slice(0, 2).sort().join('-')) : undefined
-      if (targetSegmentId) {
-        ensurePoint(document, pointMap, usedIds, point, positions[point], 'segment', {
-          segmentId: targetSegmentId,
-          dependsOn: targetLabels.slice(0, 2).map((label: string) => pointMap.get(label) || '').filter(Boolean),
-          t: 0.5,
-        })
-      } else if (targetLabels.length >= 3) {
-        ensurePoint(document, pointMap, usedIds, point, positions[point], 'facePoint', {
-          targetPointIds: targetLabels.map((label: string) => pointMap.get(label) || '').filter(Boolean),
-          dependsOn: targetLabels.map((label: string) => pointMap.get(label) || '').filter(Boolean),
-        })
-      }
-      return
-    }
-
-    if (type === 'centroid') {
-      const point = normalizeLabel(String(data?.point || data?.Point || data?.result || ''))
-      const sourcePoints = Array.isArray(data?.points) ? data.points.map(normalizeLabel) : parseEntityLabels(String(data?.shape || data?.target || ''))
-      if (point && positions[point]) {
-        ensurePoint(document, pointMap, usedIds, point, positions[point], 'centroid', {
-          sourcePointIds: sourcePoints.map((label: string) => pointMap.get(label) || '').filter(Boolean),
-          dependsOn: sourcePoints.map((label: string) => pointMap.get(label) || '').filter(Boolean),
-        })
-      }
-    }
-  })
-
-  ;(geometryData.circles || []).forEach((circle) => {
-    ensureCircle(document, circleMap, usedIds, pointMap, circle.center, circle.radius, 'centerRadius')
-  })
-
-  ;(construction.entities?.sections || geometryData.sections || []).forEach((section) => {
-    const targetSolid = section.targetSolid
-    if (!targetSolid || (section.cuttingPlane || []).length < 3) return
-    const solid = document.solids.find((item) => item.label === targetSolid)
-    if (!solid) return
-    const cut: ManualCut = {
-      id: section.id,
-      planePointIds: (section.cuttingPlane || []).map(normalizeLabel),
+  ;(geometryData.spheres || []).forEach((sphere) => {
+    const centerId = pointMap.get(normalizeLabel(sphere.center))
+    if (!centerId) return
+    const solidId = safeId('solid', `sphere_${sphere.center}`, usedIds)
+    document.solids.push({
+      id: solidId,
+      label: sphere.center,
+      createdByTool: 'sphere',
+      dependsOn: [centerId],
+      locked: true,
       visible: true,
-    }
-    solid.cuts = [...(solid.cuts || []), cut]
+      selectable: true,
+      entityType: 'solid',
+      solidType: 'sphere',
+      centerPointId: centerId,
+      radius: sphere.radius,
+    })
+  })
+
+  ;(geometryData.cones || []).forEach((cone) => {
+    const centerId = pointMap.get(normalizeLabel(cone.center))
+    const apexId = pointMap.get(normalizeLabel(cone.apex))
+    if (!centerId || !apexId) return
+    const solidId = safeId('solid', `cone_${cone.center}_${cone.apex}`, usedIds)
+    document.solids.push({
+      id: solidId,
+      label: `${cone.center}.${cone.apex}`,
+      createdByTool: 'cone',
+      dependsOn: [centerId, apexId],
+      locked: true,
+      visible: true,
+      selectable: true,
+      entityType: 'solid',
+      solidType: 'cone',
+      centerPointId: centerId,
+      apexPointId: apexId,
+      radius: cone.radius,
+    })
+  })
+
+  ;(geometryData.cylinders || []).forEach((cyl) => {
+    const bottomId = pointMap.get(normalizeLabel(cyl.centerBottom))
+    const topId = pointMap.get(normalizeLabel(cyl.centerTop))
+    if (!bottomId || !topId) return
+    const solidId = safeId('solid', `cyl_${cyl.centerBottom}_${cyl.centerTop}`, usedIds)
+    document.solids.push({
+      id: solidId,
+      label: `${cyl.centerBottom}.${cyl.centerTop}`,
+      createdByTool: 'cylinder',
+      dependsOn: [bottomId, topId],
+      locked: true,
+      visible: true,
+      selectable: true,
+      entityType: 'solid',
+      solidType: 'cylinder',
+      centerPointId: bottomId,
+      apexPointId: topId,
+      radius: cyl.radius,
+    })
   })
 
   return { document, warnings }

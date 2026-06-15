@@ -13,6 +13,19 @@ export type GeometrySetters = {
 
 export const SOLVE_ENDPOINT_URL = 'http://localhost:5000/api/Geometry/process'
 
+function toUserFacingSolveError(errorData: any, fallback = 'Chức năng AI hiện đang gặp lỗi. Vui lòng thử lại sau.') {
+  if (typeof errorData === 'string' && errorData.trim()) {
+    return fallback
+  }
+
+  const message = errorData?.detail?.message || errorData?.message || errorData?.detail
+  if (typeof message === 'string' && message.trim()) {
+    return fallback
+  }
+
+  return fallback
+}
+
 // IMPORTANT: Keep behavior identical to the mapping currently used in LeftSidebar.
 export function mapBackendResultToGeometryData(result: any): GeometryData {
   // Map BE response (entities, validation, points: {A: {x,y,z}})
@@ -88,16 +101,21 @@ export function applyRawJsonToGeometry(text: string, setters: GeometrySetters) {
 }
 
 export async function solveProblemText(problemText: string): Promise<any> {
-  const response = await fetch(SOLVE_ENDPOINT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(problemText),
-  })
+  try {
+    const response = await fetch(SOLVE_ENDPOINT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(problemText),
+    })
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
-    throw new Error((errorData as any).message || 'Lỗi server')
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(toUserFacingSolveError(errorData))
+    }
+
+    return response.json()
+  } catch (error) {
+    console.error('[solveProblemText] AI service request failed:', error)
+    throw new Error('Chức năng AI hiện đang gặp lỗi. Vui lòng thử lại sau.')
   }
-
-  return response.json()
 }

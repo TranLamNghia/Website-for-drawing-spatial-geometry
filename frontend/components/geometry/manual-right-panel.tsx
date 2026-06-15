@@ -1022,10 +1022,16 @@ export function ManualRightPanel() {
 
   const solidValueMap = useMemo(() => {
     const result: Record<string, string[]> = {}
+    const getPolygonLabels = (polygonId?: string) => {
+      if (!polygonId) return []
+      const polygon = manualDocument.polygons.find((item) => item.id === polygonId)
+      if (!polygon) return []
+      return polygon.pointIds.map((pointId) => pointLabelMap[pointId] ?? pointId)
+    }
     manualDocument.solids.forEach((solid) => {
       let vertices: string[] = []
       if (solid.solidType === 'pyramid' || solid.solidType === 'regularPyramid') {
-        const baseLabels = solid.basePolygonId ? (polygonPointMap[solid.basePolygonId] ?? []) : []
+        const baseLabels = getPolygonLabels(solid.basePolygonId)
         let apexLabel = ''
         if (solid.apexPointId) {
           apexLabel = pointLabelMap[solid.apexPointId] ?? ''
@@ -1057,7 +1063,7 @@ export function ManualRightPanel() {
         })
         vertices = labels.filter(Boolean)
       } else if (solid.solidType === 'prism') {
-        const baseLabels = solid.basePolygonId ? (polygonPointMap[solid.basePolygonId] ?? []) : []
+        const baseLabels = getPolygonLabels(solid.basePolygonId)
         const n = baseLabels.length
         const topLabels: string[] = new Array(n).fill('')
         manualDocument.points.forEach(p => {
@@ -1084,7 +1090,7 @@ export function ManualRightPanel() {
       result[solid.id] = vertices
     })
     return result
-  }, [manualDocument.solids, manualDocument.points, polygonPointMap, pointLabelMap])
+  }, [manualDocument.solids, manualDocument.points, manualDocument.polygons, pointLabelMap])
 
   const totalEntities =
     manualDocument.points.filter(p => p.visible !== false).length +

@@ -6,6 +6,7 @@ import { ManualView } from '@/components/geometry/manual-view'
 import { GeometryProvider, useGeometry } from '@/components/geometry/geometry-context'
 import { isManualProjectSnapshot } from '@/components/geometry/manual-editor'
 import { useProjectStore } from '@/hooks/use-project-store'
+import { clearTransferredProjectStorage, readTransferredProject } from '@/components/geometry/project-transfer'
 
 function ManualDrawingContent() {
   const router = useRouter()
@@ -30,6 +31,31 @@ function ManualDrawingContent() {
   }, [setWorkspaceMode])
 
   useEffect(() => {
+    const transferredProject = readTransferredProject()
+    if (transferredProject) {
+      clearTransferredProjectStorage()
+      if (!projectId || transferredProject.id === projectId) {
+        try {
+          const data = JSON.parse(transferredProject.geometryJson)
+          if (isManualProjectSnapshot(data)) {
+            setManualDocument(data.manualDocument)
+            setGeometryData(data.previewGeometryData ?? null)
+            if (data.viewState?.cameraControls) setCameraControls(data.viewState.cameraControls)
+            if (Array.isArray(data.viewState?.orderedSectionIds)) setOrderedSectionIds(data.viewState.orderedSectionIds)
+            if (data.viewState?.bitmaskVisibility) setBitmaskVisibility(data.viewState.bitmaskVisibility)
+            if (typeof data.viewState?.explodeAmount === 'number') setExplodeAmount(data.viewState.explodeAmount)
+            if (typeof data.viewState?.showAxes === 'boolean') setShowAxes(data.viewState.showAxes)
+            if (typeof data.viewState?.showGrid === 'boolean') setShowGrid(data.viewState.showGrid)
+            if (typeof data.viewState?.showLabels === 'boolean') setShowLabels(data.viewState.showLabels)
+            return
+          }
+          setGeometryData(data)
+        } catch (error) {
+          console.error('Lỗi khi load dữ liệu bản vẽ:', error)
+        }
+      }
+    }
+
     if (!projectId || projects.length === 0) return
     const project = projects.find((item) => item.id === projectId)
     if (!project) return
@@ -55,9 +81,9 @@ function ManualDrawingContent() {
   }, [
     projectId,
     projects,
+    setCameraControls,
     setGeometryData,
     setManualDocument,
-    setCameraControls,
     setOrderedSectionIds,
     setBitmaskVisibility,
     setExplodeAmount,
@@ -71,7 +97,7 @@ function ManualDrawingContent() {
   }
 
   const handleSwitchToSolver = () => {
-    const targetUrl = projectId ? `/che-do-ve-thong-minh?id=${projectId}` : '/che-do-ve-thong-minh'
+    const targetUrl = projectId ? `/chedovethongminh?id=${projectId}` : '/chedovethongminh'
     router.push(targetUrl)
   }
 

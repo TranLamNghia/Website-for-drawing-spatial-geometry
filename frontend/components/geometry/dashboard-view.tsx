@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Plus, Clock, MoreHorizontal, Trash2, Sparkles, Grid3x3, Zap } from 'lucide-react'
+import { Plus, Clock, MoreHorizontal, Trash2, Sparkles, Grid3x3, Zap, AlertCircle } from 'lucide-react'
 import {
   useProjectStore,
   buildProject,
@@ -14,22 +14,15 @@ export type { SavedProject }
 // Keep existing helper exports for backward compatibility.
 export { MAX_PROJECTS }
 export function addProject(project: SavedProject): boolean {
-  const raw = localStorage.getItem('geometry_projects')
-  const list: SavedProject[] = raw ? JSON.parse(raw) : []
-  if (list.length >= MAX_PROJECTS) return false
-  localStorage.setItem('geometry_projects', JSON.stringify([project, ...list]))
+  // Disable saving to localStorage as requested
   return true
 }
 export function loadProjects(): SavedProject[] {
-  if (typeof window === 'undefined') return []
-  try {
-    return JSON.parse(localStorage.getItem('geometry_projects') || '[]')
-  } catch {
-    return []
-  }
+  // Disable loading from localStorage as requested
+  return []
 }
 export function saveProjects(p: SavedProject[]) {
-  localStorage.setItem('geometry_projects', JSON.stringify(p))
+  // Disable saving to localStorage as requested
 }
 export function createProject(name: string, problemText: string, geometryJson: string, thumbnail?: string): SavedProject {
   return buildProject(name, problemText, geometryJson, thumbnail)
@@ -172,25 +165,19 @@ export function DashboardView({ onNewProject, onOpenProject }: DashboardViewProp
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Sparkles size={13} className="text-primary" />
-              <span className="text-[11px] font-bold text-primary tracking-widest uppercase">Phòng thí nghiệm Hình học AI</span>
+              <span className="text-[11px] font-bold text-primary tracking-widest uppercase">Công cụ vẽ hình không gian</span>
             </div>
             <h1 className="text-[28px] font-bold text-foreground tracking-tight leading-tight">
-              Chào mừng bạn quay trở lại!
+              Chào mừng bạn đến với công cụ vẽ hình không gian 3D!
             </h1>
             <p className="text-[13px] text-muted-foreground mt-1.5 leading-relaxed">
-              Tạo, khám phá và phân tích hình học không gian 3D với sự hỗ trợ của AI.
+              Tạo, khám phá và phân tích hình học không gian 3D với sự hỗ trợ của trí tuệ nhân tạo.
             </p>
           </div>
-
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="bg-card border border-border rounded-2xl px-5 py-3 text-center shadow-sm">
-              <p className="text-2xl font-extrabold text-primary tabular-nums leading-none">
-                {sorted.length}
-                <span className="text-base font-semibold text-muted-foreground ml-0.5">/{MAX_PROJECTS}</span>
-              </p>
-              <p className="text-[10px] text-muted-foreground mt-1">Bản vẽ đã lưu</p>
-            </div>
-          </div>
+        </div>
+        <div className="mt-4 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-500/90 text-[12px] font-medium leading-relaxed flex items-center gap-3">
+          <AlertCircle size={16} className="shrink-0 text-amber-500 animate-pulse" />
+          <span>Vì website đang trong giai đoạn chờ kiểm tra tính ổn định nên chưa thể lưu các bản vẽ cũ, chức năng này sẽ có mặt trong thời gian sớm nhất có thể.</span>
         </div>
       </header>
 

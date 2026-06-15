@@ -22,16 +22,12 @@ const STORAGE_KEY = 'geometry_projects'
 // Utility helpers (pure, can be used outside of hook)
 // ─────────────────────────────────────────────────────────────
 function readStorage(): SavedProject[] {
-    if (typeof window === 'undefined') return []
-    try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
-    } catch {
-        return []
-    }
+    // Disable loading from localStorage as requested
+    return []
 }
 
 function writeStorage(projects: SavedProject[]) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects))
+    // Disable saving to localStorage as requested
 }
 
 export function buildProject(
