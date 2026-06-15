@@ -24,10 +24,13 @@ public class GeometryExtractionService : IGeometryExtractionService
         var response = await _httpClient.PostAsync("extract", jsonContent);
         
         if (!response.IsSuccessStatusCode)
-            throw new Exception("Error when calling Python AI Service.");
+        {
+            var errorResponseString = await response.Content.ReadAsStringAsync();
+            throw new Exception(ExtractAiErrorMessage(errorResponseString, "Error when calling Python AI Service."));
+        }
 
-        var responseString = await response.Content.ReadAsStringAsync();
-        using var document = JsonDocument.Parse(responseString);
+        var responseBodyString = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(responseBodyString);
         var dataElement = document.RootElement.GetProperty("data");
 
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -64,11 +67,11 @@ public class GeometryExtractionService : IGeometryExtractionService
             if (!response.IsSuccessStatusCode)
             {
                 var errStr = await response.Content.ReadAsStringAsync();
-                throw new Exception($"Math Sandbox Error: {errStr}");
+                throw new Exception(ExtractAiErrorMessage(errStr, $"Math Sandbox Error: {errStr}"));
             }
 
-            var responseString = await response.Content.ReadAsStringAsync();
-            using var document = JsonDocument.Parse(responseString);
+            var responseBodyString = await response.Content.ReadAsStringAsync();
+            using var document = JsonDocument.Parse(responseBodyString);
             
             if (document.RootElement.TryGetProperty("data", out var dataElement))
             {
@@ -92,13 +95,13 @@ public class GeometryExtractionService : IGeometryExtractionService
             }
             
             // Final fallback check for root level format
-            if (responseString.Contains("\"sections\"") || responseString.Contains("\"points\""))
+            if (responseBodyString.Contains("\"sections\"") || responseBodyString.Contains("\"points\""))
             {
-                 return JsonSerializer.Deserialize<MathSolverResponseDto>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                 return JsonSerializer.Deserialize<MathSolverResponseDto>(responseBodyString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
 
             try {
-                var pointsOnly = JsonSerializer.Deserialize<Dictionary<string, Point3D>>(responseString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var pointsOnly = JsonSerializer.Deserialize<Dictionary<string, Point3D>>(responseBodyString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 return new MathSolverResponseDto { Points = pointsOnly };
             } catch {
                 return null;
@@ -107,7 +110,54 @@ public class GeometryExtractionService : IGeometryExtractionService
         catch (Exception ex)
         {
             Console.WriteLine($"[AI_FALLBACK] Error calling solve-math: {ex.Message}");
-            return null;
+            throw;
         }
+    }
+
+    private static string ExtractAiErrorMessage(string responseString, string fallbackMessage)
+    {
+        if (string.IsNullOrWhiteSpace(responseString))
+            return fallbackMessage;
+
+        try
+        {
+            using var document = JsonDocument.Parse(responseString);
+            var root = document.RootElement;
+
+            if (root.TryGetProperty("detail", out var detail))
+            {
+                if (detail.ValueKind == JsonValueKind.Object)
+                {
+                    if (detail.TryGetProperty("message", out var messageProp))
+                    {
+                        var message = messageProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(message))
+                            return message;
+                    }
+
+                    return detail.GetRawText();
+                }
+
+                if (detail.ValueKind == JsonValueKind.String)
+                {
+                    var message = detail.GetString();
+                    if (!string.IsNullOrWhiteSpace(message))
+                        return message;
+                }
+            }
+
+            if (root.TryGetProperty("message", out var rootMessage))
+            {
+                var message = rootMessage.GetString();
+                if (!string.IsNullOrWhiteSpace(message))
+                    return message;
+            }
+        }
+        catch
+        {
+            // Fall back to raw text below.
+        }
+
+        return responseString.Trim();
     }
 }
