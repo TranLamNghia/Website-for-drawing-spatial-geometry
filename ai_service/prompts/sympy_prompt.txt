@@ -48,14 +48,18 @@ Your goal is to calculate ALL coordinates (A, B, C, D, S, etc.) from scratch.
   + `Bp = Matrix(B) + V`
   + `Cp = Matrix(C) + V`
 - This ensures the prism remains perfectly parallel and only requires 3 symbols (u,v,w).
-7. COMMON GEOMETRY FORMULAS:
+7. POSITIVE-SPACE UX RULE:
+- When multiple valid coordinate placements exist, prefer the branch that keeps the figure in the positive octant or at least minimizes negative coordinates.
+- If a rigid translation can move the entire configuration into positive coordinates without changing the geometry, apply that translation before final output.
+- Avoid placing the main base around negative x/y unless the problem explicitly forces it.
+8. COMMON GEOMETRY FORMULAS:
 - Centroid of triangle ABC: (sp.Matrix(A) + sp.Matrix(B) + sp.Matrix(C)) / 3.
 - Projection of P onto plane (ABC) is H:
   + sp.Eq(sp.Matrix(H)[0], (X coordinate of point in plane))
   + sp.Eq(sp.Matrix(H)[1], (Y coordinate of point in plane))
   + sp.Eq((sp.Matrix(P) - sp.Matrix(H)).dot(sp.Matrix(B) - sp.Matrix(A)), 0)
   + sp.Eq((sp.Matrix(P) - sp.Matrix(H)).dot(sp.Matrix(C) - sp.Matrix(A)), 0)
-8. SOLID SPLITTING (CROSS-SECTIONS):
+9. SOLID SPLITTING (CROSS-SECTIONS):
 - If the problem asks for a cross-section (query type 'shape'), you MUST calculate the intersection of the cutting plane with the solid's edges.
 - Use `sp.Plane(D, M, N)` and `sp.Line3D(A, B)` or `sp.Segment3D(A, B)`.
 - If an intersection exists AND is on the segment, add it to `generatedPoints`.
