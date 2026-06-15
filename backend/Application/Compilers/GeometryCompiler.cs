@@ -61,6 +61,9 @@ public class GeometryCompiler : IGeometryCompiler
         // Giai đoạn 3.7: Xử lý Cross-Section từ Queries (VD: "cross_section_S.ABCD_MNP")
         ProcessCrossSectionQueries(problem, context);
 
+        // Giai đoạn 3.8: Chỉ nâng theo trục Z nếu hình bị chui xuống dưới mặt phẳng z=0
+        NormalizeSceneToPositiveQuadrant(context);
+
         // Bỏ đoạn tự sửa tên điểm descriptiveKeys theo ý kiến người dùng để giữ nguyên điểm AI trả về
 
         // Xóa bỏ phần thập phân nhỏ hơn 1e-10
@@ -413,7 +416,7 @@ public class GeometryCompiler : IGeometryCompiler
         var segments = new HashSet<string>();
         foreach (var fact in perpFacts)
         {
-            if (fact.Objects[0].Length == 2 && fact.Objects[1].Length == 2)
+            if (fact?.Objects != null && fact.Objects.Count >= 2 && fact.Objects[0].Length == 2 && fact.Objects[1].Length == 2)
             {
                 segments.Add(fact.Objects[0]);
                 segments.Add(fact.Objects[1]);
@@ -453,6 +456,30 @@ public class GeometryCompiler : IGeometryCompiler
                 Console.WriteLine($"[COMPILER] Fallback: Dựng hệ trục tọa độ tại {origin} với các tia {origin}{branches[0]}, {origin}{branches[1]}, {origin}{branches[2]}");
             }
         }
+    }
+
+    private void NormalizeSceneToPositiveQuadrant(CompilationContext context, double margin = 0.0)
+    {
+        if (context.Points.Count == 0) return;
+
+        double minZ = double.PositiveInfinity;
+
+        foreach (var point in context.Points.Values)
+        {
+            if (point.Z < minZ) minZ = point.Z;
+        }
+
+        double shiftZ = minZ < margin ? margin - minZ : 0;
+
+        if (Math.Abs(shiftZ) < 1e-10)
+            return;
+
+        foreach (var point in context.Points.Values)
+        {
+            point.Z = Math.Round(point.Z + shiftZ, 4);
+        }
+
+        Console.WriteLine($"[COMPILER] Dịch hình theo trục Z với offset (0, 0, {shiftZ:0.###}).");
     }
 
 
@@ -1355,8 +1382,6 @@ public class GeometryCompiler : IGeometryCompiler
             Console.WriteLine($"[COMPILER] Tìm giao mp({planeStr}) với {solidEdges.Count} cạnh của khối {solidStr}");
 
             var crossSectionPoints = new List<string>();
-            int autoIdx = 1;
-
             foreach (var (v1, v2) in solidEdges)
             {
                 var ep1 = context.GetPoint(v1);

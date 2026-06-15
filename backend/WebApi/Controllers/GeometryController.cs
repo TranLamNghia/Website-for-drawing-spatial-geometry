@@ -56,7 +56,14 @@ public class GeometryController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return StatusCode(502, new
+            {
+                status = "error",
+                code = "AI_SERVICE_ERROR",
+                stage = "process1",
+                retryable = false,
+                message = ex.Message
+            });
         }
     }
 
@@ -93,7 +100,14 @@ public class GeometryController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return StatusCode(502, new
+            {
+                status = "error",
+                code = "AI_SERVICE_ERROR",
+                stage = "process",
+                retryable = false,
+                message = ex.Message
+            });
         }
     }
 
