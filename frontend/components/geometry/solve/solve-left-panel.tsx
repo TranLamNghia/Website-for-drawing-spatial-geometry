@@ -5,6 +5,15 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { AlertCircle, CheckCircle2, MessageSquareWarning, Play, Sparkles, ArrowLeft } from 'lucide-react'
 import { useGeometry } from '@/components/geometry/geometry-context'
 import { applyBackendResultToState, applyRawJsonToGeometry, solveProblemText } from './solve-logic'
@@ -12,7 +21,7 @@ import { applyBackendResultToState, applyRawJsonToGeometry, solveProblemText } f
 const SAMPLE_PROBLEM =
   `Cho hình chóp S.ABCD có đáy ABCD là hình vuông cạnh a. SA vuông góc với mặt phẳng (ABCD) và SA = a.`
 
-const REPORT_QUEUE_KEY = 'geometry_report_queue_v1'
+const reportQueue: ReportItem[] = []
 
 type ReportItem = {
   problemText: string
@@ -22,10 +31,8 @@ type ReportItem = {
 
 function pushReport(item: ReportItem) {
   try {
-    const raw = localStorage.getItem(REPORT_QUEUE_KEY)
-    const list: ReportItem[] = raw ? JSON.parse(raw) : []
-    list.unshift(item)
-    localStorage.setItem(REPORT_QUEUE_KEY, JSON.stringify(list.slice(0, 50)))
+    reportQueue.unshift(item)
+    if (reportQueue.length > 50) reportQueue.length = 50
     return true
   } catch {
     return false
@@ -58,10 +65,12 @@ export function SolveLeftPanel() {
   const [jsonInput, setJsonInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [lastResultRaw, setLastResultRaw] = useState<any>(null)
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false)
 
   const handleSolveNow = async () => {
     setIsLoading(true)
     setErrorMessage('')
+    setErrorDialogOpen(false)
     try {
       const result = await solveProblemText(problem)
       if (result && typeof result === 'object') {
@@ -70,9 +79,12 @@ export function SolveLeftPanel() {
       setLastResultRaw(result)
       setJsonInput(JSON.stringify(result, null, 2))
       applyBackendResultToState(result, setters)
+      setErrorDialogOpen(false)
     } catch (error: any) {
-      setErrorMessage(error.message || 'Lỗi kết nối.')
-      setValidation({ isConsistent: false, issues: [error.message || 'Lỗi'] })
+      const message = 'Chức năng AI hiện đang gặp lỗi. Vui lòng thử lại sau.'
+      setErrorMessage(message)
+      setValidation({ isConsistent: false, issues: [message] })
+      setErrorDialogOpen(true)
     } finally {
       setIsLoading(false)
     }
@@ -82,8 +94,8 @@ export function SolveLeftPanel() {
     try {
       applyRawJsonToGeometry(jsonInput, setters)
       setActiveTab('input')
-    } catch (e: any) {
-      setErrorMessage('JSON không hợp lệ: ' + (e?.message || String(e)))
+    } catch {
+      setErrorMessage('JSON không hợp lệ.')
     }
   }
 
@@ -99,6 +111,7 @@ export function SolveLeftPanel() {
   }
 
   return (
+    <>
     <div className="h-full flex flex-col p-6 gap-6 bg-card text-card-foreground border-r border-border shadow-inner">
       {/* Navigation Buttons */}
       <div className="flex pb-4 border-b border-border/60">
@@ -161,12 +174,6 @@ export function SolveLeftPanel() {
             )}
           </Button>
 
-          {errorMessage ? (
-            <div className="p-3 rounded-xl border border-destructive/30 bg-destructive/5 text-destructive text-[12px]">
-              {errorMessage}
-            </div>
-          ) : null}
-
           {geometryData && (
             <div
               className={`
@@ -224,5 +231,17 @@ export function SolveLeftPanel() {
         </TabsContent>
       </Tabs>
     </div>
+    <AlertDialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Chức năng AI đang tạm lỗi</AlertDialogTitle>
+          <AlertDialogDescription>Xin lỗi, chức năng này hiện đang gặp lỗi.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction>Đã hiểu</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

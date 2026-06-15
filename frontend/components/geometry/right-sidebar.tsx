@@ -9,8 +9,9 @@ import { Scissors, Expand, Layers, ChevronRight, ChevronDown, Box, Cuboid, GripV
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { useGeometry } from './geometry-context'
 import type { SectionData } from './geometry-context'
-import { addProject, createProject } from './dashboard-view'
+import { createProject } from './dashboard-view'
 import { buildImportedManualProjectJson } from './import/ai-to-manual'
+import { stashTransferredProject } from './project-transfer'
 
 // ─────────────────────────────────────────────────────────────
 // ChunkTree – Recursive component that renders the cut tree
@@ -281,19 +282,15 @@ export function RightSidebar() {
     }, geometryData)
     const json = imported.geometryJson
     const project = createProject(name, solveArtifact?.problemText || '', json)
-    const ok = addProject(project)
+    stashTransferredProject(project)
 
     setIsSaving(false)
-    if (ok) {
-      setIsSaved(true)
-      if (imported.warnings.length) {
-        console.warn('[geometry import warnings]', imported.warnings)
-      }
-      router.push(`/chedotuve?id=${project.id}`)
-      setTimeout(() => { setIsSaved(false) }, 2000)
-    } else {
-      alert('Đã đạt giới hạn 10 bản vẽ. Vui lòng xóa bản vẽ cũ trước.')
+    setIsSaved(true)
+    if (imported.warnings.length) {
+      console.warn('[geometry import warnings]', imported.warnings)
     }
+    router.push(`/chedotuve?id=${project.id}`)
+    setTimeout(() => { setIsSaved(false) }, 2000)
   }
 
   const hasSectionData = !!(geometryData?.sections?.length || geometryData?.clippingPlane)
