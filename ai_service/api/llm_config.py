@@ -1,7 +1,9 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+ROOT_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(dotenv_path=ROOT_ENV_PATH, override=False)
 
 # Vertex AI (primary) — requires OAuth2 (Application Default Credentials or service account).
 # Set GOOGLE_APPLICATION_CREDENTIALS to a service account JSON, or run:
