@@ -1005,6 +1005,7 @@ export function ManualRightPanel() {
   const panelPoints = useMemo(() => {
     const seenLabels = new Set<string>()
     return manualDocument.points.filter((point) => {
+      if (point.trackable === false) return false
       if (seenLabels.has(point.label)) return false
       seenLabels.add(point.label)
       return true

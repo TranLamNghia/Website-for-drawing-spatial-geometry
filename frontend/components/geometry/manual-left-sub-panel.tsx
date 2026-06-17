@@ -43,6 +43,7 @@ export function ManualLeftSubPanel() {
   const [slicePt2, setSlicePt2] = useState('')
   const [slicePt3, setSlicePt3] = useState('')
   const [sliceSolidId, setSliceSolidId] = useState('')
+  const [projectionTargetDraft, setProjectionTargetDraft] = useState('')
 
   const updateDraftHeight = (heightValue: string) => {
     const numericHeight = Number(heightValue)
@@ -91,7 +92,7 @@ export function ManualLeftSubPanel() {
     const apexAnchorPointId = draftOperation?.tool === type ? (draftOperation.apexAnchorPointId ?? undefined) : undefined
 
     if (!basePolygonId) return
-    
+
     let id: string | null = null
     if (type === 'pyramid') {
       if (height <= 0 && !apexPointId) return
@@ -133,7 +134,7 @@ export function ManualLeftSubPanel() {
     const baseCircleId = draftOperation.baseCircleId
       ?? (manualSelection?.kind === 'circle' ? manualSelection.id : null)
     const height = draftOperation.height ?? 5
-    
+
     if (!baseCircleId || height <= 0) {
       toast.error('Vui lòng chọn một đường tròn trên canvas.')
       return
@@ -151,7 +152,7 @@ export function ManualLeftSubPanel() {
     const baseCircleId = draftOperation.baseCircleId
       ?? (manualSelection?.kind === 'circle' ? manualSelection.id : null)
     const height = draftOperation.height ?? 5
-    
+
     if (!baseCircleId || height <= 0) {
       toast.error('Vui lòng chọn một đường tròn trên canvas.')
       return
@@ -202,18 +203,22 @@ export function ManualLeftSubPanel() {
     if (draftOperation?.tool !== 'projection') return
     const pts = draftOperation.pointIds ?? []
     if (pts.length !== 1) return
-    
-    const matches = inputStr.match(new RegExp("[a-zA-Z]['_a-zA-Z0-9]*", "g"))
-    if (!matches) return
-    
-    const pointIds = matches.map(label => {
-      const p = manualDocument.points.find(p => p.label.toLowerCase() === label.toLowerCase())
-      return p?.id
-    }).filter(Boolean) as string[]
+
+    const normalized = inputStr.trim().toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2)
+    if (normalized.length !== 2) return
+
+    const pointIds = normalized
+      .split('')
+      .map((label) => {
+        const p = manualDocument.points.find((point) => point.label.toUpperCase() === label)
+        return p?.id
+      })
+      .filter(Boolean) as string[]
 
     if (pointIds.length >= 2) {
       createProjectionByPoints(pts[0], pointIds)
       autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'projection', pointIds: [] })
+      setProjectionTargetDraft('')
     }
   }
 
@@ -317,7 +322,7 @@ export function ManualLeftSubPanel() {
             {activeTool === 'centroid' && 'Click vào 1 Đa giác hoặc Mặt của khối hình trên canvas,\nhoặc chọn lần lượt các Điểm để tạo trọng tâm.'}
             {activeTool === 'perpendicularBisector' && 'Click chọn 1 Đoạn thẳng,\nhoặc chọn lần lượt 2 Điểm tự do để dựng đường trung trực.'}
             {activeTool === 'angleBisector' && '1. Click chọn điểm thuộc tia thứ nhất.\n2. Click chọn đỉnh của góc.\n3. Click chọn điểm thuộc tia thứ hai.'}
-            {activeTool === 'specialQuadrilateral' && (draftOperation?.height === 1 
+            {activeTool === 'specialQuadrilateral' && (draftOperation?.height === 1
               ? 'Click chọn lần lượt 3 Điểm (A, B, C) làm các đỉnh ban đầu.\nĐỉnh D sẽ tự động dựng để tạo Hình bình hành.'
               : draftOperation?.height === 2
                 ? 'Click chọn lần lượt 3 Điểm (A, B, C) làm các đỉnh ban đầu.\nĐỉnh D sẽ tự động dựng vuông góc để tạo Hình chữ nhật.'
@@ -333,810 +338,643 @@ export function ManualLeftSubPanel() {
       </Card>
 
       {/* Card Thiết lập công cụ */}
-      {draftOperation !== null && 
-       draftOperation.tool !== 'specialTriangle' && 
-       draftOperation.tool !== 'specialQuadrilateral' && (
-        <Card className="gap-3 py-4 rounded-2xl shadow-sm border-border/80">
+      {draftOperation !== null &&
+        draftOperation.tool !== 'specialTriangle' &&
+        draftOperation.tool !== 'specialQuadrilateral' && (
+          <Card className="gap-3 py-4 rounded-2xl shadow-sm border-border/80">
 
-          <CardContent className="space-y-3 px-4">
-            {activeTool === 'slice' && (
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <p className="text-xs font-semibold">Điểm được tạo từ</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-muted-foreground font-semibold">Điểm 1</label>
-                      <Input
-                        className="h-8 text-xs font-medium uppercase"
-                        value={slicePt1}
-                        onChange={(e) => setSlicePt1(e.target.value)}
-                        placeholder="VD: A"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-muted-foreground font-semibold">Điểm 2</label>
-                      <Input
-                        className="h-8 text-xs font-medium uppercase"
-                        value={slicePt2}
-                        onChange={(e) => setSlicePt2(e.target.value)}
-                        placeholder="VD: B"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-muted-foreground font-semibold">Điểm 3</label>
-                      <Input
-                        className="h-8 text-xs font-medium uppercase"
-                        value={slicePt3}
-                        onChange={(e) => setSlicePt3(e.target.value)}
-                        placeholder="VD: C"
-                      />
+            <CardContent className="space-y-3 px-4">
+              {activeTool === 'slice' && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-semibold">Điểm được tạo từ</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-muted-foreground font-semibold">Điểm 1</label>
+                        <Input
+                          className="h-8 text-xs font-medium uppercase"
+                          value={slicePt1}
+                          onChange={(e) => setSlicePt1(e.target.value)}
+                          placeholder="VD: A"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-muted-foreground font-semibold">Điểm 2</label>
+                        <Input
+                          className="h-8 text-xs font-medium uppercase"
+                          value={slicePt2}
+                          onChange={(e) => setSlicePt2(e.target.value)}
+                          placeholder="VD: B"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-muted-foreground font-semibold">Điểm 3</label>
+                        <Input
+                          className="h-8 text-xs font-medium uppercase"
+                          value={slicePt3}
+                          onChange={(e) => setSlicePt3(e.target.value)}
+                          placeholder="VD: C"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {(() => {
-                  if (!slicePt1 || !slicePt2 || !slicePt3) {
-                    return (
-                      <p className="text-[11px] font-medium text-muted-foreground">
-                        Vui lòng nhập đủ 3 điểm để tạo mặt phẳng
-                      </p>
-                    )
-                  }
-                  
-                  const p1Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt1.toUpperCase())
-                  const p2Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt2.toUpperCase())
-                  const p3Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt3.toUpperCase())
-
-                  if (!p1Obj || !p2Obj || !p3Obj) {
-                    const missing = []
-                    if (!p1Obj) missing.push(slicePt1.toUpperCase())
-                    if (!p2Obj) missing.push(slicePt2.toUpperCase())
-                    if (!p3Obj) missing.push(slicePt3.toUpperCase())
-                    return (
-                      <p className="text-[11px] font-medium text-red-500">
-                        Không tìm thấy điểm: {missing.join(', ')}
-                      </p>
-                    )
-                  }
-
-                  const p1Coords = manualDerived.pointPositions[p1Obj.id]
-                  const p2Coords = manualDerived.pointPositions[p2Obj.id]
-                  const p3Coords = manualDerived.pointPositions[p3Obj.id]
-
-                  if (!p1Coords || !p2Coords || !p3Coords) {
-                    return (
-                      <p className="text-[11px] font-medium text-red-500">
-                        Tọa độ các điểm chưa sẵn sàng
-                      </p>
-                    )
-                  }
-
-                  const collinear = arePointsCollinear3D(p1Coords, p2Coords, p3Coords)
-                  if (collinear) {
-                    return (
-                      <p className="text-[11px] font-medium text-red-500">
-                        3 điểm thẳng hàng, không thể tạo mặt phẳng
-                      </p>
-                    )
-                  }
-
-                  return (
-                    <p className="text-[11px] font-medium text-green-600 dark:text-green-400">
-                      3 điểm này có thể tạo 1 mặt phẳng
-                    </p>
-                  )
-                })()}
-
-                <div className="space-y-1.5 pt-1">
-                  <p className="text-xs font-semibold">Khối 3D cần cắt</p>
-                  <select
-                    className="w-full h-8 px-2 text-xs rounded-md border border-input bg-background font-medium focus:outline-none focus:ring-1 focus:ring-ring"
-                    value={sliceSolidId}
-                    onChange={(e) => setSliceSolidId(e.target.value)}
-                  >
-                    <option value="">-- Chọn hình khối 3D --</option>
-                    {manualDocument.solids.map((solid) => {
-                      const name = solid.label || solid.id.slice(-4)
-                      const typeLabel = solid.solidType === 'box' ? 'Hình hộp' 
-                                      : solid.solidType === 'cube' ? 'Lập phương'
-                                      : solid.solidType === 'pyramid' ? 'Hình chóp'
-                                      : solid.solidType === 'regularPyramid' ? 'Chóp đều'
-                                      : solid.solidType === 'prism' ? 'Lăng trụ'
-                                      : solid.solidType === 'sphere' ? 'Hình cầu'
-                                      : solid.solidType === 'cone' ? 'Hình nón'
-                                      : 'Hình trụ'
+                  {(() => {
+                    if (!slicePt1 || !slicePt2 || !slicePt3) {
                       return (
-                        <option key={solid.id} value={solid.id}>
-                          {typeLabel} ({name})
-                        </option>
+                        <p className="text-[11px] font-medium text-muted-foreground">
+                          Vui lòng nhập đủ 3 điểm để tạo mặt phẳng
+                        </p>
+                      )
+                    }
+
+                    const p1Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt1.toUpperCase())
+                    const p2Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt2.toUpperCase())
+                    const p3Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt3.toUpperCase())
+
+                    if (!p1Obj || !p2Obj || !p3Obj) {
+                      const missing = []
+                      if (!p1Obj) missing.push(slicePt1.toUpperCase())
+                      if (!p2Obj) missing.push(slicePt2.toUpperCase())
+                      if (!p3Obj) missing.push(slicePt3.toUpperCase())
+                      return (
+                        <p className="text-[11px] font-medium text-red-500">
+                          Không tìm thấy điểm: {missing.join(', ')}
+                        </p>
+                      )
+                    }
+
+                    const p1Coords = manualDerived.pointPositions[p1Obj.id]
+                    const p2Coords = manualDerived.pointPositions[p2Obj.id]
+                    const p3Coords = manualDerived.pointPositions[p3Obj.id]
+
+                    if (!p1Coords || !p2Coords || !p3Coords) {
+                      return (
+                        <p className="text-[11px] font-medium text-red-500">
+                          Tọa độ các điểm chưa sẵn sàng
+                        </p>
+                      )
+                    }
+
+                    const collinear = arePointsCollinear3D(p1Coords, p2Coords, p3Coords)
+                    if (collinear) {
+                      return (
+                        <p className="text-[11px] font-medium text-red-500">
+                          3 điểm thẳng hàng, không thể tạo mặt phẳng
+                        </p>
+                      )
+                    }
+
+                    return (
+                      <p className="text-[11px] font-medium text-green-600 dark:text-green-400">
+                        3 điểm này có thể tạo 1 mặt phẳng
+                      </p>
+                    )
+                  })()}
+
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-xs font-semibold">Khối 3D cần cắt</p>
+                    <select
+                      className="w-full h-8 px-2 text-xs rounded-md border border-input bg-background font-medium focus:outline-none focus:ring-1 focus:ring-ring"
+                      value={sliceSolidId}
+                      onChange={(e) => setSliceSolidId(e.target.value)}
+                    >
+                      <option value="">-- Chọn hình khối 3D --</option>
+                      {manualDocument.solids.map((solid) => {
+                        const name = solid.label || solid.id.slice(-4)
+                        const typeLabel = solid.solidType === 'box' ? 'Hình hộp'
+                          : solid.solidType === 'cube' ? 'Lập phương'
+                            : solid.solidType === 'pyramid' ? 'Hình chóp'
+                              : solid.solidType === 'regularPyramid' ? 'Chóp đều'
+                                : solid.solidType === 'prism' ? 'Lăng trụ'
+                                  : solid.solidType === 'sphere' ? 'Hình cầu'
+                                    : solid.solidType === 'cone' ? 'Hình nón'
+                                      : 'Hình trụ'
+                        return (
+                          <option key={solid.id} value={solid.id}>
+                            {typeLabel} ({name})
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+
+                  <div className="pt-2 flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => {
+                        setSlicePt1('')
+                        setSlicePt2('')
+                        setSlicePt3('')
+                        setSliceSolidId('')
+                      }}
+                    >
+                      Reset
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="flex-1 bg-primary text-primary-foreground font-semibold"
+                      onClick={() => {
+                        const p1Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt1.toUpperCase())
+                        const p2Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt2.toUpperCase())
+                        const p3Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt3.toUpperCase())
+
+                        if (!p1Obj || !p2Obj || !p3Obj || !sliceSolidId) return
+
+                        createSolidCut(sliceSolidId, [p1Obj.label, p2Obj.label, p3Obj.label])
+                        toast.success('Đã tạo lát cắt thành công!')
+
+                        setSlicePt1('')
+                        setSlicePt2('')
+                        setSlicePt3('')
+                        setSliceSolidId('')
+                        if (autoRevertToSelect) {
+                          setActiveTool('select')
+                        }
+                      }}
+                      disabled={(() => {
+                        if (!slicePt1 || !slicePt2 || !slicePt3 || !sliceSolidId) return true
+                        const p1Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt1.toUpperCase())
+                        const p2Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt2.toUpperCase())
+                        const p3Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt3.toUpperCase())
+                        if (!p1Obj || !p2Obj || !p3Obj) return true
+
+                        const p1Coords = manualDerived.pointPositions[p1Obj.id]
+                        const p2Coords = manualDerived.pointPositions[p2Obj.id]
+                        const p3Coords = manualDerived.pointPositions[p3Obj.id]
+                        if (!p1Coords || !p2Coords || !p3Coords) return true
+
+                        return arePointsCollinear3D(p1Coords, p2Coords, p3Coords)
+                      })()}
+                    >
+                      Xác nhận lát cắt
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {draftOperation?.tool === 'polygon' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold">Khối đa giác</p>
+                    <Badge variant="outline">{draftOperation.pointIds?.length ?? 0} đỉnh</Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(draftOperation.pointIds ?? []).map((pointId) => {
+                      const point = manualDocument.points.find((item) => item.id === pointId)
+                      return (
+                        <Badge key={pointId} variant="secondary">
+                          {point?.label ?? 'Điểm'}
+                        </Badge>
                       )
                     })}
-                  </select>
-                </div>
-
-                <div className="pt-2 flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => {
-                      setSlicePt1('')
-                      setSlicePt2('')
-                      setSlicePt3('')
-                      setSliceSolidId('')
-                    }}
-                  >
-                    Reset
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="flex-1 bg-primary text-primary-foreground font-semibold"
-                    onClick={() => {
-                      const p1Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt1.toUpperCase())
-                      const p2Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt2.toUpperCase())
-                      const p3Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt3.toUpperCase())
-
-                      if (!p1Obj || !p2Obj || !p3Obj || !sliceSolidId) return
-
-                      createSolidCut(sliceSolidId, [p1Obj.label, p2Obj.label, p3Obj.label])
-                      toast.success('Đã tạo lát cắt thành công!')
-                      
-                      setSlicePt1('')
-                      setSlicePt2('')
-                      setSlicePt3('')
-                      setSliceSolidId('')
-                      if (autoRevertToSelect) {
-                        setActiveTool('select')
-                      }
-                    }}
-                    disabled={(() => {
-                      if (!slicePt1 || !slicePt2 || !slicePt3 || !sliceSolidId) return true
-                      const p1Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt1.toUpperCase())
-                      const p2Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt2.toUpperCase())
-                      const p3Obj = manualDocument.points.find(p => p.label.toUpperCase() === slicePt3.toUpperCase())
-                      if (!p1Obj || !p2Obj || !p3Obj) return true
-                      
-                      const p1Coords = manualDerived.pointPositions[p1Obj.id]
-                      const p2Coords = manualDerived.pointPositions[p2Obj.id]
-                      const p3Coords = manualDerived.pointPositions[p3Obj.id]
-                      if (!p1Coords || !p2Coords || !p3Coords) return true
-                      
-                      return arePointsCollinear3D(p1Coords, p2Coords, p3Coords)
-                    })()}
-                  >
-                    Xác nhận lát cắt
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {draftOperation?.tool === 'polygon' && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold">Khối đa giác</p>
-                  <Badge variant="outline">{draftOperation.pointIds?.length ?? 0} đỉnh</Badge>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {(draftOperation.pointIds ?? []).map((pointId) => {
-                    const point = manualDocument.points.find((item) => item.id === pointId)
-                    return (
-                      <Badge key={pointId} variant="secondary">
-                        {point?.label ?? 'Điểm'}
-                      </Badge>
-                    )
-                  })}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={cancelManualDraft}>
-                    Hủy
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handlePolygonFinalize}
-                    disabled={(draftOperation.pointIds?.length ?? 0) < 3}
-                  >
-                    Hoàn tất đa giác
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {draftOperation?.tool === 'box' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Chiều cao của hình hộp</p>
-                <Input
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={draftOperation.height ?? 4}
-                  onChange={(event) => updateDraftHeight(event.target.value)}
-                  placeholder="Chiều cao"
-                />
-                <Button
-                  size="sm"
-                  className="w-full"
-                  onClick={handleBoxCreate}
-                  disabled={(draftOperation.pointIds?.length ?? 0) !== 3 || !draftOperation.height || draftOperation.height <= 0}
-                >
-                  Tạo hình hộp
-                </Button>
-              </div>
-            )}
-
-            {(activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid' || activeTool === 'rightPyramid') && (
-              <div className="space-y-3">
-                <p className="text-xs font-semibold">
-                  {activeTool === 'pyramid' && 'Thông tin chóp'}
-                  {activeTool === 'regularPyramid' && 'Thông tin chóp đều'}
-                  {activeTool === 'rightPyramid' && 'Thông tin chóp vuông'}
-                  {activeTool === 'prism' && 'Thông tin lăng trụ'}
-                </p>
-                
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground font-medium">Đa giác đáy</label>
-                  <Badge variant={draftOperation?.basePolygonId ? 'default' : 'outline'} className="w-full justify-start text-xs rounded-xl py-1 px-2.5">
-                    {draftOperation?.basePolygonId
-                      ? manualDocument.polygons.find((p) => p.id === draftOperation.basePolygonId)?.label ?? 'Đa giác đã chọn'
-                      : 'Chưa chọn (click đa giác trên canvas)'}
-                  </Badge>
-                </div>
-
-                {/* Select Top Point */}
-                {(activeTool === 'pyramid' || activeTool === 'prism') && (
-                  <div className="space-y-2">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">
-                        {activeTool === 'pyramid' ? 'Chọn Đỉnh Chóp (Apex)' : 'Chọn Đỉnh Mặt Trên (Top)'}
-                      </label>
-                      <select
-                        value={
-                          (activeTool === 'pyramid' ? draftOperation?.apexPointId : draftOperation?.topPointId) || 'auto_generate'
-                        }
-                        onChange={(e) => {
-                          if (draftOperation) {
-                            setDraftOperation({
-                              ...draftOperation,
-                              ...(activeTool === 'pyramid' ? { apexPointId: e.target.value } : { topPointId: e.target.value }),
-                            })
-                          }
-                        }}
-                        className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        <option value="auto_generate">-- Tự sinh đỉnh thẳng đứng ở cao độ h --</option>
-                        {manualDocument.points.map((pt) => (
-                          <option key={pt.id} value={pt.id}>
-                            {pt.label} ({pt.position.map(p => p.toFixed(1)).join(', ')})
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-muted-foreground">
-                        * Hoặc click chọn một điểm có sẵn trên canvas để gán làm đỉnh.
-                      </p>
-                    </div>
                   </div>
-                )}
-
-                {/* Select Apex Anchor Point for Right Pyramid */}
-                {activeTool === 'rightPyramid' && (
-                  <div className="space-y-2">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Chọn điểm chân đường cao</label>
-                      <select
-                        value={draftOperation?.apexAnchorPointId || ''}
-                        onChange={(e) => {
-                          if (draftOperation) {
-                            setDraftOperation({
-                              ...draftOperation,
-                              apexAnchorPointId: e.target.value || null,
-                            })
-                          }
-                        }}
-                        className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        <option value="">-- Chọn một điểm làm chân đường cao --</option>
-                        {manualDocument.points
-                          .filter(pt => {
-                            const basePoly = manualDocument.polygons.find(p => p.id === draftOperation?.basePolygonId);
-                            return basePoly?.pointIds.includes(pt.id);
-                          })
-                          .map((pt) => (
-                          <option key={pt.id} value={pt.id}>
-                            {pt.label} ({pt.position.map(p => p.toFixed(1)).join(', ')})
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-muted-foreground">
-                        * Hoặc click chọn một điểm có sẵn trên canvas.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Height Form */}
-                {((activeTool === 'pyramid' && (!draftOperation?.apexPointId || draftOperation?.apexPointId === 'auto_generate')) ||
-                  (activeTool === 'prism' && (!draftOperation?.topPointId || draftOperation?.topPointId === 'auto_generate')) || 
-                  (activeTool === 'regularPyramid') ||
-                  (activeTool === 'rightPyramid')) && (
-                  <div className="space-y-2">
-                      <div className="space-y-1 mt-2">
-                        <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
-                        <Input
-                          type="number"
-                          min={0.1}
-                          step={0.5}
-                          value={draftOperation?.height ?? 4}
-                          onChange={(event) => updateDraftHeight(event.target.value)}
-                          placeholder="Chiều cao"
-                          className="rounded-xl h-8 text-xs"
-                        />
-                      </div>
-                  </div>
-                )}
-
-                <Button
-                  size="sm"
-                  className="w-full rounded-xl h-8 text-xs font-semibold mt-4"
-                  onClick={() => handleSolidCreate(activeTool as 'pyramid' | 'prism' | 'regularPyramid' | 'rightPyramid')}
-                  disabled={
-                    !draftOperation?.basePolygonId ||
-                    (activeTool === 'pyramid' && (!draftOperation?.apexPointId || draftOperation?.apexPointId === 'auto_generate') && (!draftOperation?.height || draftOperation.height <= 0)) ||
-                    (activeTool === 'prism' && (!draftOperation?.topPointId || draftOperation?.topPointId === 'auto_generate') && (!draftOperation?.height || draftOperation.height <= 0)) ||
-                    (activeTool === 'rightPyramid' && (!draftOperation?.apexAnchorPointId || !draftOperation?.height || draftOperation.height <= 0))
-                  }
-                >
-                  {activeTool === 'pyramid' ? 'Tạo hình chóp' : activeTool === 'regularPyramid' ? 'Tạo hình chóp đều' : activeTool === 'rightPyramid' ? 'Tạo hình chóp vuông' : 'Tạo lăng trụ'}
-                </Button>
-              </div>
-            )}
-
-            {draftOperation?.tool === 'sphere' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Thông số hình cầu</p>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground">Tâm</label>
-                  <Badge variant={draftOperation.centerPointId ? 'default' : 'outline'}>
-                    {draftOperation.centerPointId
-                      ? manualDocument.points.find((p) => p.id === draftOperation.centerPointId)?.label ?? 'Đã chọn'
-                      : 'Chưa chọn (click điểm trên canvas)'}
-                  </Badge>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground">Bán kính R</label>
-                  <Input
-                    type="number"
-                    min={0.1}
-                    step={0.5}
-                    value={draftOperation.radius ?? 3}
-                    onChange={(event) => updateDraftRadius(event.target.value)}
-                    placeholder="Bán kính"
-                  />
-                </div>
-                <Button
-                  size="sm"
-                  className="w-full"
-                  onClick={handleSphereCreate}
-                  disabled={!draftOperation.centerPointId || !draftOperation.radius || draftOperation.radius <= 0}
-                >
-                  Tạo hình cầu
-                </Button>
-              </div>
-            )}
-
-            {draftOperation?.tool === 'cone' && (
-              <div className="space-y-3">
-                <p className="text-xs font-semibold">Thông số hình nón</p>
-                
-                <div className="space-y-2">
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Chọn đường tròn đáy</label>
-                    <select
-                      value={draftOperation.baseCircleId ?? ''}
-                      onChange={(e) => {
-                        setDraftOperation({
-                          ...draftOperation,
-                          baseCircleId: e.target.value,
-                        })
-                      }}
-                      className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={cancelManualDraft}>
+                      Hủy
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handlePolygonFinalize}
+                      disabled={(draftOperation.pointIds?.length ?? 0) < 3}
                     >
-                      <option value="" disabled>-- Chọn đường tròn --</option>
-                      {manualDocument.circles.map((circle) => (
-                        <option key={circle.id} value={circle.id}>
-                          {circle.label || `Đường tròn ${circle.id.slice(-4)}`}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-muted-foreground">
-                      * Hoặc click chọn một đường tròn trực tiếp trên canvas.
-                    </p>
+                      Hoàn tất đa giác
+                    </Button>
                   </div>
                 </div>
+              )}
 
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
+              {draftOperation?.tool === 'box' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Chiều cao của hình hộp</p>
                   <Input
                     type="number"
                     min={0.1}
-                    step={0.5}
-                    value={draftOperation.height ?? 5}
+                    step={0.1}
+                    value={draftOperation.height ?? 4}
                     onChange={(event) => updateDraftHeight(event.target.value)}
                     placeholder="Chiều cao"
-                    className="rounded-xl h-8 text-xs"
                   />
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={handleBoxCreate}
+                    disabled={(draftOperation.pointIds?.length ?? 0) !== 3 || !draftOperation.height || draftOperation.height <= 0}
+                  >
+                    Tạo hình hộp
+                  </Button>
                 </div>
+              )}
 
-                <Button
-                  size="sm"
-                  className="w-full rounded-xl h-8 text-xs font-semibold mt-2"
-                  onClick={handleConeCreate}
-                  disabled={
-                    !draftOperation.baseCircleId ||
-                    !draftOperation.height ||
-                    draftOperation.height <= 0
-                  }
-                >
-                  Tạo hình nón
-                </Button>
-              </div>
-            )}
+              {(activeTool === 'pyramid' || activeTool === 'prism' || activeTool === 'regularPyramid' || activeTool === 'rightPyramid') && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold">
+                    {activeTool === 'pyramid' && 'Thông tin chóp'}
+                    {activeTool === 'regularPyramid' && 'Thông tin chóp đều'}
+                    {activeTool === 'rightPyramid' && 'Thông tin chóp vuông'}
+                    {activeTool === 'prism' && 'Thông tin lăng trụ'}
+                  </p>
 
-            {draftOperation?.tool === 'cylinder' && (
-              <div className="space-y-3">
-                <p className="text-xs font-semibold">Thông số hình trụ</p>
-                
-                <div className="space-y-2">
                   <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Chọn đường tròn đáy</label>
-                    <select
-                      value={draftOperation.baseCircleId ?? ''}
-                      onChange={(e) => {
-                        setDraftOperation({
-                          ...draftOperation,
-                          baseCircleId: e.target.value,
-                        })
-                      }}
-                      className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    >
-                      <option value="" disabled>-- Chọn đường tròn --</option>
-                      {manualDocument.circles.map((circle) => (
-                        <option key={circle.id} value={circle.id}>
-                          {circle.label || `Đường tròn ${circle.id.slice(-4)}`}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-muted-foreground">
-                      * Hoặc click chọn một đường tròn trực tiếp trên canvas.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
-                  <Input
-                    type="number"
-                    min={0.1}
-                    step={0.5}
-                    value={draftOperation.height ?? 5}
-                    onChange={(event) => updateDraftHeight(event.target.value)}
-                    placeholder="Chiều cao"
-                    className="rounded-xl h-8 text-xs"
-                  />
-                </div>
-
-                <Button
-                  size="sm"
-                  className="w-full rounded-xl h-8 text-xs font-semibold mt-2"
-                  onClick={handleCylinderCreate}
-                  disabled={
-                    !draftOperation.baseCircleId ||
-                    !draftOperation.height ||
-                    draftOperation.height <= 0
-                  }
-                >
-                  Tạo hình trụ
-                </Button>
-              </div>
-            )}
-
-            {draftOperation?.tool === 'midpoint' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Công cụ Trung điểm</p>
-                {(draftOperation.segmentIds?.length ?? 0) > 0 ? (
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng</label>
-                    <div>
-                      <Badge variant="default">
-                        {manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? '?'}
-                      </Badge>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Điểm thứ nhất</label>
-                      <div>
-                        <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
-                          {(draftOperation.pointIds?.length ?? 0) >= 1
-                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
-                            : 'Chưa chọn'}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Điểm thứ hai</label>
-                      <div>
-                        <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 2 ? 'default' : 'outline'}>
-                          {(draftOperation.pointIds?.length ?? 0) >= 2
-                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[1])?.label ?? 'Đã chọn'
-                            : 'Chưa chọn'}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {draftOperation?.tool === 'intersection' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Công cụ Giao điểm</p>
-                <div className="flex gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng 1</label>
-                    <div>
-                      <Badge variant={(draftOperation.segmentIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
-                        {(draftOperation.segmentIds?.length ?? 0) >= 1
-                          ? manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng 2</label>
-                    <div>
-                      <Badge variant={(draftOperation.segmentIds?.length ?? 0) >= 2 ? 'default' : 'outline'}>
-                        {(draftOperation.segmentIds?.length ?? 0) >= 2
-                          ? manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[1])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {draftOperation?.tool === 'projection' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Công cụ Hình chiếu</p>
-                <div className="flex flex-col gap-2">
-                  <div className="flex gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Điểm chiếu</label>
-                      <div>
-                        <Badge variant={(draftOperation.pointIds?.length ?? 0) > 0 ? 'default' : 'outline'}>
-                          {(draftOperation.pointIds?.length ?? 0) > 0
-                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
-                            : 'Chưa chọn'}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Nhập đích (VD: BD)</label>
-                      <form onSubmit={(e) => {
-                        e.preventDefault()
-                        const form = e.target as HTMLFormElement
-                        const input = form.elements.namedItem('targetInput') as HTMLInputElement
-                        handleManualProjectionTarget(input.value)
-                        input.value = ''
-                      }}>
-                        <Input
-                          name="targetInput"
-                          placeholder="Nhập tên điểm"
-                          className="rounded-xl h-8 text-xs"
-                          autoComplete="off"
-                          disabled={(draftOperation.pointIds?.length ?? 0) === 0}
-                        />
-                      </form>
-                    </div>
+                    <label className="text-[11px] text-muted-foreground font-medium">Đa giác đáy</label>
+                    <Badge variant={draftOperation?.basePolygonId ? 'default' : 'outline'} className="w-full justify-start text-xs rounded-xl py-1 px-2.5">
+                      {draftOperation?.basePolygonId
+                        ? manualDocument.polygons.find((p) => p.id === draftOperation.basePolygonId)?.label ?? 'Đa giác đã chọn'
+                        : 'Chưa chọn (click đa giác trên canvas)'}
+                    </Badge>
                   </div>
 
-                  {draftOperation.pointIds && draftOperation.pointIds.length > 1 && (
-                    <div className="space-y-1 pt-1 border-t border-dashed">
-                      <label className="text-[11px] text-muted-foreground font-medium block">
-                        Mặt phẳng đích ({draftOperation.pointIds.length - 1}/3 điểm)
-                      </label>
-                      <div className="flex gap-1 flex-wrap">
-                        {draftOperation.pointIds.slice(1).map((pid, idx) => (
-                          <Badge key={pid} variant="secondary" className="text-xs">
-                            {manualDocument.points.find((p) => p.id === pid)?.label ?? `P${idx + 1}`}
-                          </Badge>
-                        ))}
+                  {/* Select Top Point */}
+                  {(activeTool === 'pyramid' || activeTool === 'prism') && (
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground font-medium">
+                          {activeTool === 'pyramid' ? 'Chọn Đỉnh Chóp (Apex)' : 'Chọn Đỉnh Mặt Trên (Top)'}
+                        </label>
+                        <select
+                          value={
+                            (activeTool === 'pyramid' ? draftOperation?.apexPointId : draftOperation?.topPointId) || 'auto_generate'
+                          }
+                          onChange={(e) => {
+                            if (draftOperation) {
+                              setDraftOperation({
+                                ...draftOperation,
+                                ...(activeTool === 'pyramid' ? { apexPointId: e.target.value } : { topPointId: e.target.value }),
+                              })
+                            }
+                          }}
+                          className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        >
+                          <option value="auto_generate">-- Tự sinh đỉnh thẳng đứng ở cao độ h --</option>
+                          {manualDocument.points.filter((pt) => pt.trackable !== false).map((pt) => (
+                            <option key={pt.id} value={pt.id}>
+                              {pt.label} ({pt.position.map(p => p.toFixed(1)).join(', ')})
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-muted-foreground">
+                          * Hoặc click chọn một điểm có sẵn trên canvas để gán làm đỉnh.
+                        </p>
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
 
-            {draftOperation?.tool === 'regularPolygon' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Đa giác đều</p>
-                <div className="flex gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Đỉnh thứ nhất</label>
-                    <div>
-                      <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
-                        {(draftOperation.pointIds?.length ?? 0) >= 1
-                          ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
+                  {/* Select Apex Anchor Point for Right Pyramid */}
+                  {activeTool === 'rightPyramid' && (
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground font-medium">Chọn điểm chân đường cao</label>
+                        <select
+                          value={draftOperation?.apexAnchorPointId || ''}
+                          onChange={(e) => {
+                            if (draftOperation) {
+                              setDraftOperation({
+                                ...draftOperation,
+                                apexAnchorPointId: e.target.value || null,
+                              })
+                            }
+                          }}
+                          className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        >
+                          <option value="">-- Chọn một điểm làm chân đường cao --</option>
+                          {manualDocument.points
+                            .filter(pt => {
+                              const basePoly = manualDocument.polygons.find(p => p.id === draftOperation?.basePolygonId);
+                              return basePoly?.pointIds.includes(pt.id);
+                            })
+                            .map((pt) => (
+                              <option key={pt.id} value={pt.id}>
+                                {pt.label} ({pt.position.map(p => p.toFixed(1)).join(', ')})
+                              </option>
+                            ))}
+                        </select>
+                        <p className="text-[10px] text-muted-foreground">
+                          * Hoặc click chọn một điểm có sẵn trên canvas.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Đỉnh thứ hai</label>
-                    <div>
-                      <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 2 ? 'default' : 'outline'}>
-                        {(draftOperation.pointIds?.length ?? 0) >= 2
-                          ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[1])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground">Số cạnh n (3 - 12)</label>
-                  <Input
-                    type="number"
-                    min={3}
-                    max={12}
-                    value={draftOperation.radius ?? 5}
-                    onChange={(event) =>
-                      setDraftOperation({
-                        ...draftOperation,
-                        radius: Math.min(12, Math.max(3, parseInt(event.target.value) || 3)),
-                      })
+                  )}
+
+                  {/* Height Form */}
+                  {((activeTool === 'pyramid' && (!draftOperation?.apexPointId || draftOperation?.apexPointId === 'auto_generate')) ||
+                    (activeTool === 'prism' && (!draftOperation?.topPointId || draftOperation?.topPointId === 'auto_generate')) ||
+                    (activeTool === 'regularPyramid') ||
+                    (activeTool === 'rightPyramid')) && (
+                      <div className="space-y-2">
+                        <div className="space-y-1 mt-2">
+                          <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
+                          <Input
+                            type="number"
+                            min={0.1}
+                            step={0.5}
+                            value={draftOperation?.height ?? 4}
+                            onChange={(event) => updateDraftHeight(event.target.value)}
+                            placeholder="Chiều cao"
+                            className="rounded-xl h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                  <Button
+                    size="sm"
+                    className="w-full rounded-xl h-8 text-xs font-semibold mt-4"
+                    onClick={() => handleSolidCreate(activeTool as 'pyramid' | 'prism' | 'regularPyramid' | 'rightPyramid')}
+                    disabled={
+                      !draftOperation?.basePolygonId ||
+                      (activeTool === 'pyramid' && (!draftOperation?.apexPointId || draftOperation?.apexPointId === 'auto_generate') && (!draftOperation?.height || draftOperation.height <= 0)) ||
+                      (activeTool === 'prism' && (!draftOperation?.topPointId || draftOperation?.topPointId === 'auto_generate') && (!draftOperation?.height || draftOperation.height <= 0)) ||
+                      (activeTool === 'rightPyramid' && (!draftOperation?.apexAnchorPointId || !draftOperation?.height || draftOperation.height <= 0))
                     }
-                  />
+                  >
+                    {activeTool === 'pyramid' ? 'Tạo hình chóp' : activeTool === 'regularPyramid' ? 'Tạo hình chóp đều' : activeTool === 'rightPyramid' ? 'Tạo hình chóp vuông' : 'Tạo lăng trụ'}
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  className="w-full font-bold"
-                  onClick={handleRegularPolygonCreate}
-                  disabled={(draftOperation.pointIds?.length ?? 0) !== 2}
-                >
-                  Tạo đa giác đều
-                </Button>
-              </div>
-            )}
+              )}
 
-
-            {draftOperation?.tool === 'circle' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Dựng đường tròn</p>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] text-muted-foreground font-semibold">Cách xác định</label>
-                  <div className="grid grid-cols-3 gap-1">
-                    {[
-                      { code: 1, label: '3 Điểm' },
-                      { code: 2, label: 'Tâm + R' },
-                      { code: 3, label: 'Tâm + Điểm' },
-                    ].map((item) => (
-                      <Button
-                        key={item.code}
-                        type="button"
-                        variant={(draftOperation.height ?? 1) === item.code ? 'default' : 'outline'}
-                        className="h-7 text-[9px] px-0 py-0 rounded-lg"
-                        onClick={() =>
-                          setDraftOperation({
-                            ...draftOperation,
-                            height: item.code,
-                            pointIds: [],
-                          })
-                        }
-                      >
-                        {item.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-1.5 py-1">
-                  {Array.from({
-                    length:
-                      (draftOperation.height ?? 1) === 1
-                        ? 3
-                        : (draftOperation.height ?? 1) === 2
-                          ? 1
-                          : 2,
-                  }).map((_, idx) => {
-                    const pid = draftOperation.pointIds?.[idx]
-                    const point = pid ? manualDocument.points.find((p) => p.id === pid) : null
-                    return (
-                      <Badge key={idx} variant={point ? 'default' : 'outline'} className="text-[10px]">
-                        {point ? point.label : idx === 0 ? 'Tâm...' : `Đỉnh ${idx + 1}...`}
-                      </Badge>
-                    )
-                  })}
-                </div>
-
-                {(draftOperation.height ?? 1) === 2 && (
+              {draftOperation?.tool === 'sphere' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Thông số hình cầu</p>
                   <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Bán kính R</label>
+                    <label className="text-[11px] text-muted-foreground">Tâm</label>
+                    <Badge variant={draftOperation.centerPointId ? 'default' : 'outline'}>
+                      {draftOperation.centerPointId
+                        ? manualDocument.points.find((p) => p.id === draftOperation.centerPointId)?.label ?? 'Đã chọn'
+                        : 'Chưa chọn (click điểm trên canvas)'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground">Bán kính R</label>
                     <Input
                       type="number"
                       min={0.1}
                       step={0.5}
                       value={draftOperation.radius ?? 3}
-                      onChange={(event) =>
-                        setDraftOperation({
-                          ...draftOperation,
-                          radius: parseFloat(event.target.value) || 1,
-                        })
-                      }
+                      onChange={(event) => updateDraftRadius(event.target.value)}
+                      placeholder="Bán kính"
                     />
                   </div>
-                )}
-
-                <Button
-                  size="sm"
-                  className="w-full font-bold"
-                  onClick={handleCircleCreate}
-                  disabled={
-                    (draftOperation.height ?? 1) === 1
-                      ? (draftOperation.pointIds?.length ?? 0) !== 3
-                      : (draftOperation.height ?? 1) === 2
-                        ? (draftOperation.pointIds?.length ?? 0) !== 1 || !(draftOperation.radius ?? 0)
-                        : (draftOperation.pointIds?.length ?? 0) !== 2
-                  }
-                >
-                  Dựng đường tròn
-                </Button>
-              </div>
-            )}
-
-            {draftOperation?.tool === 'centroid' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Công cụ Trọng tâm</p>
-                <div className="flex flex-wrap gap-1.5 py-1">
-                  {(draftOperation.pointIds ?? []).map((pid, idx) => {
-                    const point = manualDocument.points.find((p) => p.id === pid)
-                    return (
-                      <Badge key={pid} variant="default" className="text-[10px]">
-                        {point ? point.label : `Điểm ${idx + 1}`}
-                      </Badge>
-                    )
-                  })}
-                  {(draftOperation.pointIds ?? []).length === 0 && (
-                    <p className="text-[10px] text-muted-foreground italic">Chưa chọn điểm nào...</p>
-                  )}
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={handleSphereCreate}
+                    disabled={!draftOperation.centerPointId || !draftOperation.radius || draftOperation.radius <= 0}
+                  >
+                    Tạo hình cầu
+                  </Button>
                 </div>
-                <Button
-                  size="sm"
-                  className="w-full font-bold mt-2"
-                  onClick={handleCentroidCreate}
-                  disabled={(draftOperation.pointIds?.length ?? 0) < 3}
-                >
-                  Hoàn tất trọng tâm
-                </Button>
-              </div>
-            )}
+              )}
 
-            {draftOperation?.tool === 'perpendicularBisector' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Đường trung trực</p>
-                {(draftOperation.segmentIds?.length ?? 0) > 0 ? (
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng</label>
-                    <div>
-                      <Badge variant="default">
-                        {manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? '?'}
-                      </Badge>
+              {draftOperation?.tool === 'cone' && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold">Thông số hình nón</p>
+
+                  <div className="space-y-2">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Chọn đường tròn đáy</label>
+                      <select
+                        value={draftOperation.baseCircleId ?? ''}
+                        onChange={(e) => {
+                          setDraftOperation({
+                            ...draftOperation,
+                            baseCircleId: e.target.value,
+                          })
+                        }}
+                        className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        <option value="" disabled>-- Chọn đường tròn --</option>
+                        {manualDocument.circles.map((circle) => (
+                          <option key={circle.id} value={circle.id}>
+                            {circle.label || `Đường tròn ${circle.id.slice(-4)}`}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-muted-foreground">
+                        * Hoặc click chọn một đường tròn trực tiếp trên canvas.
+                      </p>
                     </div>
                   </div>
-                ) : (
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
+                    <Input
+                      type="number"
+                      min={0.1}
+                      step={0.5}
+                      value={draftOperation.height ?? 5}
+                      onChange={(event) => updateDraftHeight(event.target.value)}
+                      placeholder="Chiều cao"
+                      className="rounded-xl h-8 text-xs"
+                    />
+                  </div>
+
+                  <Button
+                    size="sm"
+                    className="w-full rounded-xl h-8 text-xs font-semibold mt-2"
+                    onClick={handleConeCreate}
+                    disabled={
+                      !draftOperation.baseCircleId ||
+                      !draftOperation.height ||
+                      draftOperation.height <= 0
+                    }
+                  >
+                    Tạo hình nón
+                  </Button>
+                </div>
+              )}
+
+              {draftOperation?.tool === 'cylinder' && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold">Thông số hình trụ</p>
+
+                  <div className="space-y-2">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Chọn đường tròn đáy</label>
+                      <select
+                        value={draftOperation.baseCircleId ?? ''}
+                        onChange={(e) => {
+                          setDraftOperation({
+                            ...draftOperation,
+                            baseCircleId: e.target.value,
+                          })
+                        }}
+                        className="flex h-8 w-full rounded-xl border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        <option value="" disabled>-- Chọn đường tròn --</option>
+                        {manualDocument.circles.map((circle) => (
+                          <option key={circle.id} value={circle.id}>
+                            {circle.label || `Đường tròn ${circle.id.slice(-4)}`}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-muted-foreground">
+                        * Hoặc click chọn một đường tròn trực tiếp trên canvas.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground font-medium">Chiều cao h</label>
+                    <Input
+                      type="number"
+                      min={0.1}
+                      step={0.5}
+                      value={draftOperation.height ?? 5}
+                      onChange={(event) => updateDraftHeight(event.target.value)}
+                      placeholder="Chiều cao"
+                      className="rounded-xl h-8 text-xs"
+                    />
+                  </div>
+
+                  <Button
+                    size="sm"
+                    className="w-full rounded-xl h-8 text-xs font-semibold mt-2"
+                    onClick={handleCylinderCreate}
+                    disabled={
+                      !draftOperation.baseCircleId ||
+                      !draftOperation.height ||
+                      draftOperation.height <= 0
+                    }
+                  >
+                    Tạo hình trụ
+                  </Button>
+                </div>
+              )}
+
+              {draftOperation?.tool === 'midpoint' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Công cụ Trung điểm</p>
+                  {(draftOperation.segmentIds?.length ?? 0) > 0 ? (
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng</label>
+                      <div>
+                        <Badge variant="default">
+                          {manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? '?'}
+                        </Badge>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground font-medium">Điểm thứ nhất</label>
+                        <div>
+                          <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
+                            {(draftOperation.pointIds?.length ?? 0) >= 1
+                              ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
+                              : 'Chưa chọn'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground font-medium">Điểm thứ hai</label>
+                        <div>
+                          <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 2 ? 'default' : 'outline'}>
+                            {(draftOperation.pointIds?.length ?? 0) >= 2
+                              ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[1])?.label ?? 'Đã chọn'
+                              : 'Chưa chọn'}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {draftOperation?.tool === 'intersection' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Công cụ Giao điểm</p>
                   <div className="flex gap-4">
                     <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Điểm thứ nhất</label>
+                      <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng 1</label>
+                      <div>
+                        <Badge variant={(draftOperation.segmentIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
+                          {(draftOperation.segmentIds?.length ?? 0) >= 1
+                            ? manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng 2</label>
+                      <div>
+                        <Badge variant={(draftOperation.segmentIds?.length ?? 0) >= 2 ? 'default' : 'outline'}>
+                          {(draftOperation.segmentIds?.length ?? 0) >= 2
+                            ? manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[1])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {draftOperation?.tool === 'projection' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Công cụ Hình chiếu</p>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground font-medium">Điểm chiếu</label>
+                        <div>
+                          <Badge variant={(draftOperation.pointIds?.length ?? 0) > 0 ? 'default' : 'outline'}>
+                            {(draftOperation.pointIds?.length ?? 0) > 0
+                              ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
+                              : 'Chưa chọn'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground font-medium">Nhập đích (VD: BD)</label>
+                        <Input
+                          value={projectionTargetDraft}
+                          onChange={(event) => {
+                            const next = event.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2)
+                            setProjectionTargetDraft(next)
+                          }}
+                          placeholder="Nhập đoạn thẳng"
+                          className="rounded-xl h-8 text-xs"
+                          autoComplete="off"
+                          maxLength={2}
+                          disabled={(draftOperation.pointIds?.length ?? 0) === 0}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 rounded-xl px-3 text-xs font-semibold"
+                          onClick={() => handleManualProjectionTarget(projectionTargetDraft)}
+                          disabled={(draftOperation.pointIds?.length ?? 0) === 0 || projectionTargetDraft.length !== 2}
+                        >
+                          Xác nhận
+                        </Button>
+                      </div>
+                    </div>
+
+                    {draftOperation.pointIds && draftOperation.pointIds.length > 1 && (
+                      <div className="space-y-1 pt-1 border-t border-dashed">
+                        <label className="text-[11px] text-muted-foreground font-medium block">
+                          Mặt phẳng đích ({draftOperation.pointIds.length - 1}/3 điểm)
+                        </label>
+                        <div className="flex gap-1 flex-wrap">
+                          {draftOperation.pointIds.slice(1).map((pid, idx) => (
+                            <Badge key={pid} variant="secondary" className="text-xs">
+                              {manualDocument.points.find((p) => p.id === pid)?.label ?? `P${idx + 1}`}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {draftOperation?.tool === 'regularPolygon' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Đa giác đều</p>
+                  <div className="flex gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Đỉnh thứ nhất</label>
                       <div>
                         <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
                           {(draftOperation.pointIds?.length ?? 0) >= 1
@@ -1146,7 +984,7 @@ export function ManualLeftSubPanel() {
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[11px] text-muted-foreground font-medium">Điểm thứ hai</label>
+                      <label className="text-[11px] text-muted-foreground font-medium">Đỉnh thứ hai</label>
                       <div>
                         <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 2 ? 'default' : 'outline'}>
                           {(draftOperation.pointIds?.length ?? 0) >= 2
@@ -1156,208 +994,380 @@ export function ManualLeftSubPanel() {
                       </div>
                     </div>
                   </div>
-                )}
-                <div className="space-y-1 pt-2">
-                  <label className="text-[11px] text-muted-foreground font-semibold">Độ dài nửa đường thẳng (t)</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={draftOperation.radius ?? 20}
-                    onChange={(event) =>
-                      setDraftOperation({
-                        ...draftOperation,
-                        radius: Math.max(1, parseFloat(event.target.value) || 20),
-                      })
-                    }
-                    className="rounded-xl h-8 text-xs"
-                  />
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground">Số cạnh n (3 - 12)</label>
+                    <Input
+                      type="number"
+                      min={3}
+                      max={12}
+                      value={draftOperation.radius ?? 5}
+                      onChange={(event) =>
+                        setDraftOperation({
+                          ...draftOperation,
+                          radius: Math.min(12, Math.max(3, parseInt(event.target.value) || 3)),
+                        })
+                      }
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full font-bold"
+                    onClick={handleRegularPolygonCreate}
+                    disabled={(draftOperation.pointIds?.length ?? 0) !== 2}
+                  >
+                    Tạo đa giác đều
+                  </Button>
                 </div>
-              </div>
-            )}
+              )}
 
-            {draftOperation?.tool === 'angleBisector' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Tia phân giác</p>
-                <div className="flex gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Điểm tia 1</label>
-                    <div>
-                      <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
-                        {(draftOperation.pointIds?.length ?? 0) >= 1
-                          ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Đỉnh góc</label>
-                    <div>
-                      <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 2 ? 'default' : 'outline'}>
-                        {(draftOperation.pointIds?.length ?? 0) >= 2
-                          ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[1])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Điểm tia 2</label>
-                    <div>
-                      <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 3 ? 'default' : 'outline'}>
-                        {(draftOperation.pointIds?.length ?? 0) >= 3
-                          ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[2])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-1 pt-2">
-                  <label className="text-[11px] text-muted-foreground font-semibold">Độ dài tia (t)</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={draftOperation.radius ?? 20}
-                    onChange={(event) =>
-                      setDraftOperation({
-                        ...draftOperation,
-                        radius: Math.max(1, parseFloat(event.target.value) || 20),
-                      })
-                    }
-                    className="rounded-xl h-8 text-xs"
-                  />
-                </div>
-              </div>
-            )}
 
-            {draftOperation?.tool === 'parallelLine' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Đường song song</p>
-                <div className="flex gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Điểm gốc</label>
-                    <div>
-                      <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
-                        {(draftOperation.pointIds?.length ?? 0) >= 1
-                          ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng mẫu</label>
-                    <div>
-                      <Badge variant={(draftOperation.segmentIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
-                        {(draftOperation.segmentIds?.length ?? 0) >= 1
-                          ? manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-1 pt-2">
-                  <label className="text-[11px] text-muted-foreground font-semibold">Độ dài nửa đường thẳng (t)</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={draftOperation.radius ?? 20}
-                    onChange={(event) =>
-                      setDraftOperation({
-                        ...draftOperation,
-                        radius: Math.max(1, parseFloat(event.target.value) || 20),
-                      })
-                    }
-                    className="rounded-xl h-8 text-xs"
-                  />
-                </div>
-              </div>
-            )}
-
-            {draftOperation?.tool === 'perpendicularLine' && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold">Đường vuông góc</p>
-                <div className="flex gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Điểm gốc</label>
-                    <div>
-                      <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
-                        {(draftOperation.pointIds?.length ?? 0) >= 1
-                          ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng mẫu</label>
-                    <div>
-                      <Badge variant={(draftOperation.segmentIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
-                        {(draftOperation.segmentIds?.length ?? 0) >= 1
-                          ? manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? 'Đã chọn'
-                          : 'Chưa chọn'}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-1 pt-2">
-                  <label className="text-[11px] text-muted-foreground font-semibold">Độ dài nửa đường thẳng (t)</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={draftOperation.radius ?? 20}
-                    onChange={(event) =>
-                      setDraftOperation({
-                        ...draftOperation,
-                        radius: Math.max(1, parseFloat(event.target.value) || 20),
-                      })
-                    }
-                    className="rounded-xl h-8 text-xs"
-                  />
-                </div>
-              </div>
-            )}
-
-            {draftOperation && draftOperation.pointIds && activeTool !== 'slice' && (
-              <div className="space-y-2 pt-3 border-t border-border/60">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                  Chọn điểm từ danh sách
-                </label>
-                {manualDocument.points.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground italic">Chưa có điểm nào trong bản vẽ</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 border border-border/60 rounded-xl bg-background/40">
-                    {manualDocument.points.map((pt) => {
-                      const isSelected = draftOperation.pointIds!.includes(pt.id)
-                      return (
+              {draftOperation?.tool === 'circle' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Dựng đường tròn</p>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] text-muted-foreground font-semibold">Cách xác định</label>
+                    <div className="grid grid-cols-3 gap-1">
+                      {[
+                        { code: 1, label: '3 Điểm' },
+                        { code: 2, label: 'Tâm + R' },
+                        { code: 3, label: 'Tâm + Điểm' },
+                      ].map((item) => (
                         <Button
-                          key={pt.id}
+                          key={item.code}
                           type="button"
-                          variant={isSelected ? 'default' : 'outline'}
-                          className={`h-6 text-[10px] px-2 rounded-lg font-bold transition-all ${
-                            isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-accent/40'
-                          }`}
-                          onClick={() => {
-                            const currentIds = draftOperation.pointIds || []
-                            let nextIds: string[]
-                            if (currentIds.includes(pt.id)) {
-                              nextIds = currentIds.filter(id => id !== pt.id)
-                            } else {
-                              nextIds = [...currentIds, pt.id]
-                            }
+                          variant={(draftOperation.height ?? 1) === item.code ? 'default' : 'outline'}
+                          className="h-7 text-[9px] px-0 py-0 rounded-lg"
+                          onClick={() =>
                             setDraftOperation({
                               ...draftOperation,
-                              pointIds: nextIds
+                              height: item.code,
+                              pointIds: [],
                             })
-                          }}
+                          }
                         >
-                          {pt.label}
+                          {item.label}
                         </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 py-1">
+                    {Array.from({
+                      length:
+                        (draftOperation.height ?? 1) === 1
+                          ? 3
+                          : (draftOperation.height ?? 1) === 2
+                            ? 1
+                            : 2,
+                    }).map((_, idx) => {
+                      const pid = draftOperation.pointIds?.[idx]
+                      const point = pid ? manualDocument.points.find((p) => p.id === pid) : null
+                      return (
+                        <Badge key={idx} variant={point ? 'default' : 'outline'} className="text-[10px]">
+                          {point ? point.label : idx === 0 ? 'Tâm...' : `Đỉnh ${idx + 1}...`}
+                        </Badge>
                       )
                     })}
                   </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+
+                  {(draftOperation.height ?? 1) === 2 && (
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Bán kính R</label>
+                      <Input
+                        type="number"
+                        min={0.1}
+                        step={0.5}
+                        value={draftOperation.radius ?? 3}
+                        onChange={(event) =>
+                          setDraftOperation({
+                            ...draftOperation,
+                            radius: parseFloat(event.target.value) || 1,
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+
+                  <Button
+                    size="sm"
+                    className="w-full font-bold"
+                    onClick={handleCircleCreate}
+                    disabled={
+                      (draftOperation.height ?? 1) === 1
+                        ? (draftOperation.pointIds?.length ?? 0) !== 3
+                        : (draftOperation.height ?? 1) === 2
+                          ? (draftOperation.pointIds?.length ?? 0) !== 1 || !(draftOperation.radius ?? 0)
+                          : (draftOperation.pointIds?.length ?? 0) !== 2
+                    }
+                  >
+                    Dựng đường tròn
+                  </Button>
+                </div>
+              )}
+
+              {draftOperation?.tool === 'centroid' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Công cụ Trọng tâm</p>
+                  <div className="flex flex-wrap gap-1.5 py-1">
+                    {(draftOperation.pointIds ?? []).map((pid, idx) => {
+                      const point = manualDocument.points.find((p) => p.id === pid)
+                      return (
+                        <Badge key={pid} variant="default" className="text-[10px]">
+                          {point ? point.label : `Điểm ${idx + 1}`}
+                        </Badge>
+                      )
+                    })}
+                    {(draftOperation.pointIds ?? []).length === 0 && (
+                      <p className="text-[10px] text-muted-foreground italic">Chưa chọn điểm nào...</p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full font-bold mt-2"
+                    onClick={handleCentroidCreate}
+                    disabled={(draftOperation.pointIds?.length ?? 0) < 3}
+                  >
+                    Hoàn tất trọng tâm
+                  </Button>
+                </div>
+              )}
+
+              {draftOperation?.tool === 'perpendicularBisector' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Đường trung trực</p>
+                  {(draftOperation.segmentIds?.length ?? 0) > 0 ? (
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng</label>
+                      <div>
+                        <Badge variant="default">
+                          {manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? '?'}
+                        </Badge>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground font-medium">Điểm thứ nhất</label>
+                        <div>
+                          <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
+                            {(draftOperation.pointIds?.length ?? 0) >= 1
+                              ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
+                              : 'Chưa chọn'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground font-medium">Điểm thứ hai</label>
+                        <div>
+                          <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 2 ? 'default' : 'outline'}>
+                            {(draftOperation.pointIds?.length ?? 0) >= 2
+                              ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[1])?.label ?? 'Đã chọn'
+                              : 'Chưa chọn'}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="space-y-1 pt-2">
+                    <label className="text-[11px] text-muted-foreground font-semibold">Độ dài nửa đường thẳng (t)</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={draftOperation.radius ?? 20}
+                      onChange={(event) =>
+                        setDraftOperation({
+                          ...draftOperation,
+                          radius: Math.max(1, parseFloat(event.target.value) || 20),
+                        })
+                      }
+                      className="rounded-xl h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {draftOperation?.tool === 'angleBisector' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Tia phân giác</p>
+                  <div className="flex gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Điểm tia 1</label>
+                      <div>
+                        <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
+                          {(draftOperation.pointIds?.length ?? 0) >= 1
+                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Đỉnh góc</label>
+                      <div>
+                        <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 2 ? 'default' : 'outline'}>
+                          {(draftOperation.pointIds?.length ?? 0) >= 2
+                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[1])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Điểm tia 2</label>
+                      <div>
+                        <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 3 ? 'default' : 'outline'}>
+                          {(draftOperation.pointIds?.length ?? 0) >= 3
+                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[2])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-1 pt-2">
+                    <label className="text-[11px] text-muted-foreground font-semibold">Độ dài tia (t)</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={draftOperation.radius ?? 20}
+                      onChange={(event) =>
+                        setDraftOperation({
+                          ...draftOperation,
+                          radius: Math.max(1, parseFloat(event.target.value) || 20),
+                        })
+                      }
+                      className="rounded-xl h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {draftOperation?.tool === 'parallelLine' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Đường song song</p>
+                  <div className="flex gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Điểm gốc</label>
+                      <div>
+                        <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
+                          {(draftOperation.pointIds?.length ?? 0) >= 1
+                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng mẫu</label>
+                      <div>
+                        <Badge variant={(draftOperation.segmentIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
+                          {(draftOperation.segmentIds?.length ?? 0) >= 1
+                            ? manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-1 pt-2">
+                    <label className="text-[11px] text-muted-foreground font-semibold">Độ dài nửa đường thẳng (t)</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={draftOperation.radius ?? 20}
+                      onChange={(event) =>
+                        setDraftOperation({
+                          ...draftOperation,
+                          radius: Math.max(1, parseFloat(event.target.value) || 20),
+                        })
+                      }
+                      className="rounded-xl h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {draftOperation?.tool === 'perpendicularLine' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Đường vuông góc</p>
+                  <div className="flex gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Điểm gốc</label>
+                      <div>
+                        <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
+                          {(draftOperation.pointIds?.length ?? 0) >= 1
+                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Đoạn thẳng mẫu</label>
+                      <div>
+                        <Badge variant={(draftOperation.segmentIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
+                          {(draftOperation.segmentIds?.length ?? 0) >= 1
+                            ? manualDocument.segments.find((s) => s.id === draftOperation.segmentIds?.[0])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-1 pt-2">
+                    <label className="text-[11px] text-muted-foreground font-semibold">Độ dài nửa đường thẳng (t)</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={draftOperation.radius ?? 20}
+                      onChange={(event) =>
+                        setDraftOperation({
+                          ...draftOperation,
+                          radius: Math.max(1, parseFloat(event.target.value) || 20),
+                        })
+                      }
+                      className="rounded-xl h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {draftOperation && draftOperation.pointIds && activeTool !== 'slice' && (
+                <div className="space-y-2 pt-3 border-t border-border/60">
+                  <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                    Chọn điểm từ danh sách
+                  </label>
+                  {manualDocument.points.filter((pt) => pt.trackable !== false).length === 0 ? (
+                    <p className="text-[10px] text-muted-foreground italic">Chưa có điểm nào trong bản vẽ</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 border border-border/60 rounded-xl bg-background/40">
+                      {manualDocument.points.filter((pt) => pt.trackable !== false).map((pt) => {
+                        const isSelected = draftOperation.pointIds!.includes(pt.id)
+                        return (
+                          <Button
+                            key={pt.id}
+                            type="button"
+                            variant={isSelected ? 'default' : 'outline'}
+                            className={`h-6 text-[10px] px-2 rounded-lg font-bold transition-all ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-accent/40'
+                              }`}
+                            onClick={() => {
+                              const currentIds = draftOperation.pointIds || []
+                              let nextIds: string[]
+                              if (currentIds.includes(pt.id)) {
+                                nextIds = currentIds.filter(id => id !== pt.id)
+                              } else {
+                                nextIds = [...currentIds, pt.id]
+                              }
+                              setDraftOperation({
+                                ...draftOperation,
+                                pointIds: nextIds
+                              })
+                            }}
+                          >
+                            {pt.label}
+                          </Button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
       {/* Card Lưu ý thao tác kéo điểm */}
       {(activeTool === 'box' || activeTool === 'sphere') && (
@@ -1387,6 +1397,36 @@ export function ManualLeftSubPanel() {
                   </p>
                   <p>
                     Bạn nên đặt camera xoay về hướng tâm đường tròn (nhìn thẳng vào tâm đường tròn) và vị trí camera nằm trên đường thẳng vuông góc từ tâm với mặt phẳng đường tròn để dễ tương tác và kéo thả chính xác nhất.
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Card Lưu ý thao tác pick đoạn thẳng */}
+      {(activeTool === 'perpendicularLine' || activeTool === 'parallelLine') && (
+        <Card className="border-blue-500/20 bg-blue-500/5 py-3.5 shadow-sm rounded-2xl">
+          <CardHeader className="px-4 pb-0 pt-1">
+            <CardTitle className="text-xs text-blue-500 font-bold flex items-center gap-1.5">
+              <Info size={14} className="text-blue-500" />
+              Lưu ý thao tác chọn đường thẳng mẫu:
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-2">
+            <div className="text-[11px] leading-relaxed text-muted-foreground font-medium">
+              {activeTool === 'perpendicularLine' && (
+                <div className="space-y-1">
+                  <p>
+                    Khi chọn đoạn thẳng mẫu yêu cầu <strong>BẮT BUỘC</strong> đoạn thẳng đó phải được lưu ở "Đoạn thẳng và Đường thẳng". Do đó nên chọn công cụ "Đoạn" để tạo trước đoạn thẳng mong muốn rồi mới chuyển qua công cụ Đ.vuông góc để thao tác
+                  </p>
+                </div>
+              )}
+              {activeTool === 'parallelLine' && (
+                <div className="space-y-1">
+                  <p>
+                    Khi chọn đoạn thẳng mẫu yêu cầu <strong>BẮT BUỘC</strong> đoạn thẳng đó phải được lưu ở "Đoạn thẳng và Đường thẳng". Do đó nên chọn công cụ "Đoạn" để tạo trước đoạn thẳng mong muốn rồi mới chuyển qua công cụ Đ.song song để thao tác
                   </p>
                 </div>
               )}
