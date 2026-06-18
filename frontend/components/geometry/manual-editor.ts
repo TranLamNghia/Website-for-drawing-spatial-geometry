@@ -44,6 +44,7 @@ export interface ManualEntityMeta {
   locked: boolean
   visible: boolean
   selectable: boolean
+  trackable?: boolean
 }
 
 export interface ManualPoint extends ManualEntityMeta {

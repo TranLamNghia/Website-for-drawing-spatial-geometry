@@ -2483,6 +2483,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           locked: true,
           visible: false,
           selectable: false,
+          trackable: false,
         }
 
         const p2: ManualPoint = {
@@ -2498,6 +2499,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
           locked: true,
           visible: false,
           selectable: false,
+          trackable: false,
         }
 
         const lineSeg = {
@@ -2545,6 +2547,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         locked: true,
         visible: false,
         selectable: false,
+        trackable: false,
       }
 
       const rayId = createEntityId('segment')
@@ -2595,6 +2598,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         locked: true,
         visible: false,
         selectable: false,
+        trackable: false,
       }
 
       const p2: ManualPoint = {
@@ -2611,6 +2615,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         locked: true,
         visible: false,
         selectable: false,
+        trackable: false,
       }
 
       const lineId = createEntityId('segment')
@@ -2661,6 +2666,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         locked: true,
         visible: false,
         selectable: false,
+        trackable: false,
       }
 
       const p2: ManualPoint = {
@@ -2677,6 +2683,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
         locked: true,
         visible: false,
         selectable: false,
+        trackable: false,
       }
 
       const lineId = createEntityId('segment')

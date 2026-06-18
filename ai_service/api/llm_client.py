@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 from prompts.prompt_builder import build_prompt
 from utils.retry_engine import RetryEngine
@@ -7,7 +8,8 @@ from utils.validator import clean_markdown_json
 from .llm_provider import llm_provider
 
 
-load_dotenv()
+ROOT_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(dotenv_path=ROOT_ENV_PATH, override=False)
 
 class GeometryAIEngine:
     def __init__(self):

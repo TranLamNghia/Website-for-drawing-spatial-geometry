@@ -11,7 +11,9 @@ export type GeometrySetters = {
   setSolveArtifact?: (artifact: any | null) => void
 }
 
-export const SOLVE_ENDPOINT_URL = 'http://localhost:5000/api/Geometry/process'
+export const SOLVE_ENDPOINT_URL = process.env.NEXT_PUBLIC_API_URL 
+  ? `${process.env.NEXT_PUBLIC_API_URL}/api/Geometry/process` 
+  : 'http://localhost:5000/api/Geometry/process'
 
 function toUserFacingSolveError(errorData: any, fallback = 'Chức năng AI hiện đang gặp lỗi. Vui lòng thử lại sau.') {
   if (typeof errorData === 'string' && errorData.trim()) {

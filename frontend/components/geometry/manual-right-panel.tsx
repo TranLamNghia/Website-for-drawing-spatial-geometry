@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Circle, Pentagon, ChevronRight, PencilRuler, Pyramid, Save, Trash2, Triangle, Square, Eye, EyeOff, GripVertical, Layers, Scissors } from 'lucide-react'
+import { Box, Circle, Pentagon, ChevronRight, PencilRuler, Pyramid, Save, Trash2, Triangle, Square, Eye, EyeOff, GripVertical, Layers, Scissors, Lock, Unlock } from 'lucide-react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -77,6 +77,7 @@ function PointRow({
   angleVal,
   onAddDependentPoint,
   onToggleVisibility,
+  onToggleLocked,
 }: {
   point: ManualPoint
   coords: [number, number, number]
@@ -91,6 +92,7 @@ function PointRow({
   angleVal?: number
   onAddDependentPoint?: () => void
   onToggleVisibility: () => void
+  onToggleLocked: () => void
 }) {
   const [cx, cy, cz] = coords
   const [isFocused, setIsFocused] = useState(false)
@@ -130,17 +132,26 @@ function PointRow({
     }
   }
 
+  const isFree = point.pointKind === 'free'
+  const isConstrained = ['segment', 'circlePoint', 'circleAngleDependent', 'sphereRingPoint', 'sphereAngleDependent'].includes(point.pointKind)
+  const isDerived = !isFree && !isConstrained
+
   return (
     <div
       className={`group flex flex-col rounded-xl border transition-all ${
         selected
-          ? 'border-primary/35 bg-primary/10 shadow-sm'
-          : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
+          ? 'border-red-500/35 bg-red-500/10 shadow-sm'
+          : isDerived
+            ? 'border-dashed border-muted-foreground/30 bg-background/40 hover:border-primary/20 hover:bg-accent/10 opacity-85 hover:opacity-100'
+            : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
       }`}
     >
-      <div className="grid grid-cols-[80px_34px_minmax(0,1fr)_68px] items-center gap-2 px-2.5 py-2">
+      <div className="grid grid-cols-[80px_34px_minmax(0,1fr)_92px] items-center gap-2 px-2.5 py-2">
         <button onClick={onSelect} className="text-left">
-          <TypePill icon={<Circle size={13} fill="currentColor" />} label={'\u0110i\u1ec3m'} />
+          <TypePill
+            icon={<Circle size={13} fill="currentColor" />}
+            label={isFree ? 'Tự do' : isConstrained ? 'Trên hình' : 'Phụ thuộc'}
+          />
         </button>
 
         <Input
@@ -161,7 +172,8 @@ function PointRow({
             onBlur={commit}
             onKeyDown={(event) => event.key === 'Enter' && commit()}
             placeholder="x"
-            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
+            disabled={!isFree || point.locked}
+            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px] disabled:opacity-60"
           />
           <Input
             value={isFocused ? draft.y : formatCoord(cy)}
@@ -170,7 +182,8 @@ function PointRow({
             onBlur={commit}
             onKeyDown={(event) => event.key === 'Enter' && commit()}
             placeholder="y"
-            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
+            disabled={!isFree || point.locked}
+            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px] disabled:opacity-60"
           />
           <Input
             value={isFocused ? draft.z : formatCoord(cz)}
@@ -179,7 +192,8 @@ function PointRow({
             onBlur={commit}
             onKeyDown={(event) => event.key === 'Enter' && commit()}
             placeholder="z"
-            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px]"
+            disabled={!isFree || point.locked}
+            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px] disabled:opacity-60"
           />
         </div>
 
@@ -194,6 +208,18 @@ function PointRow({
           >
             {point.visible ? <Eye size={12} /> : <EyeOff size={12} />}
           </button>
+          {!isDerived && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleLocked()
+              }}
+              className={`p-1 rounded-md transition-colors ${point.locked ? 'text-amber-500 hover:bg-amber-500/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'}`}
+              title={point.locked ? 'Mở khóa điểm' : 'Khóa điểm'}
+            >
+              {point.locked ? <Lock size={12} /> : <Unlock size={12} />}
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -916,6 +942,7 @@ export function ManualRightPanel() {
     bitmaskVisibility,
     setBitmaskVisibility,
     toggleManualVisibility,
+    toggleManualLocked,
   } = useGeometry()
   const { addProject } = useProjectStore()
 
@@ -1005,244 +1032,176 @@ export function ManualRightPanel() {
   const panelPoints = useMemo(() => {
     const seenLabels = new Set<string>()
     return manualDocument.points.filter((point) => {
+      if (point.trackable === false) return false
       if (seenLabels.has(point.label)) return false
       seenLabels.add(point.label)
       return true
     })
   }, [manualDocument.points])
 
+  const updatePointCoords = (pointId: string, newCoords: [number, number, number]) => {
+    updatePointPosition(pointId, newCoords)
+  }
+
+  const totalEntities =
+    manualDocument.points.filter((p) => p.trackable !== false).length +
+    manualDocument.segments.length +
+    (manualDocument.polygons?.filter((p: ManualPolygon) => !p.internal).length ?? 0) +
+    (manualDocument.circles?.length ?? 0) +
+    manualDocument.solids.length
+
   const polygonPointMap = useMemo(() => {
     return Object.fromEntries(
-      manualDocument.polygons.filter((polygon) => !polygon.internal).map((polygon) => [
+      manualDocument.polygons.map((polygon: ManualPolygon) => [
         polygon.id,
-        polygon.pointIds.map((pointId) => pointLabelMap[pointId] ?? pointId),
+        polygon.pointIds.map((pid: string) => pointLabelMap[pid] ?? pid),
       ]),
-    ) as Record<string, string[]>
+    )
   }, [manualDocument.polygons, pointLabelMap])
 
   const solidValueMap = useMemo(() => {
-    const result: Record<string, string[]> = {}
-    const getPolygonLabels = (polygonId?: string) => {
-      if (!polygonId) return []
-      const polygon = manualDocument.polygons.find((item) => item.id === polygonId)
-      if (!polygon) return []
-      return polygon.pointIds.map((pointId) => pointLabelMap[pointId] ?? pointId)
-    }
-    manualDocument.solids.forEach((solid) => {
-      let vertices: string[] = []
-      if (solid.solidType === 'pyramid' || solid.solidType === 'regularPyramid') {
-        const baseLabels = getPolygonLabels(solid.basePolygonId)
-        let apexLabel = ''
-        if (solid.apexPointId) {
-          apexLabel = pointLabelMap[solid.apexPointId] ?? ''
-        } else {
-          const genApex = manualDocument.points.find(
-            p => p.solidId === solid.id && p.pointKind === 'solidVertex'
-          )
-          if (genApex) {
-            apexLabel = genApex.label
-          }
-        }
-        if (apexLabel) {
-          vertices = [apexLabel, ...baseLabels]
-        } else {
-          vertices = baseLabels
-        }
-      } else if (solid.solidType === 'box' || solid.solidType === 'cube') {
-        const cornerLabels = solid.cornerPointIds 
-          ? solid.cornerPointIds.map(id => pointLabelMap[id] ?? '') 
-          : []
-        const labels: string[] = new Array(8).fill('')
-        if (cornerLabels[0]) labels[0] = cornerLabels[0]
-        if (cornerLabels[1]) labels[1] = cornerLabels[1]
-        if (cornerLabels[2]) labels[2] = cornerLabels[2]
-        manualDocument.points.forEach(p => {
-          if (p.solidId === solid.id && p.pointKind === 'solidVertex' && p.vertexIndex !== undefined && p.vertexIndex < 8) {
-            labels[p.vertexIndex] = p.label
-          }
-        })
-        vertices = labels.filter(Boolean)
-      } else if (solid.solidType === 'prism') {
-        const baseLabels = getPolygonLabels(solid.basePolygonId)
-        const n = baseLabels.length
-        const topLabels: string[] = new Array(n).fill('')
-        manualDocument.points.forEach(p => {
-          if (p.solidId === solid.id && p.pointKind === 'solidVertex' && p.vertexIndex !== undefined && p.vertexIndex >= n && p.vertexIndex < 2 * n) {
-            topLabels[p.vertexIndex - n] = p.label
-          }
-        })
-        const resolvedTopLabels = topLabels.map((l, idx) => l || `${baseLabels[idx]}'`)
-        vertices = [...baseLabels, ...resolvedTopLabels]
-      } else if (solid.solidType === 'cone') {
-        const apexLabel = solid.apexPointId ? (pointLabelMap[solid.apexPointId] ?? '') : ''
-        const centerLabel = solid.centerPointId ? (pointLabelMap[solid.centerPointId] ?? '') : ''
-        const radiusLabel = solid.radiusPointId ? (pointLabelMap[solid.radiusPointId] ?? '') : ''
-        vertices = [apexLabel, centerLabel, radiusLabel].filter(Boolean)
-      } else if (solid.solidType === 'cylinder') {
-        const centerLabel = solid.centerPointId ? (pointLabelMap[solid.centerPointId] ?? '') : ''
-        const radiusLabel = solid.radiusPointId ? (pointLabelMap[solid.radiusPointId] ?? '') : ''
-        const topLabel = solid.topPointId ? (pointLabelMap[solid.topPointId] ?? '') : ''
-        vertices = [centerLabel, radiusLabel, topLabel].filter(Boolean)
-      } else if (solid.solidType === 'sphere') {
-        const centerLabel = solid.centerPointId ? (pointLabelMap[solid.centerPointId] ?? '') : ''
-        vertices = [centerLabel].filter(Boolean)
-      }
-      result[solid.id] = vertices
-    })
-    return result
-  }, [manualDocument.solids, manualDocument.points, manualDocument.polygons, pointLabelMap])
-
-  const totalEntities =
-    manualDocument.points.filter(p => p.visible !== false).length +
-    manualDocument.segments.length +
-    manualDocument.polygons.length +
-    manualDocument.solids.length +
-    (manualDocument.circles?.length ?? 0)
-
-  const handleSave = () => {
-    setIsSaving(true)
-    const ok = addProject({
-      id: crypto.randomUUID(),
-      name: projectName.trim() || 'B\u1ea3n v\u1ebd t\u1ef1 v\u1ebd',
-      problemText: '',
-      geometryJson: serializeManualProject(manualDocument, {
-        showAxes,
-        showGrid,
-        showLabels,
+    return Object.fromEntries(
+      manualDocument.solids.map((solid: ManualSolid) => {
+        const pts = solid.cornerPointIds ?? (solid as any).baseFacePointIds ?? []
+        return [solid.id, pts.map((pid: string) => pointLabelMap[pid] ?? pid)]
       }),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-    setIsSaving(false)
+    )
+  }, [manualDocument.solids, pointLabelMap])
 
-    if (!ok) {
-      alert('\u0110\u00e3 \u0111\u1ea1t gi\u1edbi h\u1ea1n 10 b\u1ea3n v\u1ebd l\u01b0u tr\u00ean tr\u00ecnh duy\u1ec7t n\u00e0y.')
-      return
+  const handleSave = async () => {
+    setIsSaving(true)
+    try {
+      const json = serializeManualProject(manualDocument)
+      await addProject({
+        id: crypto.randomUUID(),
+        name: projectName,
+        problemText: '',
+        geometryJson: json,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        thumbnail: '',
+      })
+    } finally {
+      setIsSaving(false)
     }
-
-    alert('\u0110\u00e3 l\u01b0u b\u1ea3n v\u1ebd t\u1ef1 v\u1ebd.')
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden px-4 py-5">
-      <div className="px-2">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-foreground">{'Th\u00f4ng tin h\u00ecnh'}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {'Hi\u1ec3n th\u1ecb lo\u1ea1i \u0111\u1ed1i t\u01b0\u1ee3ng, t\u00ean v\u00e0 d\u1eef li\u1ec7u h\u00ecnh h\u1ecdc.'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 flex-1 overflow-y-auto pr-1">
-        <div className="space-y-3">
-          <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
-            <button
-              onClick={() => setOpenGroups({ ...openGroups, points: !openGroups.points })}
-              className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
-            >
-              <span>Điểm</span>
-              <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.points ? 'rotate-90' : ''}`} />
-            </button>
-            {openGroups.points && (
-              <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
-                {panelPoints.map((point) => {
-            const coords = manualDerived.pointPositions[point.id]
-            if (!coords) return null
-
-            return (
-              <PointRow
-                key={point.id}
-                point={point}
-                coords={coords}
-                selected={manualSelection?.kind === 'point' && manualSelection.id === point.id}
-                onSelect={() => setManualSelection({ kind: 'point', id: point.id })}
-                onDelete={() => removeManualEntity('point', point.id)}
-                onApply={(nextCoords) => updatePointPosition(point.id, nextCoords)}
-                onRename={(newLabel) => renameManualEntity('point', point.id, newLabel)}
-                onUpdateT={(point.pointKind === 'segment' || point.pointKind === 'midpoint') ? (newT) => updatePointT(point.id, newT) : undefined}
-                tVal={point.t}
-                onUpdateAngle={
-                  (point.pointKind === 'sphereRingPoint' || point.pointKind === 'sphereAngleDependent' || point.pointKind === 'circlePoint' || point.pointKind === 'circleAngleDependent')
-                    ? (newA) => updatePointAngle(point.id, newA)
-                    : undefined
-                }
-                angleVal={
-                  point.pointKind === 'circlePoint' ? point.t :
-                  point.pointKind === 'circleAngleDependent' ? point.angleOffset :
-                  point.pointKind === 'sphereRingPoint' ? point.t :
-                  point.pointKind === 'sphereAngleDependent' ? point.angle :
-                  point.angle
-                }
-                onAddDependentPoint={
-                  point.pointKind === 'circlePoint'
-                    ? () => {
-                        const val = prompt('Nhập góc lệch α (độ) cho điểm phụ thuộc mới:', '60')
-                        if (val !== null) {
-                          const num = parseFloat(val)
-                          if (!isNaN(num)) {
-                            createCircleAngleDependentPoint(point.id, (num * Math.PI) / 180)
-                          }
-                        }
-                      }
-                    : (point.pointKind === 'sphereRingPoint'
+    <div className="flex h-full flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-3 p-3">
+        <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
+          <button
+            onClick={() => setOpenGroups({ ...openGroups, points: !openGroups.points })}
+            className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
+          >
+            <span>Điểm</span>
+            <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.points ? 'rotate-90' : ''}`} />
+          </button>
+          {openGroups.points && (
+            <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
+              {panelPoints.map((point) => {
+                const coords = manualDerived.pointPositions[point.id] ?? [0, 0, 0]
+                return (
+                  <PointRow
+                    key={point.id}
+                    point={point}
+                    coords={coords}
+                    selected={manualSelection?.kind === 'point' && manualSelection.id === point.id}
+                    onSelect={() => setManualSelection({ kind: 'point', id: point.id })}
+                    onDelete={() => removeManualEntity('point', point.id)}
+                    onApply={(newCoords) => updatePointCoords(point.id, newCoords)}
+                    onRename={(newLabel) => renameManualEntity('point', point.id, newLabel)}
+                    onUpdateT={
+                      point.pointKind === 'segment' || point.pointKind === 'circlePoint' || point.pointKind === 'sphereRingPoint'
+                        ? (newT) => updatePointT(point.id, newT)
+                        : undefined
+                    }
+                    tVal={
+                      point.pointKind === 'segment' ? point.t :
+                      point.pointKind === 'circlePoint' ? point.t :
+                      point.pointKind === 'sphereRingPoint' ? point.t :
+                      undefined
+                    }
+                    onUpdateAngle={
+                      point.pointKind === 'circleAngleDependent' || point.pointKind === 'sphereAngleDependent'
+                        ? (newA) => updatePointAngle(point.id, newA)
+                        : undefined
+                    }
+                    angleVal={
+                      point.pointKind === 'circlePoint' ? point.t :
+                      point.pointKind === 'circleAngleDependent' ? point.angleOffset :
+                      point.pointKind === 'sphereRingPoint' ? point.t :
+                      point.pointKind === 'sphereAngleDependent' ? point.angle :
+                      point.angle
+                    }
+                    onAddDependentPoint={
+                      point.pointKind === 'circlePoint'
                         ? () => {
                             const val = prompt('Nhập góc lệch α (độ) cho điểm phụ thuộc mới:', '60')
                             if (val !== null) {
                               const num = parseFloat(val)
                               if (!isNaN(num)) {
-                                createSphereAngleDependentPoint(point.id, (num * Math.PI) / 180)
+                                createCircleAngleDependentPoint(point.id, (num * Math.PI) / 180)
                               }
                             }
                           }
-                        : undefined)
-                }
-                onToggleVisibility={() => toggleManualVisibility('point', point.id)}
-              />
-            )
-          })}
-              </div>
-            )}
-          </div>
+                        : (point.pointKind === 'sphereRingPoint'
+                            ? () => {
+                                const val = prompt('Nhập góc lệch α (độ) cho điểm phụ thuộc mới:', '60')
+                                if (val !== null) {
+                                  const num = parseFloat(val)
+                                  if (!isNaN(num)) {
+                                    createSphereAngleDependentPoint(point.id, (num * Math.PI) / 180)
+                                  }
+                                }
+                              }
+                            : undefined)
+                    }
+                    onToggleVisibility={() => toggleManualVisibility('point', point.id)}
+                    onToggleLocked={() => toggleManualLocked('point', point.id)}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </div>
 
-          <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
-            <button
-              onClick={() => setOpenGroups({ ...openGroups, segments: !openGroups.segments })}
-              className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
-            >
-              <span>Đoạn thẳng và đường thẳng</span>
-              <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.segments ? 'rotate-90' : ''}`} />
-            </button>
-            {openGroups.segments && (
-              <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
-                {manualDocument.segments.map((segment: ManualSegment) => {
-            let typeLabel = '\u0110o\u1ea1n'
-            let values = [
-              pointLabelMap[segment.startPointId] ?? segment.startPointId,
-              pointLabelMap[segment.endPointId] ?? segment.endPointId,
-            ]
-            
-            const p1 = manualDocument.points.find((p) => p.id === segment.startPointId)
-            const p2 = manualDocument.points.find((p) => p.id === segment.endPointId)
+        <div className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
+          <button
+            onClick={() => setOpenGroups({ ...openGroups, segments: !openGroups.segments })}
+            className="w-full flex justify-between items-center px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-all uppercase tracking-wider"
+          >
+            <span>Đoạn thẳng và đường thẳng</span>
+            <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${openGroups.segments ? 'rotate-90' : ''}`} />
+          </button>
+          {openGroups.segments && (
+            <div className="p-2 pt-1 flex flex-col gap-2 border-t border-border/40">
+              {manualDocument.segments.map((segment: ManualSegment) => {
+              let typeLabel = 'Đoạn'
+              let values = [
+                pointLabelMap[segment.startPointId] ?? segment.startPointId,
+                pointLabelMap[segment.endPointId] ?? segment.endPointId,
+              ]
 
-            let isEditable = false
-            let lengthVal = 20
+              const p1 = manualDocument.points.find((p) => p.id === segment.startPointId)
+              const p2 = manualDocument.points.find((p) => p.id === segment.endPointId)
 
-            if (segment.createdByTool === 'parallelLine') {
-              typeLabel = 'Đ.Song song'
-              const anchorLabel = p1?.anchorPointId ? pointLabelMap[p1.anchorPointId] ?? '?' : '?'
-              const refSeg = p1?.sourceSegmentId ? manualDocument.segments.find(s => s.id === p1.sourceSegmentId) : null
-              const refSegLabel = refSeg ? refSeg.label : '?'
-              lengthVal = p2?.t ? Math.abs(p2.t) : 20
-              values = [`Qua ${anchorLabel}`, `// ${refSegLabel}`]
-              isEditable = true
-            } else if (segment.createdByTool === 'perpendicularLine') {
-              typeLabel = 'Đ.Vuông góc'
-              const anchorLabel = p1?.anchorPointId ? pointLabelMap[p1.anchorPointId] ?? '?' : '?'
-              const refSeg = p1?.sourceSegmentId ? manualDocument.segments.find(s => s.id === p1.sourceSegmentId) : null
-              const refSegLabel = refSeg ? refSeg.label : '?'
+              let isEditable = false
+              let lengthVal = 20
+
+              if (segment.createdByTool === 'parallelLine') {
+                typeLabel = 'Đ.Song song'
+                const anchorLabel = p1?.anchorPointId ? pointLabelMap[p1.anchorPointId] ?? '?' : '?'
+                const refSeg = p1?.sourceSegmentId ? manualDocument.segments.find(s => s.id === p1.sourceSegmentId) : null
+                const refSegLabel = refSeg ? refSeg.label : '?'
+                lengthVal = p2?.t ? Math.abs(p2.t) : 20
+                values = [`Qua ${anchorLabel}`, `// ${refSegLabel}`]
+                isEditable = true
+              } else if (segment.createdByTool === 'perpendicularLine') {
+                typeLabel = 'Đ.Vuông góc'
+                const anchorLabel = p1?.anchorPointId ? pointLabelMap[p1.anchorPointId] ?? '?' : '?'
+                const refSeg = p1?.sourceSegmentId ? manualDocument.segments.find(s => s.id === p1.sourceSegmentId) : null
+                const refSegLabel = refSeg ? refSeg.label : '?'
               lengthVal = p2?.t ? Math.abs(p2.t) : 20
               values = [`Qua ${anchorLabel}`, `⊥ ${refSegLabel}`]
               isEditable = true
@@ -1451,7 +1410,7 @@ export function ManualRightPanel() {
                       icon={solid.solidType === 'pyramid' ? <Pyramid size={14} /> : <Box size={14} />}
                       name={solid.label}
                       values={[]}
-                      basePoints={solidValueMap[solid.id] ?? []}
+                      basePoints={[]}
                       selected={manualSelection?.kind === 'solid' && manualSelection.id === solid.id}
                       onSelect={() => setManualSelection({ kind: 'solid', id: solid.id })}
                       onDelete={() => removeManualEntity('solid', solid.id)}
@@ -1478,7 +1437,6 @@ export function ManualRightPanel() {
               </p>
             </div>
           ) : null}
-        </div>
       </div>
 
       <div className="mt-4 space-y-3 border-t border-border/70 pt-4">
