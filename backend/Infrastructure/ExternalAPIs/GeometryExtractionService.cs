@@ -3,6 +3,7 @@ using System.Text.Json;
 using Application.DTOs;
 using Application.Interfaces;
 using Domains.MathCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Infrastructure.ExternalAPIs;
 
@@ -10,10 +11,17 @@ public class GeometryExtractionService : IGeometryExtractionService
 {
     private readonly HttpClient _httpClient;
 
-    public GeometryExtractionService(HttpClient httpClient)
+    public GeometryExtractionService(HttpClient httpClient, IConfiguration configuration)
     {
         _httpClient = httpClient;
-        _httpClient.BaseAddress = new Uri("http://localhost:8000/api/");
+        var baseUrl = configuration["AiServiceSettings:BaseUrl"] ?? "http://localhost:8000/api/";
+        _httpClient.BaseAddress = new Uri(baseUrl);
+        
+        var apiKey = configuration["AiServiceSettings:ApiKey"];
+        if (!string.IsNullOrEmpty(apiKey))
+        {
+            _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
+        }
     }
 
     public async Task<GeometryProblemDto?> ExtractGeometryAsync(string problemText)

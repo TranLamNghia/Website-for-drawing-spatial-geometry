@@ -1,4 +1,5 @@
 import json
+import os
 import requests
 from pathlib import Path
 from api.llm_provider import llm_provider
@@ -8,7 +9,7 @@ PROMPT_FILE = BASE_DIR / "prompts" / "sympy_prompt.txt"
 
 class SympyAIEngine:
     def __init__(self):
-        self.sandbox_url = "http://localhost:8002/execute"
+        self.sandbox_url = os.getenv("SANDBOX_URL", "http://localhost:8002/execute")
 
     def generate_and_solve(self, problem_text: str, facts_json: dict, current_points: dict, validation_failures: list, base_a_value: float, fail_fast: bool = False) -> dict:
         from datetime import datetime
@@ -62,9 +63,13 @@ class SympyAIEngine:
 
             print(f"[SYMPY_ENGINE] Sending script to Math Sandbox (:8002)...")
             try:
+                headers = {}
+                if os.getenv("INTERNAL_API_KEY"):
+                    headers["x-api-key"] = os.getenv("INTERNAL_API_KEY")
                 sandbox_resp = requests.post(
                     self.sandbox_url,
                     json={"code": clean_code},
+                    headers=headers,
                     timeout=20
                 )
                 data = sandbox_resp.json()

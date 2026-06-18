@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
 import json
+import os
 from api.llm_client import GeometryAIEngine
 from api.sympy_engine import SympyAIEngine
 from typing import Dict, Any
@@ -8,6 +9,13 @@ from typing import Dict, Any
 router = APIRouter()
 ai_engine = GeometryAIEngine() # Dependency Injection
 sympy_engine = SympyAIEngine()
+
+API_KEY = os.getenv("INTERNAL_API_KEY")
+
+async def verify_api_key(x_api_key: str = Header(None)):
+    if API_KEY and x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing API Key")
+    return x_api_key
 
 
 def build_error_payload(stage: str, message: str, status_code: int = 502, code: str = "AI_SERVICE_ERROR"):
@@ -24,7 +32,7 @@ class ProblemRequest(BaseModel):
     problem_text: str
 
 @router.post("/extract")
-async def extract_geometry(request: ProblemRequest):
+async def extract_geometry(request: ProblemRequest, api_key: str = Depends(verify_api_key)):
     try:
         raw_json = ai_engine.extract_json(request.problem_text)
         parsed_data = json.loads(raw_json)
@@ -44,7 +52,7 @@ class MathSolverRequest(BaseModel):
     base_a_value: float = 1.0
 
 @router.post("/solve-math")
-async def solve_math_geometry(request: MathSolverRequest):
+async def solve_math_geometry(request: MathSolverRequest, api_key: str = Depends(verify_api_key)):
     try:
         result = sympy_engine.generate_and_solve(
             request.problem_text, 
