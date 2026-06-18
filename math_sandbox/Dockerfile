@@ -1,7 +1,7 @@
 FROM python:3.10-alpine
 
 # Set port
-EXPOSE 8002
+EXPOSE 8080
 
 # Set library
 WORKDIR /app
@@ -18,4 +18,4 @@ USER sandboxuser
 COPY . .
 
 # Run FastAPI through Uvicorn when container starts
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]

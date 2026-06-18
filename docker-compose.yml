@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  math_sandbox:
+    build:
+      context: ./math_sandbox
+    container_name: spatial_math_sandbox
+    expose:
+      - "8080"
+    mem_limit: 512m
+    cpus: "0.5"
+    restart: always
+    environment:
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+    volumes:
+      - sympy_bin:/app/sympyBin
+
+  ai_service:
+    build:
+      context: ./ai_service
+    container_name: spatial_ai_service
+    expose:
+      - "8000"
+    restart: always
+    depends_on:
+      - math_sandbox
+    environment:
+      - SANDBOX_URL=http://math_sandbox:8002/execute
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - VERTEX_GEMINI_APIKEY=${VERTEX_GEMINI_APIKEY}
+      - VERTEX_PROJECT_ID=${VERTEX_PROJECT_ID}
+      - VERTEX_LOCATION=${VERTEX_LOCATION}
+
+  backend:
+    build:
+      context: ./backend
+    container_name: spatial_backend
+    ports:
+      - "5000:5000"
+    restart: always
+    depends_on:
+      - ai_service
+    environment:
+      - MongoDbSettings__ConnectionString=${PROD_MONGODB_CONNECTION_STRING}
+      - MongoDbSettings__DatabaseName=SpaticalGeometryDB
+      - AiServiceSettings__BaseUrl=http://ai_service:8000/api/
+      - AiServiceSettings__ApiKey=${INTERNAL_API_KEY}
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: spatial_frontend
+    ports:
+      - "3000:3000"
+    restart: always
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - AIRTABLE_TOKEN_ID=${AIRTABLE_TOKEN_ID}
+      - AIRTABLE_BASE_ID=${AIRTABLE_BASE_ID}
+      - AIRTABLE_TABLE_NAME=${AIRTABLE_TABLE_NAME}
+      - CLOUDINARY_NAME=${CLOUDINARY_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_SECRET_KEY=${CLOUDINARY_SECRET_KEY}
+
+volumes:
+  sympy_bin:
