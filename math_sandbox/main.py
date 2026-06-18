@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel
 import subprocess
 import os
@@ -10,11 +10,18 @@ import time
 
 app = FastAPI(title="Math Sandbox (SymPy Code Interpreter)")
 
+API_KEY = os.getenv("INTERNAL_API_KEY")
+
+async def verify_api_key(x_api_key: str = Header(None)):
+    if API_KEY and x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing API Key")
+    return x_api_key
+
 class ExecutionRequest(BaseModel):
     code: str
 
 @app.post("/execute")
-async def execute_code(request: ExecutionRequest):
+async def execute_code(request: ExecutionRequest, api_key: str = Depends(verify_api_key)):
     code = request.code
     
     # Ghi lại file chạy vào sympyBin theo dạng mới để không bị ghi đè
@@ -112,4 +119,4 @@ async def execute_code(request: ExecutionRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
