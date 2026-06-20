@@ -1,7 +1,16 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   LayoutGrid,
   Settings,
@@ -76,6 +85,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const router = useRouter()
   const activeNav = useMemo(() => getActiveNav(pathname), [pathname])
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
 
   const handleNav = (id: NavId) => {
     if (id === 'drawings') router.push('/trangchu')
@@ -83,6 +93,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     else if (id === 'settings') router.push('/trangchu/caidat')
     else if (id === 'feedback') router.push('/trangchu/homthu')
     else if (id === 'profile') router.push('/trangchu/thongtin')
+    else if (id === 'upgrade') setUpgradeOpen(true)
     else router.push('/trangchu')
   }
 
@@ -129,6 +140,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <div className="flex-1 overflow-hidden min-w-0">{children}</div>
+
+      <AlertDialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Gói nâng cấp</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm leading-relaxed">
+              Bạn chưa cần bỏ tiền ra để mua gì cả, hãy trải nghiệm miễn phí và góp ý cho tôi để tôi có thể hiểu được mong muốn của bạn.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction>Đồng ý</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

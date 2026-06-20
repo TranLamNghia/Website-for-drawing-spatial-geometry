@@ -291,12 +291,10 @@ export function Canvas3D() {
         const pMat = new THREE.LineBasicMaterial(lineProps)
         axesGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pPts), pMat))
 
-        // Negative Z (Dashed)
+        // Negative Z
         const nPts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -AXIS_LEN)]
-        const nMat = new THREE.LineDashedMaterial({ ...lineProps, dashSize: 0.4, gapSize: 0.2 })
-        const nLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(nPts), nMat)
-        nLine.computeLineDistances()
-        axesGroup.add(nLine)
+        const nMat = new THREE.LineBasicMaterial(lineProps)
+        axesGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(nPts), nMat))
       } else {
         const mat = new THREE.LineBasicMaterial(lineProps)
         const pts = [dir.clone().multiplyScalar(-AXIS_LEN), dir.clone().multiplyScalar(AXIS_LEN)]

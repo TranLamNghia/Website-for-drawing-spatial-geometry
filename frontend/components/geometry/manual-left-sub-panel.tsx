@@ -37,6 +37,8 @@ export function ManualLeftSubPanel() {
     manualDocument,
     manualDerived,
     createSolidCut,
+    createSegment,
+    createMidpoint,
   } = useGeometry()
 
   const [slicePt1, setSlicePt1] = useState('')
@@ -247,6 +249,22 @@ export function ManualLeftSubPanel() {
     if (pts.length < 3) return
     createCentroid(undefined, pts)
     autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'centroid', pointIds: [] })
+  }
+
+  const handleSegmentCreate = () => {
+    if (draftOperation?.tool !== 'segment') return
+    const pts = draftOperation.pointIds ?? []
+    if (pts.length !== 2) return
+    createSegment(pts[0], pts[1])
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'segment', pointIds: [] })
+  }
+
+  const handleMidpointCreate = () => {
+    if (draftOperation?.tool !== 'midpoint') return
+    const pts = draftOperation.pointIds ?? []
+    if (pts.length !== 2) return
+    createMidpoint(pts[0], pts[1])
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'midpoint', pointIds: [] })
   }
 
   if (activeTool === 'select') return null
@@ -843,6 +861,34 @@ export function ManualLeftSubPanel() {
                 </div>
               )}
 
+              {draftOperation?.tool === 'segment' && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">Công cụ Đoạn thẳng</p>
+                  <div className="flex gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Điểm thứ nhất</label>
+                      <div>
+                        <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 1 ? 'default' : 'outline'}>
+                          {(draftOperation.pointIds?.length ?? 0) >= 1
+                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[0])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-muted-foreground font-medium">Điểm thứ hai</label>
+                      <div>
+                        <Badge variant={(draftOperation.pointIds?.length ?? 0) >= 2 ? 'default' : 'outline'}>
+                          {(draftOperation.pointIds?.length ?? 0) >= 2
+                            ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[1])?.label ?? 'Đã chọn'
+                            : 'Chưa chọn'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {draftOperation?.tool === 'midpoint' && (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold">Công cụ Trung điểm</p>
@@ -1351,6 +1397,18 @@ export function ManualLeftSubPanel() {
                               } else {
                                 nextIds = [...currentIds, pt.id]
                               }
+
+                              if (draftOperation.tool === 'segment' && nextIds.length === 2) {
+                                createSegment(nextIds[0], nextIds[1])
+                                autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'segment', pointIds: [] })
+                                return
+                              }
+                              if (draftOperation.tool === 'midpoint' && nextIds.length === 2) {
+                                createMidpoint(nextIds[0], nextIds[1])
+                                autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'midpoint', pointIds: [] })
+                                return
+                              }
+
                               setDraftOperation({
                                 ...draftOperation,
                                 pointIds: nextIds
