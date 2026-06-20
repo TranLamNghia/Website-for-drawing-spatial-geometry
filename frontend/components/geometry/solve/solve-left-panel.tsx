@@ -81,7 +81,7 @@ export function SolveLeftPanel() {
       applyBackendResultToState(result, setters)
       setErrorDialogOpen(false)
     } catch (error: any) {
-      const message = 'Chức năng AI hiện đang gặp lỗi. Vui lòng thử lại sau.'
+      const message = 'Xin lỗi bạn, chức năng vẽ bằng AI này đang bị lỗi, sẽ sớm quay trở lại nhanh nhất có thể'
       setErrorMessage(message)
       setValidation({ isConsistent: false, issues: [message] })
       setErrorDialogOpen(true)
@@ -138,7 +138,7 @@ export function SolveLeftPanel() {
       </div>
 
       <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)} className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-2 hidden">
           <TabsTrigger value="input">Đề bài</TabsTrigger>
           <TabsTrigger value="json">Dữ liệu JSON</TabsTrigger>
         </TabsList>
@@ -201,17 +201,6 @@ export function SolveLeftPanel() {
               </div>
             </div>
           )}
-
-          <div className="pt-2 border-t border-border/60">
-            <Button
-              variant="outline"
-              className="w-full h-11 rounded-xl border-dashed border-border hover:border-destructive hover:text-destructive hover:bg-destructive/5 transition-all flex items-center gap-2 text-xs font-semibold"
-              onClick={handleReportWrong}
-            >
-              <MessageSquareWarning size={14} />
-              Báo cáo hình vẽ sai
-            </Button>
-          </div>
         </TabsContent>
 
         <TabsContent value="json" className="flex-1 flex flex-col gap-4 mt-4 overflow-hidden">
@@ -235,7 +224,7 @@ export function SolveLeftPanel() {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Chức năng AI đang tạm lỗi</AlertDialogTitle>
-          <AlertDialogDescription>Xin lỗi, chức năng này hiện đang gặp lỗi.</AlertDialogDescription>
+          <AlertDialogDescription>Xin lỗi bạn, chức năng vẽ bằng AI này đang bị lỗi, sẽ sớm quay trở lại nhanh nhất có thể</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogAction>Đã hiểu</AlertDialogAction>

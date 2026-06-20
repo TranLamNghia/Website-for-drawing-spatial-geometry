@@ -877,10 +877,8 @@ export function ManualCanvas3D() {
         axesGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(positivePts), positiveMat))
 
         const negativePts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -axisLength)]
-        const negativeMat = new THREE.LineDashedMaterial({ ...lineProps, dashSize: 0.4, gapSize: 0.2 })
-        const negativeLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(negativePts), negativeMat)
-        negativeLine.computeLineDistances()
-        axesGroup.add(negativeLine)
+        const negativeMat = new THREE.LineBasicMaterial(lineProps)
+        axesGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(negativePts), negativeMat))
       } else {
         const mat = new THREE.LineBasicMaterial(lineProps)
         const pts = [dir.clone().multiplyScalar(-axisLength), dir.clone().multiplyScalar(axisLength)]

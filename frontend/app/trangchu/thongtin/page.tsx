@@ -6,7 +6,7 @@ export default function ProfilePage() {
   return (
     <div className="h-full overflow-y-auto bg-background text-foreground">
       <div className="w-full px-12 py-10 flex flex-col gap-6">
-        
+
         {/* Header */}
         <div className="space-y-1.5 pb-2">
           <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/75">
@@ -22,7 +22,7 @@ export default function ProfilePage() {
 
         {/* Profile Details Row */}
         <div className="py-6 flex flex-col md:flex-row gap-10 items-start">
-          
+
           {/* Left: Square Image Placeholder with Premium Design - Orange Border */}
           <div className="w-[180px] h-[180px] shrink-0 border border-orange-500/40 rounded-2xl flex flex-col items-center justify-center bg-gradient-to-br from-orange-500/8 via-amber-500/3 to-transparent shadow-lg shadow-orange-500/5 backdrop-blur-md group hover:border-orange-500/60 transition-all duration-300 relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-tr from-orange-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -38,7 +38,7 @@ export default function ProfilePage() {
                 Người phát triển & Thiết kế chính
               </span>
             </div>
-            
+
             <p className="text-[14px] text-muted-foreground leading-relaxed max-w-3xl">
               Xin chào! Tôi là người phát triển chính của Phòng thí nghiệm Hình học AI. Website đang trong quá trình nâng cấp và hoàn thiện tính ổn định. Nếu bạn có bất kỳ thắc mắc, đề xuất hợp tác hoặc câu hỏi kỹ thuật nào, vui lòng liên hệ trực tiếp qua các thông tin bên dưới....
             </p>
@@ -50,14 +50,14 @@ export default function ProfilePage() {
 
         {/* Three Columns Section - 5 Columns Grid to house dividers */}
         <div className="py-6 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-x-12 gap-y-8 items-stretch w-full">
-          
+
           {/* Column 1: Thông tin cá nhân */}
           <div className="space-y-6 flex flex-col justify-between">
             <div>
               <h3 className="text-sm font-extrabold text-emerald-500 uppercase tracking-widest border-l-2 border-emerald-500/80 pl-3 mb-6">
                 Thông tin cá nhân
               </h3>
-              
+
               <div className="space-y-5">
                 <div className="group">
                   <div className="flex items-center gap-2 text-muted-foreground group-hover:text-foreground transition-colors">
@@ -74,8 +74,8 @@ export default function ProfilePage() {
                     <Mail size={14} className="text-emerald-500/80" />
                     <p className="text-[12px] font-bold uppercase tracking-wider">Email</p>
                   </div>
-                  <a href="mailto:tln.ganyu@gmail.com" className="text-[13px] text-foreground/90 font-medium hover:text-primary transition-colors block mt-1 pl-5">
-                    tln.ganyu@gmail.com
+                  <a href="#" className="text-[13px] text-foreground/90 font-medium hover:text-primary transition-colors block mt-1 pl-5">
+                    tlnghiajmail@gmail.com
                   </a>
                 </div>
 
@@ -85,7 +85,7 @@ export default function ProfilePage() {
                     <p className="text-[12px] font-bold uppercase tracking-wider">Quê quán</p>
                   </div>
                   <a href="#" className="text-[13px] text-foreground/90 font-medium hover:text-primary transition-colors block mt-1 pl-5">
-                    Hồ Chí Minh, Việt Nam
+                    Quảng Ngãi, Việt Nam
                   </a>
                 </div>
               </div>
@@ -100,7 +100,7 @@ export default function ProfilePage() {
             <h3 className="text-sm font-extrabold text-emerald-500 uppercase tracking-widest border-l-2 border-emerald-500/80 pl-3 mb-6">
               Mạng xã hội
             </h3>
-            
+
             <div className="space-y-4">
               {/* FB Row */}
               <div className="flex items-center gap-3.5 group">
@@ -109,8 +109,8 @@ export default function ProfilePage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">fb</p>
-                  <a href="#" className="text-[13px] text-foreground/90 font-semibold hover:text-primary transition-colors truncate block">
-                    facebook.com/tln.ganyu
+                  <a href="https://www.facebook.com/nghia.tranlam.71" target="_blank" rel="noopener noreferrer" className="text-[13px] text-foreground/90 font-semibold hover:text-primary transition-colors truncate block">
+                    facebook.com/nghia.tranlam.71
                   </a>
                 </div>
               </div>
@@ -135,8 +135,8 @@ export default function ProfilePage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">linkedin</p>
-                  <a href="#" className="text-[13px] text-foreground/90 font-semibold hover:text-primary transition-colors truncate block">
-                    linkedin.com/in/tran-lam-nghia
+                  <a href="https://www.linkedin.com/in/nghĩa-trần-lâm-b21a88383" target="_blank" rel="noopener noreferrer" className="text-[13px] text-foreground/90 font-semibold hover:text-primary transition-colors truncate block">
+                    linkedin.com/in/nghĩa-trần-lâm-b21a88383
                   </a>
                 </div>
               </div>
@@ -151,10 +151,10 @@ export default function ProfilePage() {
             <h3 className="text-sm font-extrabold text-emerald-500 uppercase tracking-widest border-l-2 border-emerald-500/80 pl-3 mb-6">
               Link CV
             </h3>
-            
+
             <div className="space-y-3">
-              <a 
-                href="#" 
+              <a
+                href="#"
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary/15 bg-primary/5 hover:bg-primary/10 hover:border-primary/30 text-[13px] font-bold text-primary transition-all duration-300 group shadow-sm"
               >
                 <FileText size={15} />
