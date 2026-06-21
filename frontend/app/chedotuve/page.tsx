@@ -30,6 +30,16 @@ function ManualDrawingContent() {
     setWorkspaceMode('manual')
   }, [setWorkspaceMode])
 
+  // Clear project ID from URL on page reload (F5)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      const navigation = window.performance?.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+      if (navigation?.type === 'reload') {
+        router.replace('/chedotuve')
+      }
+    }
+  }, [projectId, router])
+
   useEffect(() => {
     const transferredProject = readTransferredProject()
     if (transferredProject) {
