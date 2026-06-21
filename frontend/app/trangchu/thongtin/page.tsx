@@ -1,6 +1,6 @@
 'use client'
 
-import { Facebook, Github, Linkedin, Mail, Calendar, MapPin, FileText, User2, ExternalLink } from 'lucide-react'
+import { Facebook, Github, Linkedin, Mail, Calendar, MapPin, User2 } from 'lucide-react'
 
 export default function ProfilePage() {
   return (
@@ -48,8 +48,8 @@ export default function ProfilePage() {
         {/* Middle Horizontal Line - Gradient from 1ef2e6 to 1e1ef2 */}
         <div className="h-[1px] w-full bg-gradient-to-r from-[#1ef2e6] to-[#1e1ef2]" />
 
-        {/* Three Columns Section - 5 Columns Grid to house dividers */}
-        <div className="py-6 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-x-12 gap-y-8 items-stretch w-full">
+        {/* Two Columns Section - Grid with single divider */}
+        <div className="py-6 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-x-12 gap-y-8 items-stretch w-full">
 
           {/* Column 1: Thông tin cá nhân */}
           <div className="space-y-6 flex flex-col justify-between">
@@ -140,27 +140,6 @@ export default function ProfilePage() {
                   </a>
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Column Divider 2 */}
-          <div className="hidden md:block w-[1px] bg-gradient-to-b from-[#1ef2e6] via-[#1e1ef2]/50 to-transparent self-stretch" />
-
-          {/* Column 3: Link CV */}
-          <div className="space-y-6">
-            <h3 className="text-sm font-extrabold text-emerald-500 uppercase tracking-widest border-l-2 border-emerald-500/80 pl-3 mb-6">
-              Link CV
-            </h3>
-
-            <div className="space-y-3">
-              <a
-                href="#"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary/15 bg-primary/5 hover:bg-primary/10 hover:border-primary/30 text-[13px] font-bold text-primary transition-all duration-300 group shadow-sm"
-              >
-                <FileText size={15} />
-                Xem bản CV cá nhân
-                <ExternalLink size={12} className="ml-1 opacity-60 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-              </a>
             </div>
           </div>
 
