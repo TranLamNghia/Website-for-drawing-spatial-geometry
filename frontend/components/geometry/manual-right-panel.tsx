@@ -56,7 +56,7 @@ function TypePill({
   label: string
 }) {
   return (
-    <div className="flex w-[84px] shrink-0 items-center gap-1.5 rounded-lg border border-border/70 bg-muted/35 px-2 py-1.5 text-[10px] font-medium text-muted-foreground">
+    <div className="flex w-auto min-w-[72px] shrink-0 items-center gap-1.5 rounded-lg border border-border/70 bg-muted/35 px-2 py-1.5 text-[11px] font-medium text-muted-foreground lg:w-[84px]">
       <span className="flex h-4 w-4 items-center justify-center text-foreground shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
     </div>
@@ -146,25 +146,62 @@ function PointRow({
             : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
       }`}
     >
-      <div className="grid grid-cols-[80px_34px_minmax(0,1fr)_92px] items-center gap-2 px-2.5 py-2">
-        <button onClick={onSelect} className="text-left">
-          <TypePill
-            icon={<Circle size={13} fill="currentColor" />}
-            label={isFree ? 'Tự do' : isConstrained ? 'Trên hình' : 'Phụ thuộc'}
+      <div className="grid gap-2 px-2.5 py-2 lg:grid-cols-[80px_34px_minmax(0,1fr)_92px] lg:items-center lg:gap-2">
+        <div className="flex items-center gap-2 lg:contents">
+          <button onClick={onSelect} className="shrink-0 text-left">
+            <TypePill
+              icon={<Circle size={13} fill="currentColor" />}
+              label={isFree ? 'Tự do' : isConstrained ? 'Trên hình' : 'Phụ thuộc'}
+            />
+          </button>
+
+          <Input
+            value={labelDraft}
+            onChange={(event) => setLabelDraft(event.target.value)}
+            onBlur={commitLabel}
+            onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
+            onClick={onSelect}
+            className="h-7 min-w-0 flex-1 border-none bg-transparent p-0 text-left text-[15px] font-semibold tracking-tight focus-visible:bg-background/80 focus-visible:ring-1 focus-visible:ring-primary/30 lg:w-full lg:flex-none lg:truncate"
+            title="Click để đổi tên điểm"
           />
-        </button>
 
-        <Input
-          value={labelDraft}
-          onChange={(event) => setLabelDraft(event.target.value)}
-          onBlur={commitLabel}
-          onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
-          onClick={onSelect}
-          className="h-7 border-none bg-transparent p-0 text-left text-[15px] font-semibold tracking-tight focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:bg-background/80 truncate w-full"
-          title="Click để đổi tên điểm"
-        />
+          <div className="flex shrink-0 items-center justify-end gap-1 lg:col-start-4 lg:gap-1.5">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleVisibility()
+              }}
+              className="flex min-h-8 min-w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+              title={point.visible ? 'Ẩn điểm' : 'Hiện điểm'}
+            >
+              {point.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+            {!isDerived && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleLocked()
+                }}
+                className={`flex min-h-8 min-w-8 items-center justify-center rounded-md transition-colors ${point.locked ? 'text-amber-500 hover:bg-amber-500/10' : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'}`}
+                title={point.locked ? 'Mở khóa điểm' : 'Khóa điểm'}
+              >
+                {point.locked ? <Lock size={14} /> : <Unlock size={14} />}
+              </button>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete()
+              }}
+              className="flex min-h-8 min-w-8 items-center justify-center rounded-md text-destructive/70 opacity-100 transition-colors hover:bg-destructive/10 hover:text-destructive lg:opacity-0 lg:group-hover:opacity-100"
+              title="Xóa điểm"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
 
-        <div className="grid min-w-0 grid-cols-3 gap-1.5">
+        <div className="grid min-w-0 grid-cols-3 gap-1.5 lg:col-start-3 lg:row-start-1">
           <Input
             value={isFocused ? draft.x : formatCoord(cx)}
             onFocus={handleFocus}
@@ -173,7 +210,7 @@ function PointRow({
             onKeyDown={(event) => event.key === 'Enter' && commit()}
             placeholder="x"
             disabled={!isFree || point.locked}
-            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px] disabled:opacity-60"
+            className="h-8 rounded-md border-border/70 bg-background px-1.5 text-center text-xs disabled:opacity-60"
           />
           <Input
             value={isFocused ? draft.y : formatCoord(cy)}
@@ -183,7 +220,7 @@ function PointRow({
             onKeyDown={(event) => event.key === 'Enter' && commit()}
             placeholder="y"
             disabled={!isFree || point.locked}
-            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px] disabled:opacity-60"
+            className="h-8 rounded-md border-border/70 bg-background px-1.5 text-center text-xs disabled:opacity-60"
           />
           <Input
             value={isFocused ? draft.z : formatCoord(cz)}
@@ -193,51 +230,16 @@ function PointRow({
             onKeyDown={(event) => event.key === 'Enter' && commit()}
             placeholder="z"
             disabled={!isFree || point.locked}
-            className="h-7 rounded-md border-border/70 bg-background px-1.5 text-center text-[11px] disabled:opacity-60"
+            className="h-8 rounded-md border-border/70 bg-background px-1.5 text-center text-xs disabled:opacity-60"
           />
-        </div>
-
-        <div className="flex items-center justify-end gap-1.5">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggleVisibility()
-            }}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-            title={point.visible ? 'Ẩn điểm' : 'Hiện điểm'}
-          >
-            {point.visible ? <Eye size={12} /> : <EyeOff size={12} />}
-          </button>
-          {!isDerived && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleLocked()
-              }}
-              className={`p-1 rounded-md transition-colors ${point.locked ? 'text-amber-500 hover:bg-amber-500/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'}`}
-              title={point.locked ? 'Mở khóa điểm' : 'Khóa điểm'}
-            >
-              {point.locked ? <Lock size={12} /> : <Unlock size={12} />}
-            </button>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete()
-            }}
-            className="p-1 rounded-md text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
-            title="Xóa điểm"
-          >
-            <Trash2 size={12} />
-          </button>
         </div>
       </div>
 
       {selected && onUpdateT !== undefined && (
         <div className="mt-2 pl-6 pr-2 py-2 border-t border-border/50 bg-muted/20">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-[10px] text-muted-foreground uppercase font-semibold">Tỷ lệ trên đoạn thẳng</span>
-            <span className="text-[10px] font-mono font-medium text-primary">{(tVal ?? 0.5).toFixed(2)}</span>
+            <span className="text-[11px] text-muted-foreground uppercase font-semibold">Tỷ lệ trên đoạn thẳng</span>
+            <span className="text-[11px] font-mono font-medium text-primary">{(tVal ?? 0.5).toFixed(2)}</span>
           </div>
           <div className="flex gap-2 items-center">
             <input
@@ -256,8 +258,8 @@ function PointRow({
       {selected && onUpdateAngle !== undefined && angleVal !== undefined && (
         <div className="mt-2 pl-6 pr-2 py-2 border-t border-border/50 bg-muted/20">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-[10px] text-muted-foreground uppercase font-semibold">Góc (độ)</span>
-            <span className="text-[10px] font-mono font-medium text-primary">{(angleVal * 180 / Math.PI).toFixed(1)}°</span>
+            <span className="text-[11px] text-muted-foreground uppercase font-semibold">Góc (độ)</span>
+            <span className="text-[11px] font-mono font-medium text-primary">{(angleVal * 180 / Math.PI).toFixed(1)}°</span>
           </div>
           <div className="flex gap-2 items-center">
             <input
@@ -276,7 +278,7 @@ function PointRow({
                 const val = parseFloat(e.target.value)
                 if (!isNaN(val)) onUpdateAngle(val * Math.PI / 180)
               }}
-              className="w-12 h-6 text-[10px] font-mono text-right rounded border bg-background px-1"
+              className="h-8 w-14 rounded border bg-background px-1 text-right text-xs font-mono"
             />
           </div>
           {onAddDependentPoint && (
@@ -284,7 +286,7 @@ function PointRow({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-6 text-[10px] px-2 border-border/70 bg-background"
+                className="h-8 border-border/70 bg-background px-2 text-xs"
                 onClick={(e) => {
                   e.stopPropagation()
                   onAddDependentPoint()
@@ -462,11 +464,11 @@ function ObjectRow({
       {selected && solid?.solidType === 'sphere' && (
         <div className="col-span-full mt-2 border-t border-border/50 bg-muted/20 p-2">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-[10px] text-muted-foreground uppercase font-semibold">Các đường tròn</span>
+            <span className="text-[11px] text-muted-foreground uppercase font-semibold">Các đường tròn</span>
             <Button
               variant="outline"
               size="sm"
-              className="h-6 text-[10px] px-2 border-border/70 bg-background"
+              className="h-8 border-border/70 bg-background px-2 text-xs"
               onClick={(e) => {
                 e.stopPropagation()
                 onAddRing?.()
@@ -495,7 +497,7 @@ function ObjectRow({
                     </button>
                   </div>
                   <div className="flex gap-2 items-center">
-                    <span className="text-[10px] text-muted-foreground w-6">Dọc</span>
+                    <span className="w-6 text-[11px] text-muted-foreground">Dọc</span>
                     <input
                       type="range"
                       min="-180"
@@ -515,11 +517,11 @@ function ObjectRow({
                         const val = parseFloat(e.target.value)
                         if (!isNaN(val)) onUpdateRing?.(ring.id, ring.phi, val * Math.PI / 180)
                       }}
-                      className="w-12 h-6 text-[10px] font-mono text-right rounded border bg-background px-1"
+                      className="h-8 w-14 rounded border bg-background px-1 text-right text-xs font-mono"
                     />
                   </div>
                   <div className="flex gap-2 items-center">
-                    <span className="text-[10px] text-muted-foreground w-6">Ngang</span>
+                    <span className="w-6 text-[11px] text-muted-foreground">Ngang</span>
                     <input
                       type="range"
                       min="0"
@@ -539,14 +541,14 @@ function ObjectRow({
                         const val = parseFloat(e.target.value)
                         if (!isNaN(val)) onUpdateRing?.(ring.id, val * Math.PI / 180, ring.theta)
                       }}
-                      className="w-12 h-6 text-[10px] font-mono text-right rounded border bg-background px-1"
+                      className="h-8 w-14 rounded border bg-background px-1 text-right text-xs font-mono"
                     />
                   </div>
                 </div>
               )
             })}
             {!solid.sphereRings?.length && (
-              <span className="text-[10px] text-muted-foreground italic">Chưa có đường tròn nào</span>
+              <span className="text-[11px] text-muted-foreground italic">Chưa có đường tròn nào</span>
             )}
           </div>
         </div>
@@ -596,29 +598,54 @@ function SegmentRow({
 
   return (
     <div
-      className={`grid ${
+      className={`flex flex-col gap-2 rounded-xl border px-2.5 py-2 transition-all lg:grid lg:items-center lg:gap-2 ${
         isEditable
-          ? 'grid-cols-[80px_60px_minmax(0,1fr)_80px_72px]'
-          : 'grid-cols-[80px_88px_minmax(0,1fr)_72px]'
-      } items-center gap-2 rounded-xl border px-2.5 py-2 transition-all ${
+          ? 'lg:grid-cols-[80px_60px_minmax(0,1fr)_80px_72px]'
+          : 'lg:grid-cols-[80px_88px_minmax(0,1fr)_72px]'
+      } ${
         selected
           ? 'border-primary/35 bg-primary/10 shadow-sm'
           : 'border-border/70 bg-background/88 hover:border-primary/20 hover:bg-accent/20'
       }`}
     >
-      <button onClick={onSelect} className="text-left">
-        <TypePill icon={<PencilRuler size={13} />} label={typeLabel} />
-      </button>
+      <div className="flex min-w-0 items-center gap-2 lg:contents">
+        <button onClick={onSelect} className="shrink-0 text-left">
+          <TypePill icon={<PencilRuler size={13} />} label={typeLabel} />
+        </button>
 
-      <button onClick={onSelect} className="truncate text-left text-[13px] font-semibold tracking-tight">
-        {displayLabel}
-      </button>
+        <button onClick={onSelect} className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold tracking-tight lg:flex-none">
+          {displayLabel}
+        </button>
 
-      <button onClick={onSelect} className="flex min-w-0 flex-wrap gap-1.5 text-left">
+        <div className={`flex shrink-0 items-center justify-end gap-1.5 lg:justify-end ${isEditable ? 'lg:col-start-5' : 'lg:col-start-4'}`}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleVisibility()
+            }}
+            title={segment.visible ? 'Ẩn đoạn thẳng' : 'Hiện đoạn thẳng'}
+          >
+            {segment.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
+            onClick={onDelete}
+          >
+            <Trash2 size={14} />
+          </Button>
+        </div>
+      </div>
+
+      <button onClick={onSelect} className="flex min-w-0 flex-wrap gap-1.5 text-left lg:col-start-3 lg:row-start-1">
         {values.map((value, idx) => (
           <span
             key={`${segment.label}-${value}-${idx}`}
-            className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2 text-[11px] font-medium text-foreground"
+            className="inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2 text-xs font-medium text-foreground"
           >
             {value}
           </span>
@@ -626,40 +653,17 @@ function SegmentRow({
       </button>
 
       {isEditable && (
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <span className="text-[10px] text-muted-foreground">L:</span>
+        <div className="flex items-center gap-1 lg:col-start-4 lg:row-start-1" onClick={(e) => e.stopPropagation()}>
+          <span className="text-[11px] text-muted-foreground">L:</span>
           <Input
             value={lengthDraft}
             onChange={(e) => setLengthDraft(e.target.value)}
             onBlur={commitLength}
             onKeyDown={(e) => e.key === 'Enter' && commitLength()}
-            className="h-7 w-12 rounded-md border-border/70 bg-background px-1 text-center text-[11px]"
+            className="h-8 w-14 rounded-md border-border/70 bg-background px-1 text-center text-xs"
           />
         </div>
       )}
-
-      <div className="flex items-center justify-end gap-1.5">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleVisibility()
-          }}
-          title={segment.visible ? 'Ẩn đoạn thẳng' : 'Hiện đoạn thẳng'}
-        >
-          {segment.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 rounded-lg border border-border/70 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-          onClick={onDelete}
-        >
-          <Trash2 size={14} />
-        </Button>
-      </div>
     </div>
   )
 }

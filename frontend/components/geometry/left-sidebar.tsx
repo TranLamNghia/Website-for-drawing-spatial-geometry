@@ -85,7 +85,7 @@ export function LeftSidebar() {
               placeholder="Nhập đề bài hình học tại đây..."
               className="w-full h-[320px] bg-background border-border resize-none text-[13px] leading-relaxed p-4 rounded-2xl focus:ring-primary/20 transition-all shadow-inner"
             />
-            <div className="absolute bottom-3 right-3 text-[10px] text-muted-foreground bg-background/80 px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute bottom-3 right-3 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
               {problem.length} ký tự
             </div>
           </div>

@@ -150,7 +150,7 @@ export function ChunkTree({
                     }
                   }}
                   onKeyDown={e => e.key === 'Enter' && e.currentTarget.click()}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-background/60 hover:bg-muted border border-border/40 text-muted-foreground hover:text-foreground transition-colors"
+                  className="rounded border border-border/40 bg-background/60 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                   {allHidden ? 'Hiện' : 'Ẩn'}
                 </span>
@@ -195,7 +195,7 @@ export function ChunkTree({
                         <Cuboid size={13} className="opacity-50" />
                         <span className="text-xs font-medium">Mảnh {parseInt(childPrefix, 2) + 1}</span>
                       </div>
-                      <Badge variant="outline" className="text-[10px] opacity-60">{buildBitStr(childPrefix)}</Badge>
+                      <Badge variant="outline" className="text-xs opacity-60">{buildBitStr(childPrefix)}</Badge>
                     </div>
                   </div>
                 ) : (
@@ -204,7 +204,7 @@ export function ChunkTree({
                     {activeSectionsList[depth + 1] && (
                       <div className="flex items-center gap-1.5 pl-3 pb-1">
                         <div className="w-px h-4 bg-border/40" />
-                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] text-muted-foreground border border-dashed border-border/40 bg-background/40">
+                        <div className="flex items-center gap-1.5 rounded border border-dashed border-border/40 bg-background/40 px-2 py-0.5 text-[11px] text-muted-foreground">
                           <Scissors size={10} />
                           Cắt bởi ({activeSectionsList[depth + 1].cuttingPlane?.slice(0, 3).join('') || `P${depth + 2}`})
                         </div>
@@ -428,7 +428,7 @@ export function RightSidebar() {
                   {/* Drag and Drop Order */}
                   {orderedSectionIds.length > 0 && (
                     <div className="mt-4 space-y-2 bg-muted/30 p-2 rounded-lg border border-border/50">
-                      <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-2 px-1">
+                      <p className="mb-2 px-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                         Thứ tự cắt (Kéo thả để đổi)
                       </p>
                       <DragDropContext onDragEnd={onDragEnd}>
@@ -473,7 +473,7 @@ export function RightSidebar() {
                   <p className="text-xs font-semibold text-muted-foreground">Cây phân mảnh</p>
                   <button
                     onClick={showAll}
-                    className="text-[10px] px-2 py-0.5 rounded border border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    className="rounded border border-border/50 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     Hiện tất cả
                   </button>
@@ -484,7 +484,7 @@ export function RightSidebar() {
                     <Box size={14} className="text-primary" />
                     <span className="text-xs font-semibold text-foreground">Khối ban đầu</span>
                     {activeSectionsList.length > 0 && (
-                      <div className="flex items-center gap-1 ml-1 text-[10px] text-muted-foreground border border-dashed border-border/40 rounded px-1.5 py-0.5 bg-background/40">
+                      <div className="ml-1 flex items-center gap-1 rounded border border-dashed border-border/40 bg-background/40 px-2 py-0.5 text-[11px] text-muted-foreground">
                         <Scissors size={10} />
                         Cắt bởi ({activeSectionsList[0].cuttingPlane?.slice(0, 3).join('') || 'P1'})
                       </div>

@@ -194,29 +194,32 @@ export function DashboardView({ onNewProject, onNewAIProject, onOpenProject }: D
 
   return (
     <div className="h-full flex flex-col overflow-hidden min-w-0">
-      <header className="flex-shrink-0 px-4 pt-5 pb-4 border-b border-border/40 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8 lg:pb-5">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
+      <header className="flex-shrink-0 border-b border-border/40 px-4 pt-5 pb-4 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8 lg:pb-5">
+        <div className="mx-auto w-full max-w-6xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-2">
               <Sparkles size={13} className="text-primary" />
-              <span className="text-[11px] font-bold text-primary tracking-widest uppercase">Công cụ vẽ hình không gian</span>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-primary">Công cụ vẽ hình không gian</span>
             </div>
-            <h1 className="text-2xl font-bold text-foreground tracking-tight leading-tight sm:text-[28px]">
+            <h1 className="text-xl font-bold leading-tight tracking-tight text-foreground sm:text-2xl lg:text-[28px]">
               Chào mừng bạn đến với công cụ vẽ hình không gian 3D!
             </h1>
-            <p className="text-[13px] text-muted-foreground mt-1.5 leading-relaxed">
+            <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
               Tạo, khám phá và phân tích hình học không gian 3D với sự hỗ trợ của trí tuệ nhân tạo.
             </p>
           </div>
         </div>
-        <div className="mt-4 flex flex-col gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-[12px] font-medium leading-relaxed text-amber-500/90 sm:flex-row sm:items-center sm:gap-3 sm:p-4">
-          <AlertCircle size={16} className="shrink-0 text-amber-500 animate-pulse" />
+        <div className="mt-4 flex flex-col gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-[12px] font-medium leading-relaxed text-amber-500/90 sm:flex-row sm:items-start sm:gap-3 sm:p-4">
+          <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-500 animate-pulse sm:mt-0" />
           <span>Vì website đang trong giai đoạn chờ kiểm tra tính ổn định nên chưa thể lưu các bản vẽ cũ, chức năng này sẽ có mặt trong thời gian sớm nhất có thể.</span>
+        </div>
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="mx-auto w-full max-w-6xl">
+        <div className="mb-6 flex items-center justify-between">
           <div>
             <h2 className="text-[15px] font-bold text-foreground">Danh sách bản vẽ</h2>
             <p className="text-[12px] text-muted-foreground mt-0.5">
@@ -227,12 +230,13 @@ export function DashboardView({ onNewProject, onNewAIProject, onOpenProject }: D
           </div>
         </div>
 
-        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(180px, 100%), 1fr))' }}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:gap-4">
           <NewProjectCard onClick={onNewProject} disabled={isLimitReached} count={sorted.length} />
           <NewAIProjectCard onClick={onNewAIProject} />
           {sorted.map(project => (
             <ProjectCard key={project.id} project={project} onOpen={onOpenProject} onDelete={deleteProject} />
           ))}
+        </div>
         </div>
       </main>
     </div>

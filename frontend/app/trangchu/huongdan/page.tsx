@@ -23,7 +23,7 @@ import {
 export default function GuidePage() {
   return (
     <div className="h-full overflow-y-auto bg-background text-foreground">
-      <div className="w-full px-4 py-6 flex flex-col gap-5 sm:px-6 sm:py-8 lg:px-12 lg:py-10 lg:gap-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10 lg:gap-6">
 
         {/* Header */}
         <div className="space-y-1.5 pb-2">

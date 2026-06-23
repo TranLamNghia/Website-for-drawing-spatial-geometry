@@ -210,7 +210,7 @@ export function SolveLeftPanel() {
               value={jsonInput}
               onChange={e => setJsonInput(e.target.value)}
               placeholder='Dán JSON vào đây (vd: { "points": { "A": {"x":0,"y":0,"z":0} }, ... })'
-              className="flex-1 mt-2 font-mono text-[10px] bg-background border-border resize-none text-foreground rounded-2xl shadow-inner"
+              className="mt-2 flex-1 resize-none rounded-2xl border-border bg-background font-mono text-xs text-foreground shadow-inner"
             />
           </div>
           <Button onClick={handleApplyJson} variant="outline" className="w-full border-primary text-primary hover:bg-primary/10">
