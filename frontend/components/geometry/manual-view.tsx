@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, PanelLeft, PanelRight, Sparkles } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ChevronLeft, ChevronRight, PanelLeft, PanelRight } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { ManualCanvas3D } from './manual-canvas-3d'
 import { ManualLeftPanel } from './manual-left-panel'
@@ -12,12 +11,7 @@ import { GeometryTabletBanner } from './geometry-tablet-banner'
 import { useGeometry } from './geometry-context'
 import { useViewportTier } from '@/hooks/use-viewport-tier'
 
-interface ManualViewProps {
-  onBack: () => void
-  onSwitchToSolver: () => void
-}
-
-export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
+export function ManualView() {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [subOpen, setSubOpen] = useState(true)
@@ -61,17 +55,6 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
         </div>
 
         <GeometryTabletBanner />
-
-        <div className="pointer-events-auto absolute right-4 top-16 z-50">
-          <Button
-            onClick={onSwitchToSolver}
-            size="sm"
-            className="flex items-center gap-2 rounded-xl shadow-lg shadow-primary/20"
-          >
-            <Sparkles size={16} />
-            {"D\u00f9ng AI gi\u1ea3i to\u00e1n"}
-          </Button>
-        </div>
 
         {/* FAB mở panel công cụ (trái) */}
         <button
@@ -130,16 +113,6 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
     <div className="relative h-svh min-h-dvh overflow-hidden bg-background text-foreground">
       <div className="absolute inset-0 z-0">
         <ManualCanvas3D />
-      </div>
-
-      <div className="pointer-events-auto absolute top-4 right-4 z-50">
-        <Button
-          onClick={onSwitchToSolver}
-          className="flex items-center gap-2 rounded-xl shadow-lg shadow-primary/20"
-        >
-          <Sparkles size={16} />
-          {"D\u00f9ng AI gi\u1ea3i to\u00e1n"}
-        </Button>
       </div>
 
       {/* Cụm Sidebar Trái (bao gồm Panel chính & Panel phụ) */}

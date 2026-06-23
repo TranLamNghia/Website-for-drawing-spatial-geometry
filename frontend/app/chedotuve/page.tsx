@@ -108,16 +108,7 @@ function ManualDrawingContent() {
     setShowLabels,
   ])
 
-  const handleBack = () => {
-    router.push('/')
-  }
-
-  const handleSwitchToSolver = () => {
-    const targetUrl = projectId ? `/chedovethongminh?id=${projectId}` : '/chedovethongminh'
-    router.push(targetUrl)
-  }
-
-  return <ManualView onBack={handleBack} onSwitchToSolver={handleSwitchToSolver} />
+  return <ManualView />
 }
 
 export default function ManualDrawingPage() {

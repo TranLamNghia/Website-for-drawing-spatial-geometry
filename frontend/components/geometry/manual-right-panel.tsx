@@ -193,7 +193,7 @@ function PointRow({
                 e.stopPropagation()
                 onDelete()
               }}
-              className="flex min-h-8 min-w-8 items-center justify-center rounded-md text-destructive/70 opacity-100 transition-colors hover:bg-destructive/10 hover:text-destructive lg:opacity-0 lg:group-hover:opacity-100"
+              className="flex min-h-8 min-w-8 items-center justify-center rounded-md text-destructive/70 opacity-100 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
               title="Xóa điểm"
             >
               <Trash2 size={14} />
@@ -490,7 +490,8 @@ function ObjectRow({
                         e.stopPropagation()
                         onRemoveRing?.(ring.id)
                       }}
-                      className="p-1 rounded-md text-destructive/70 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                      className="flex min-h-8 min-w-8 items-center justify-center rounded-md text-destructive/70 opacity-100 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
+                      aria-label="Xóa đường tròn"
                       title="Xóa đường tròn"
                     >
                       <Trash2 size={12} />
