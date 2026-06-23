@@ -1202,34 +1202,34 @@ export function ManualRightPanel() {
                 const anchorLabel = p1?.anchorPointId ? pointLabelMap[p1.anchorPointId] ?? '?' : '?'
                 const refSeg = p1?.sourceSegmentId ? manualDocument.segments.find(s => s.id === p1.sourceSegmentId) : null
                 const refSegLabel = refSeg ? refSeg.label : '?'
-              lengthVal = p2?.t ? Math.abs(p2.t) : 20
-              values = [`Qua ${anchorLabel}`, `⊥ ${refSegLabel}`]
-              isEditable = true
-            } else if (segment.createdByTool === 'perpendicularBisector') {
-              typeLabel = 'Đ.Trung trực'
-              let refLabel = ''
-              if (p1?.sourcePointIds && p1.sourcePointIds.length >= 2) {
-                const labels = p1.sourcePointIds.map((pid) => pointLabelMap[pid] ?? '?')
-                refLabel = `Của ${labels.join('')}`
-              } else {
-                refLabel = 'Trung trực'
+                lengthVal = p2?.t ? Math.abs(p2.t) : 20
+                values = [`Qua ${anchorLabel}`, `⊥ ${refSegLabel}`]
+                isEditable = true
+              } else if (segment.createdByTool === 'perpendicularBisector') {
+                typeLabel = 'Đ.Trung trực'
+                let refLabel = ''
+                if (p1?.sourcePointIds && p1.sourcePointIds.length >= 2) {
+                  const labels = p1.sourcePointIds.map((pid) => pointLabelMap[pid] ?? '?')
+                  refLabel = `Của ${labels.join('')}`
+                } else {
+                  refLabel = 'Trung trực'
+                }
+                lengthVal = p2?.t ? Math.abs(p2.t) : 20
+                values = [refLabel]
+                isEditable = true
+              } else if (segment.createdByTool === 'angleBisector') {
+                typeLabel = 'Tia P.Giác'
+                let refLabel = ''
+                if (p2?.sourcePointIds && p2.sourcePointIds.length >= 3) {
+                  const labels = p2.sourcePointIds.map((pid) => pointLabelMap[pid] ?? '?')
+                  refLabel = `Góc ${labels.join('')}`
+                } else {
+                  refLabel = 'Phân giác'
+                }
+                lengthVal = p2?.t ? Math.abs(p2.t) : 20
+                values = [refLabel]
+                isEditable = true
               }
-              lengthVal = p2?.t ? Math.abs(p2.t) : 20
-              values = [refLabel]
-              isEditable = true
-            } else if (segment.createdByTool === 'angleBisector') {
-              typeLabel = 'Tia P.Giác'
-              let refLabel = ''
-              if (p2?.sourcePointIds && p2.sourcePointIds.length >= 3) {
-                const labels = p2.sourcePointIds.map((pid) => pointLabelMap[pid] ?? '?')
-                refLabel = `Góc ${labels.join('')}`
-              } else {
-                refLabel = 'Phân giác'
-              }
-              lengthVal = p2?.t ? Math.abs(p2.t) : 20
-              values = [refLabel]
-              isEditable = true
-            }
 
             return (
               <SegmentRow
@@ -1246,8 +1246,8 @@ export function ManualRightPanel() {
               />
             )
           })}
-              </div>
-            )}
+        </div>
+      )}
           </div>
 
           {((manualDocument.polygons && manualDocument.polygons.length > 0) || (manualDocument.circles && manualDocument.circles.length > 0)) && (

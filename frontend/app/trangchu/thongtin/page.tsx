@@ -5,11 +5,11 @@ import { Facebook, Github, Linkedin, Mail, Calendar, MapPin, User2 } from 'lucid
 export default function ProfilePage() {
   return (
     <div className="h-full overflow-y-auto bg-background text-foreground">
-      <div className="w-full px-12 py-10 flex flex-col gap-6">
+      <div className="w-full px-4 py-6 flex flex-col gap-5 sm:px-6 sm:py-8 lg:px-12 lg:py-10 lg:gap-6">
 
         {/* Header */}
         <div className="space-y-1.5 pb-2">
-          <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/75">
+          <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/75 sm:text-3xl">
             Thông tin chủ sở hữu
           </h1>
           <p className="text-sm text-muted-foreground font-medium">

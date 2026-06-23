@@ -12,6 +12,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
+import {
   LayoutGrid,
   Settings,
   User,
@@ -20,6 +28,7 @@ import {
   Boxes,
   BookOpen,
   ChevronRight,
+  Menu,
 } from 'lucide-react'
 
 type NavId = 'drawings' | 'docs' | 'feedback' | 'settings' | 'profile' | 'upgrade'
@@ -52,6 +61,7 @@ function NavItem({
     <button
       onClick={onClick}
       title={label}
+      aria-current={active ? 'page' : undefined}
       className={`
         w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
         transition-all duration-200 group text-left
@@ -81,11 +91,68 @@ function getActiveNav(pathname: string): NavId {
   return 'drawings'
 }
 
+function BrandHeader() {
+  return (
+    <div className="px-4 mb-6 flex items-center gap-3">
+      <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center ring-1 ring-primary/20 flex-shrink-0">
+        <Boxes size={18} className="text-primary" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[13px] font-bold text-foreground leading-tight">Vẽ hình không &quot;khó&quot;</p>
+      </div>
+    </div>
+  )
+}
+
+function SidebarNav({
+  activeNav,
+  onNavigate,
+}: {
+  activeNav: NavId
+  onNavigate: (id: NavId) => void
+}) {
+  return (
+    <>
+      <BrandHeader />
+
+      <div className="px-3 flex flex-col gap-0.5">
+        {NAV_TOP.map(item => (
+          <NavItem
+            key={item.id}
+            icon={item.icon}
+            label={item.label}
+            active={activeNav === item.id}
+            onClick={() => onNavigate(item.id)}
+          />
+        ))}
+      </div>
+
+      <div className="flex-1" />
+
+      <div className="mx-4 my-3 border-t border-border/60" />
+
+      <div className="px-3 flex flex-col gap-0.5">
+        {NAV_BOTTOM.map(item => (
+          <NavItem
+            key={item.id}
+            icon={item.icon}
+            label={item.label}
+            active={activeNav === item.id}
+            special={item.special}
+            onClick={() => onNavigate(item.id)}
+          />
+        ))}
+      </div>
+    </>
+  )
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const activeNav = useMemo(() => getActiveNav(pathname), [pathname])
   const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   const handleNav = (id: NavId) => {
     if (id === 'drawings') router.push('/trangchu')
@@ -95,51 +162,47 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     else if (id === 'profile') router.push('/trangchu/thongtin')
     else if (id === 'upgrade') setUpgradeOpen(true)
     else router.push('/trangchu')
+    setMobileNavOpen(false)
   }
 
   return (
-    <div className="h-screen bg-background text-foreground flex overflow-hidden">
-      <aside className="w-[240px] flex-shrink-0 bg-card border-r border-border flex flex-col py-5 z-10">
-        <div className="px-4 mb-6 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center ring-1 ring-primary/20 flex-shrink-0">
-            <Boxes size={18} className="text-primary" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[13px] font-bold text-foreground leading-tight">Vẽ hình không &quot;khó&quot;</p>
-          </div>
-        </div>
-
-        <div className="px-3 flex flex-col gap-0.5">
-          {NAV_TOP.map(item => (
-            <NavItem
-              key={item.id}
-              icon={item.icon}
-              label={item.label}
-              active={activeNav === item.id}
-              onClick={() => handleNav(item.id)}
-            />
-          ))}
-        </div>
-
-        <div className="flex-1" />
-
-        <div className="mx-4 my-3 border-t border-border/60" />
-
-        <div className="px-3 flex flex-col gap-0.5">
-          {NAV_BOTTOM.map(item => (
-            <NavItem
-              key={item.id}
-              icon={item.icon}
-              label={item.label}
-              active={activeNav === item.id}
-              special={item.special}
-              onClick={() => handleNav(item.id)}
-            />
-          ))}
-        </div>
+    <div className="h-svh min-h-dvh bg-background text-foreground flex overflow-hidden">
+      <aside className="hidden md:flex w-[240px] flex-shrink-0 bg-card border-r border-border flex-col py-5 z-10">
+        <SidebarNav activeNav={activeNav} onNavigate={handleNav} />
       </aside>
 
-      <div className="flex-1 overflow-hidden min-w-0">{children}</div>
+      <div className="flex-1 overflow-hidden min-w-0 flex flex-col">
+        <header className="md:hidden flex h-14 shrink-0 items-center justify-between border-b border-border bg-card/95 px-4 backdrop-blur-md">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-primary/15 flex items-center justify-center ring-1 ring-primary/20 shrink-0">
+              <Boxes size={16} className="text-primary" />
+            </div>
+            <p className="truncate text-[13px] font-bold leading-tight">Vẽ hình không &quot;khó&quot;</p>
+          </div>
+          <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+            <SheetTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex size-10 items-center justify-center rounded-xl border border-border bg-background text-foreground shadow-sm transition-colors hover:bg-muted"
+                aria-label="Mở menu điều hướng"
+              >
+                <Menu size={18} />
+              </button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[min(88vw,280px)] gap-0 p-0">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Menu điều hướng</SheetTitle>
+                <SheetDescription>Chọn trang trong khu vực trang chủ.</SheetDescription>
+              </SheetHeader>
+              <div className="flex h-full flex-col py-5">
+                <SidebarNav activeNav={activeNav} onNavigate={handleNav} />
+              </div>
+            </SheetContent>
+          </Sheet>
+        </header>
+
+        <div className="flex-1 overflow-hidden min-w-0">{children}</div>
+      </div>
 
       <AlertDialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>
         <AlertDialogContent>

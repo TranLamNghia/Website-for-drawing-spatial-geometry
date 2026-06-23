@@ -23,7 +23,7 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
   const isSubPanelVisible = subOpen && activeTool !== 'select'
 
   return (
-    <div className="relative h-screen overflow-hidden bg-background text-foreground">
+    <div className="relative h-svh min-h-dvh overflow-hidden bg-background text-foreground">
       <div className="absolute inset-0 z-0">
         <ManualCanvas3D />
       </div>

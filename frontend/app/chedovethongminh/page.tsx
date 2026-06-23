@@ -4,8 +4,10 @@ import { useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SolverView } from '@/components/geometry/solver-view'
 import { GeometryProvider, useGeometry } from '@/components/geometry/geometry-context'
+import { GeometryMobileGate } from '@/components/geometry/geometry-mobile-gate'
 import { isManualProjectSnapshot } from '@/components/geometry/manual-editor'
 import { useProjectStore } from '@/hooks/use-project-store'
+import { useMinWidth } from '@/hooks/use-min-width'
 import { clearTransferredProjectStorage, readTransferredProject } from '@/components/geometry/project-transfer'
 
 function SmartSolverContent() {
@@ -25,15 +27,19 @@ function SmartSolverContent() {
     setExplodeAmount,
   } = useGeometry()
 
-  // Clear project ID from URL on page reload (F5)
+  // Clear project ID from URL if project doesn't exist (e.g. after page reload/F5)
   useEffect(() => {
-    if (typeof window !== 'undefined' && projectId) {
-      const navigation = window.performance?.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-      if (navigation?.type === 'reload') {
-        router.replace('/chedovethongminh')
+    const timer = setTimeout(() => {
+      if (projectId) {
+        const transferred = readTransferredProject()
+        const project = projects.find((p) => p.id === projectId)
+        if (!project && (!transferred || transferred.id !== projectId)) {
+          router.replace('/chedovethongminh')
+        }
       }
-    }
-  }, [projectId, router])
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [projectId, projects, router])
 
   useEffect(() => {
     const transferredProject = readTransferredProject()
@@ -127,9 +133,23 @@ function SmartSolverContent() {
 }
 
 export default function SmartSolverPage() {
+  const canOpenWorkspace = useMinWidth(768)
+
+  if (canOpenWorkspace === false) {
+    return <GeometryMobileGate />
+  }
+
+  if (canOpenWorkspace === null) {
+    return (
+      <div className="h-svh min-h-dvh bg-background flex items-center justify-center px-4 text-center text-muted-foreground">
+        Đang kiểm tra kích thước màn hình...
+      </div>
+    )
+  }
+
   return (
     <GeometryProvider>
-      <Suspense fallback={<div className="h-screen bg-background flex items-center justify-center text-muted-foreground">Dang tai tro ly AI...</div>}>
+      <Suspense fallback={<div className="h-svh min-h-dvh bg-background flex items-center justify-center text-muted-foreground">Đang tải trợ lý AI...</div>}>
         <SmartSolverContent />
       </Suspense>
     </GeometryProvider>

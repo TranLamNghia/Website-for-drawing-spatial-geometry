@@ -49,7 +49,7 @@ export function SolverView({ onBack }: SolverViewProps) {
   }
 
   return (
-    <div className={`h-screen bg-background text-foreground overflow-hidden relative ${isResizing ? 'cursor-col-resize select-none' : ''}`}>
+    <div className={`h-svh min-h-dvh bg-background text-foreground overflow-hidden relative ${isResizing ? 'cursor-col-resize select-none' : ''}`}>
       {/* Full-screen canvas layer (renders once; sidebars overlay on top) */}
       <div className="absolute inset-0 z-0">
         <Canvas3D />

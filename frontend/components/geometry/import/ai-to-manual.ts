@@ -309,7 +309,7 @@ function parseSolidDefinition(
       if (!basePolygonId) return null
       const solidId = safeId('solid', normalized, usedIds)
       const apexLabel = topLabels[0]
-      const apexPointId = pointMap.get(apexLabel) || ensurePoint(document, pointMap, usedIds, apexLabel, positions[apexLabel] || [0, 0, 0], 'free')
+      const apexPointId = ensureFreePoint(document, pointMap, usedIds, apexLabel, positions[apexLabel] || [0, 0, 0])
       document.solids.push({
         id: solidId,
         label: normalized,
@@ -360,7 +360,7 @@ function parseSolidDefinition(
     if (!basePolygonId) return null
     const apexLabel = labels[3]
     const solidId = safeId('solid', normalized, usedIds)
-    const apexPointId = pointMap.get(apexLabel) || ensurePoint(document, pointMap, usedIds, apexLabel, positions[apexLabel] || [0, 0, 0], 'free')
+    const apexPointId = ensureFreePoint(document, pointMap, usedIds, apexLabel, positions[apexLabel] || [0, 0, 0])
     document.solids.push({
       id: solidId,
       label: normalized,
@@ -402,6 +402,177 @@ function parseSolidDefinition(
 
   warnings.push(`Chua the nhan dien khoi: ${solidStr}`)
   return null
+}
+
+function ensureFreePoint(
+  document: ManualDocument,
+  pointMap: Map<string, string>,
+  usedIds: Set<string>,
+  label: string,
+  position: Vec3,
+) {
+  const normalized = normalizeLabel(label)
+  const existingId = pointMap.get(normalized)
+  if (!existingId) {
+    return ensurePoint(document, pointMap, usedIds, normalized, position, 'free')
+  }
+
+  const point = document.points.find((candidate) => candidate.id === existingId)
+  if (!point) return existingId
+
+  point.pointKind = 'free'
+  point.createdByTool = 'point'
+  point.dependsOn = []
+  point.locked = false
+  point.position = cloneVec3(position)
+  delete point.solidId
+  delete point.vertexIndex
+  delete point.sourcePointId
+  delete point.sourceSegmentId
+  delete point.targetSegmentId
+  delete point.targetPolygonId
+  delete point.sourcePointIds
+  delete point.segmentId
+  delete point.t
+  return existingId
+}
+
+function parseRatioValue(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return 0.5
+  if (trimmed.includes('/')) {
+    const [num, den] = trimmed.split('/').map((part) => parseFloat(part.trim()))
+    if (Number.isFinite(num) && Number.isFinite(den) && Math.abs(den) > 1e-9) {
+      return num / den
+    }
+  }
+  const parsed = parseFloat(trimmed)
+  return Number.isFinite(parsed) ? parsed : 0.5
+}
+
+function parseRatioTarget(data: any) {
+  const segment1 = String(data?.segment1 || data?.Segment1 || '')
+  const segment2 = String(data?.segment2 || data?.Segment2 || '')
+  const value = String(data?.value || data?.Value || '')
+  const v1 = parseEntityLabels(segment1)
+  const v2 = parseEntityLabels(segment2)
+
+  if (v1.length === 2 && v2.length === 2 && v1[1] === v2[0]) {
+    const apOverPb = parseRatioValue(value)
+    return {
+      point: v1[1],
+      start: v1[0],
+      end: v2[1],
+      t: apOverPb / (1 + apOverPb),
+    }
+  }
+
+  if (v1.length >= 2 && v2.length >= 2 && v1[0] === v2[0]) {
+    return {
+      point: v1[1],
+      start: v1[0],
+      end: v2[1],
+      t: parseRatioValue(value),
+    }
+  }
+
+  return null
+}
+
+function applyConstructionFacts(
+  document: ManualDocument,
+  pointMap: Map<string, string>,
+  segmentMap: Map<string, string>,
+  polygonMap: Map<string, string>,
+  usedIds: Set<string>,
+  construction?: ConstructionPayload,
+) {
+  if (!construction?.facts?.length) return
+
+  ;(construction.entities?.segments || []).forEach((segmentLabel) => {
+    const labels = parseEntityLabels(segmentLabel)
+    if (labels.length === 2) {
+      ensureSegment(document, segmentMap, usedIds, pointMap, labels[0], labels[1])
+    }
+  })
+
+  construction.facts.forEach((fact) => {
+    const type = String(fact.type || '').toLowerCase()
+    const data = fact.data || {}
+
+    if (type === 'midpoint') {
+      const { point, labels } = parseSimpleMidpointData(data)
+      if (!point || labels.length < 2) return
+      const startId = pointMap.get(labels[0])
+      const endId = pointMap.get(labels[1])
+      if (!startId || !endId) return
+      const pointId = pointMap.get(point)
+      if (!pointId) return
+      const manualPoint = document.points.find((candidate) => candidate.id === pointId)
+      if (!manualPoint) return
+      manualPoint.pointKind = 'midpoint'
+      manualPoint.createdByTool = 'midpoint'
+      manualPoint.sourcePointIds = [startId, endId]
+      manualPoint.dependsOn = [startId, endId]
+      manualPoint.locked = true
+      return
+    }
+
+    if (type === 'ratio') {
+      const ratio = parseRatioTarget(data)
+      if (!ratio) return
+      const startId = pointMap.get(ratio.start)
+      const endId = pointMap.get(ratio.end)
+      if (!startId || !endId) return
+      const segmentId = ensureSegment(document, segmentMap, usedIds, pointMap, ratio.start, ratio.end)
+      if (!segmentId) return
+      const pointId = pointMap.get(ratio.point)
+      if (!pointId) return
+      const manualPoint = document.points.find((candidate) => candidate.id === pointId)
+      if (!manualPoint) return
+      manualPoint.pointKind = 'segment'
+      manualPoint.createdByTool = 'segment'
+      manualPoint.segmentId = segmentId
+      manualPoint.t = ratio.t
+      manualPoint.dependsOn = [startId, endId, segmentId]
+      manualPoint.locked = true
+      return
+    }
+
+    if (type === 'projection') {
+      const { point, from, onto } = parseSimpleProjectionData(data)
+      if (!point || !from || !onto) return
+      const fromId = pointMap.get(from)
+      if (!fromId) return
+      const pointId = pointMap.get(point)
+      if (!pointId) return
+      const manualPoint = document.points.find((candidate) => candidate.id === pointId)
+      if (!manualPoint) return
+      const ontoLabels = parseEntityLabels(onto)
+      manualPoint.pointKind = 'projection'
+      manualPoint.createdByTool = 'projection'
+      manualPoint.sourcePointId = fromId
+      manualPoint.dependsOn = [fromId]
+      manualPoint.locked = true
+
+      if (ontoLabels.length >= 3) {
+        const polygonId = ensurePolygon(document, polygonMap, segmentMap, usedIds, pointMap, ontoLabels, undefined, {
+          internal: true,
+          generateBoundarySegments: false,
+        })
+        if (polygonId) {
+          manualPoint.targetPolygonId = polygonId
+          manualPoint.dependsOn = [fromId, polygonId]
+        }
+      } else if (ontoLabels.length === 2) {
+        const segmentId = ensureSegment(document, segmentMap, usedIds, pointMap, ontoLabels[0], ontoLabels[1])
+        if (segmentId) {
+          manualPoint.targetSegmentId = segmentId
+          manualPoint.dependsOn = [fromId, segmentId]
+        }
+      }
+    }
+  })
 }
 
 function parseSimpleMidpointData(data: any) {
@@ -547,6 +718,8 @@ function buildConstructionAwareDocument(
   ;(construction.entities?.solids || []).forEach((solidStr) => {
     parseSolidDefinition(solidStr, geometryData, positions, document, pointMap, polygonMap, segmentMap, usedIds, warnings)
   })
+
+  applyConstructionFacts(document, pointMap, segmentMap, polygonMap, usedIds, construction)
 
   ;(geometryData.spheres || []).forEach((sphere) => {
     const centerId = pointMap.get(normalizeLabel(sphere.center))

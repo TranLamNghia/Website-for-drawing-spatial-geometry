@@ -60,8 +60,14 @@ export function mapBackendResultToGeometryData(result: any): GeometryData {
 
   return {
     points,
-    is_consistent: result.validation?.allPassed ?? true,
-    error_message: result.validation?.allPassed ? '' : 'Dữ liệu không khớp',
+    is_consistent:
+      (result.validation?.allPassed ?? true) &&
+      (result.validation?.pointIntegrity?.isValid ?? true),
+    error_message:
+      (result.validation?.allPassed ?? true) &&
+      (result.validation?.pointIntegrity?.isValid ?? true)
+        ? ''
+        : 'Dữ liệu không khớp',
     edges: mappedEdges,
     queries: (result.queries || result.data?.queries || []).map((q: any) => ({
       id: q.id || Math.random().toString(),

@@ -11,10 +11,20 @@ export default function DashboardPage() {
     router.push('/chedotuve')
   }
 
+  const handleNewAIProject = () => {
+    router.push('/chedovethongminh')
+  }
+
   const handleOpenProject = (project: SavedProject) => {
     router.push(`/chedotuve?id=${project.id}`)
   }
 
-  return <DashboardView onNewProject={handleNewProject} onOpenProject={handleOpenProject} />
+  return (
+    <DashboardView
+      onNewProject={handleNewProject}
+      onNewAIProject={handleNewAIProject}
+      onOpenProject={handleOpenProject}
+    />
+  )
 }
 

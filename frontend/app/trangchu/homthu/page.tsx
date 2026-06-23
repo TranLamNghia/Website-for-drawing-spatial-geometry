@@ -126,15 +126,15 @@ export default function FeedbackPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-8 py-10">
-        <h1 className="text-2xl font-bold tracking-tight">Hòm thư góp ý</h1>
+      <div className="max-w-3xl mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Hòm thư góp ý</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Luôn trân trọng mọi phản hồi của bạn để cải tiến website tốt hơn.
         </p>
 
-        <div className="mt-8">
+        <div className="mt-6 sm:mt-8">
           {submitted ? (
-            <Card className="border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-md p-8 text-center flex flex-col items-center justify-center gap-4">
+            <Card className="border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-md p-5 text-center flex flex-col items-center justify-center gap-4 sm:p-8">
               <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
                 <CheckCircle2 className="w-8 h-8 text-emerald-500 animate-bounce" />
               </div>
