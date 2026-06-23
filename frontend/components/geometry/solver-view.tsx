@@ -12,11 +12,7 @@ import { ChevronLeft, ChevronRight, GripVertical, PanelLeft, PanelRight } from '
 // ─────────────────────────────────────────────────────────────
 // Solver View (Photoshop-style 3-column layout)
 // ─────────────────────────────────────────────────────────────
-interface SolverViewProps {
-  onBack: () => void
-}
-
-export function SolverView({ onBack }: SolverViewProps) {
+export function SolverView() {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [rightWidth, setRightWidth] = useState(420)
@@ -25,7 +21,7 @@ export function SolverView({ onBack }: SolverViewProps) {
   const tier = useViewportTier()
   const hasInitializedDefaults = useRef(false)
 
-  const leftPanelWidth = tier === 'ultra' ? 'clamp(400px, 26vw, 520px)' : '400px'
+  const leftPanelWidth = tier === 'ultra' ? 'clamp(280px, 18vw, 364px)' : '280px'
 
   useEffect(() => {
     if (!tier || hasInitializedDefaults.current) return
@@ -106,7 +102,7 @@ export function SolverView({ onBack }: SolverViewProps) {
         >
           <SheetContent
             side="left"
-            className="w-[92vw] max-w-[420px] gap-0 overflow-y-auto p-0 sm:max-w-[420px]"
+            className="w-[92vw] max-w-[294px] gap-0 overflow-y-auto p-0 sm:max-w-[294px]"
           >
             <SheetTitle className="sr-only">{'B\u1ea3ng nh\u1eadp \u0111\u1ec1'}</SheetTitle>
             <SolveLeftPanel />
@@ -145,7 +141,7 @@ export function SolverView({ onBack }: SolverViewProps) {
           transform: leftOpen ? 'translateX(0)' : `translateX(-${leftPanelWidth})`,
         }}
       >
-        <div className="w-full h-full overflow-hidden">
+        <div className="h-full w-full min-h-0 overflow-y-auto">
           <SolveLeftPanel />
         </div>
 

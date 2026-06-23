@@ -125,11 +125,7 @@ function SmartSolverContent() {
     setExplodeAmount,
   ])
 
-  const handleBack = () => {
-    router.push('/')
-  }
-
-  return <SolverView onBack={handleBack} />
+  return <SolverView />
 }
 
 export default function SmartSolverPage() {

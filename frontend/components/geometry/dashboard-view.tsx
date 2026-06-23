@@ -194,7 +194,7 @@ export function DashboardView({ onNewProject, onNewAIProject, onOpenProject }: D
 
   return (
     <div className="h-full flex flex-col overflow-hidden min-w-0">
-      <header className="flex-shrink-0 border-b border-border/40 px-4 pt-5 pb-4 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8 lg:pb-5">
+      <header className="flex-shrink-0 border-b border-border/40 px-2 pt-2 pb-1.5 sm:px-2.5 sm:pt-2.5 lg:px-3 lg:pt-3 lg:pb-2">
         <div className="mx-auto w-full max-w-6xl">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
@@ -217,7 +217,7 @@ export function DashboardView({ onNewProject, onNewAIProject, onOpenProject }: D
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
+      <main className="flex-1 overflow-y-auto px-2 py-2 sm:px-2.5 sm:py-2 lg:px-3 lg:py-2.5">
         <div className="mx-auto w-full max-w-6xl">
         <div className="mb-6 flex items-center justify-between">
           <div>

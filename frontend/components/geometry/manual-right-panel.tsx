@@ -1,11 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Circle, Pentagon, ChevronRight, ChevronUp, ChevronDown, PencilRuler, Pyramid, Save, Trash2, Triangle, Square, Eye, EyeOff, GripVertical, Layers, Scissors, Lock, Unlock } from 'lucide-react'
+import { Box, Circle, Pentagon, ChevronRight, ChevronUp, ChevronDown, PencilRuler, Pyramid, Trash2, Triangle, Square, Eye, EyeOff, GripVertical, Layers, Scissors, Lock, Unlock } from 'lucide-react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useProjectStore } from '@/hooks/use-project-store'
 import { useGeometry, SectionData } from './geometry-context'
 import {
   ManualPoint,
@@ -13,7 +12,6 @@ import {
   ManualSegment,
   ManualSolid,
   ManualCircle,
-  serializeManualProject,
 } from './manual-editor'
 import { ChunkTree } from './right-sidebar'
 
@@ -949,14 +947,10 @@ export function ManualRightPanel() {
     toggleManualVisibility,
     toggleManualLocked,
   } = useGeometry()
-  const { addProject } = useProjectStore()
 
   const solidsWithCuts = useMemo(() => {
     return manualDocument.solids.filter(s => s.cuts && s.cuts.some(c => c.visible))
   }, [manualDocument.solids])
-
-  const [projectName, setProjectName] = useState('Bản vẽ tự vẽ')
-  const [isSaving, setIsSaving] = useState(false)
 
   const migrateVisibility = (solidId: string, oldCuts: import('./manual-editor').ManualCut[], newCuts: import('./manual-editor').ManualCut[]) => {
     const next: Record<string, boolean> = { ...bitmaskVisibility }
@@ -1088,24 +1082,6 @@ export function ManualRightPanel() {
       }),
     )
   }, [manualDocument.solids, pointLabelMap])
-
-  const handleSave = async () => {
-    setIsSaving(true)
-    try {
-      const json = serializeManualProject(manualDocument)
-      await addProject({
-        id: crypto.randomUUID(),
-        name: projectName,
-        problemText: '',
-        geometryJson: json,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        thumbnail: '',
-      })
-    } finally {
-      setIsSaving(false)
-    }
-  }
 
   return (
     <div className="flex h-full flex-col">
@@ -1478,23 +1454,6 @@ export function ManualRightPanel() {
               </p>
             </div>
           ) : null}
-      </div>
-
-      <div className="mt-4 space-y-3 border-t border-border/70 pt-4">
-        <Input
-          value={projectName}
-          onChange={(event) => setProjectName(event.target.value)}
-          placeholder={'T\u00ean b\u1ea3n v\u1ebd'}
-          className="h-11 rounded-xl"
-        />
-        <Button
-          className="h-12 w-full rounded-xl text-sm font-bold"
-          onClick={handleSave}
-          disabled={isSaving || totalEntities === 0}
-        >
-          <Save size={16} />
-          {isSaving ? '\u0110ang l\u01b0u...' : 'L\u01b0u b\u1ea3n v\u1ebd'}
-        </Button>
       </div>
     </div>
   )
