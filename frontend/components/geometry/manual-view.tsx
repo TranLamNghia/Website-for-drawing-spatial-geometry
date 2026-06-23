@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, PanelLeft, PanelRight, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
@@ -24,8 +24,22 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
   const [activeSheet, setActiveSheet] = useState<'left' | 'right' | null>(null)
   const { activeTool } = useGeometry()
   const tier = useViewportTier()
+  const hasInitializedDefaults = useRef(false)
 
   const isSubPanelVisible = subOpen && activeTool !== 'select'
+
+  useEffect(() => {
+    if (!tier || hasInitializedDefaults.current) return
+
+    // P2-1: laptop (< xl) mặc định đóng sub-panel và panel phải.
+    if (tier === 'laptop') {
+      setLeftOpen(true)
+      setSubOpen(false)
+      setRightOpen(false)
+    }
+
+    hasInitializedDefaults.current = true
+  }, [tier])
 
   if (tier === null) {
     return (
@@ -141,11 +155,9 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
 
         {/* Sidebar phụ: Hướng dẫn & Thiết lập */}
         <div
-          className="h-full border-r border-border bg-card/90 backdrop-blur-md overflow-hidden transition-all duration-500 ease-in-out"
-          style={{
-            width: isSubPanelVisible ? 340 : 0,
-            opacity: isSubPanelVisible ? 1 : 0,
-          }}
+          className={`h-full shrink-0 overflow-hidden border-r border-border bg-card/90 backdrop-blur-md transition-all duration-500 ease-in-out ${
+            isSubPanelVisible ? 'w-[min(340px,40vw)] xl:w-[340px] opacity-100' : 'w-0 opacity-0'
+          }`}
         >
           <ManualLeftSubPanel />
         </div>

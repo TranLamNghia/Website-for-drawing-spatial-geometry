@@ -270,7 +270,7 @@ export function ManualLeftSubPanel() {
   if (activeTool === 'select') return null
 
   return (
-    <div className="flex h-full w-[340px] flex-col gap-4 overflow-y-auto p-4">
+    <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-4 lg:w-[min(340px,40vw)] xl:w-[340px]">
       <div>
         <div className="flex items-center gap-2">
           <Info className="h-4 w-4 text-primary" />

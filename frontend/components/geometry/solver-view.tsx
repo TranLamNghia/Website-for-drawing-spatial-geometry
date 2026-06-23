@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { SolveLeftPanel } from '@/components/geometry/solve/solve-left-panel'
 import { Canvas3D } from '@/components/geometry/canvas-3d-r3f'
 import { RightSidebar } from '@/components/geometry/right-sidebar'
 import { GeometryTabletBanner } from '@/components/geometry/geometry-tablet-banner'
-import { useGeometry } from '@/components/geometry/geometry-context'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useViewportTier } from '@/hooks/use-viewport-tier'
 import { ChevronLeft, ChevronRight, GripVertical, PanelLeft, PanelRight } from 'lucide-react'
@@ -24,14 +23,19 @@ export function SolverView({ onBack }: SolverViewProps) {
   const [isResizing, setIsResizing] = useState(false)
   const [activeSheet, setActiveSheet] = useState<'left' | 'right' | null>(null)
   const tier = useViewportTier()
+  const hasInitializedDefaults = useRef(false)
 
-  const {
-    // Keep these in context for Canvas3D toolbar; workspace no longer renders FloatingToolbar.
-    showAxes, setShowAxes,
-    showGrid, setShowGrid,
-    showLabels, setShowLabels,
-    resetCamera
-  } = useGeometry()
+  useEffect(() => {
+    if (!tier || hasInitializedDefaults.current) return
+
+    // P2-1: laptop (< xl) mặc định đóng panel phải để ưu tiên không gian canvas.
+    if (tier === 'laptop') {
+      setLeftOpen(true)
+      setRightOpen(false)
+    }
+
+    hasInitializedDefaults.current = true
+  }, [tier])
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     const newWidth = window.innerWidth - e.clientX
@@ -160,10 +164,10 @@ export function SolverView({ onBack }: SolverViewProps) {
         {rightOpen && (
           <div
             onMouseDown={startResizing}
-            className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/40 transition-colors z-50 group pointer-events-auto"
+            className="absolute top-0 bottom-0 left-0 z-50 hidden w-3 cursor-col-resize touch-none transition-colors hover:bg-primary/40 group pointer-events-auto lg:block"
           >
-            <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-4 h-12 rounded-full bg-border border border-border group-hover:bg-primary group-hover:border-primary transition-colors flex items-center justify-center">
-              <GripVertical size={12} className="text-muted-foreground group-hover:text-primary-foreground" />
+            <div className="absolute top-1/2 left-1/2 flex h-14 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-border transition-colors group-hover:border-primary group-hover:bg-primary">
+              <GripVertical size={13} className="text-muted-foreground group-hover:text-primary-foreground" />
             </div>
           </div>
         )}
