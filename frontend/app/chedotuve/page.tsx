@@ -4,8 +4,10 @@ import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ManualView } from '@/components/geometry/manual-view'
 import { GeometryProvider, useGeometry } from '@/components/geometry/geometry-context'
+import { GeometryMobileGate } from '@/components/geometry/geometry-mobile-gate'
 import { isManualProjectSnapshot } from '@/components/geometry/manual-editor'
 import { useProjectStore } from '@/hooks/use-project-store'
+import { useGeometryLayoutMode } from '@/hooks/use-viewport-tier'
 import { clearTransferredProjectStorage, readTransferredProject } from '@/components/geometry/project-transfer'
 
 function ManualDrawingContent() {
@@ -30,15 +32,19 @@ function ManualDrawingContent() {
     setWorkspaceMode('manual')
   }, [setWorkspaceMode])
 
-  // Clear project ID from URL on page reload (F5)
+  // Clear project ID from URL if project doesn't exist (e.g. after page reload/F5)
   useEffect(() => {
-    if (typeof window !== 'undefined' && projectId) {
-      const navigation = window.performance?.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-      if (navigation?.type === 'reload') {
-        router.replace('/chedotuve')
+    const timer = setTimeout(() => {
+      if (projectId) {
+        const transferred = readTransferredProject()
+        const project = projects.find((p) => p.id === projectId)
+        if (!project && (!transferred || transferred.id !== projectId)) {
+          router.replace('/chedotuve')
+        }
       }
-    }
-  }, [projectId, router])
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [projectId, projects, router])
 
   useEffect(() => {
     const transferredProject = readTransferredProject()
@@ -102,24 +108,29 @@ function ManualDrawingContent() {
     setShowLabels,
   ])
 
-  const handleBack = () => {
-    router.push('/')
-  }
-
-  const handleSwitchToSolver = () => {
-    const targetUrl = projectId ? `/chedovethongminh?id=${projectId}` : '/chedovethongminh'
-    router.push(targetUrl)
-  }
-
-  return <ManualView onBack={handleBack} onSwitchToSolver={handleSwitchToSolver} />
+  return <ManualView />
 }
 
 export default function ManualDrawingPage() {
+  const layoutMode = useGeometryLayoutMode()
+
+  if (layoutMode === 'blocked') {
+    return <GeometryMobileGate />
+  }
+
+  if (layoutMode === null) {
+    return (
+      <div className="h-svh min-h-dvh bg-background flex items-center justify-center px-4 text-center text-muted-foreground">
+        Đang kiểm tra kích thước màn hình...
+      </div>
+    )
+  }
+
   return (
     <GeometryProvider>
       <Suspense
         fallback={
-          <div className="h-screen bg-background flex items-center justify-center text-muted-foreground">
+          <div className="h-svh min-h-dvh bg-background flex items-center justify-center text-muted-foreground">
             Đang tải không gian làm việc...
           </div>
         }

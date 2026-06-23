@@ -28,7 +28,7 @@ function toUserFacingSolveError(errorData: any, fallback = 'Chức năng AI hi�
   return fallback
 }
 
-// IMPORTANT: Keep behavior identical to the mapping currently used in LeftSidebar.
+// IMPORTANT: Keep behavior identical to the geometry mapping expected by the solver workspace.
 export function mapBackendResultToGeometryData(result: any): GeometryData {
   // Map BE response (entities, validation, points: {A: {x,y,z}})
   const points: Record<string, [number, number, number]> = {}
@@ -60,8 +60,14 @@ export function mapBackendResultToGeometryData(result: any): GeometryData {
 
   return {
     points,
-    is_consistent: result.validation?.allPassed ?? true,
-    error_message: result.validation?.allPassed ? '' : 'Dữ liệu không khớp',
+    is_consistent:
+      (result.validation?.allPassed ?? true) &&
+      (result.validation?.pointIntegrity?.isValid ?? true),
+    error_message:
+      (result.validation?.allPassed ?? true) &&
+      (result.validation?.pointIntegrity?.isValid ?? true)
+        ? ''
+        : 'Dữ liệu không khớp',
     edges: mappedEdges,
     queries: (result.queries || result.data?.queries || []).map((q: any) => ({
       id: q.id || Math.random().toString(),

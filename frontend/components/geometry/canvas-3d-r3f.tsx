@@ -7,7 +7,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import { ViewHelper } from 'three/examples/jsm/helpers/ViewHelper.js'
 import { useTheme } from 'next-themes'
 import { useGeometry } from './geometry-context'
-import { Layers, Crosshair, Eye, RefreshCcw, Scissors, Expand, Compass } from 'lucide-react'
+import { CanvasToolbar } from './canvas-toolbar'
 
 function getGeoColors(isDarkTheme: boolean) {
   if (isDarkTheme) {
@@ -200,6 +200,9 @@ export function Canvas3D() {
     controls.minDistance = 0.1
     controls.maxDistance = 150.0
     controls.target.set(0, 0, 0)
+    // P3-3: gesture cảm ứng — 1 ngón xoay, 2 ngón pan/zoom
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+    renderer.domElement.style.touchAction = 'none'
     controlsRef.current = controls
 
     const viewHelper = new ViewHelper(camera, renderer.domElement)
@@ -1209,55 +1212,18 @@ export function Canvas3D() {
       {/* 3D Scene Mount Point */}
       <div className="absolute inset-0 z-0" ref={mountRef} />
 
-      {/* Top Center Action Toolbar */}
-      <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-2 z-50">
-        <div className="flex bg-card/95 backdrop-blur-md border border-border rounded-2xl shadow-2xl p-1.5 items-center gap-1">
-          <button
-            onClick={() => setShowAxes(!showAxes)}
-            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showAxes ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title="Ẩn/Hiện trục tọa độ"
-          >
-            <Crosshair size={18} />
-            <span className="text-xs">Trục toạ độ</span>
-          </button>
-          <div className="w-[1px] h-4 bg-border mx-1" />
-          <button
-            onClick={() => setShowBasePlane(!showBasePlane)}
-            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showBasePlane ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title="Ẩn/Hiện lưới mặt đáy"
-          >
-            <Layers size={18} />
-            <span className="text-xs">Lưới đáy</span>
-          </button>
-          <div className="w-[1px] h-4 bg-border mx-1" />
-          <button
-            onClick={() => setShowLabels(!showLabels)}
-            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showLabels ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title="Ẩn/Hiện nhãn điểm"
-          >
-            <Eye size={18} />
-            <span className="text-xs">Nhãn</span>
-          </button>
-          <button
-            onClick={() => setShowGizmo(!showGizmo)}
-            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showGizmo ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title="Ẩn/Hiện khối điều hướng"
-          >
-            <Compass size={18} />
-            <span className="text-xs">Điều hướng</span>
-          </button>
-
-          <div className="w-[1px] h-6 bg-border mx-2" />
-          <button
-            onClick={handleResetCamera}
-            className="p-2.5 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all flex items-center gap-2"
-            title="Đặt lại Camera"
-          >
-            <RefreshCcw size={18} />
-            <span className="text-xs font-medium">Đặt lại</span>
-          </button>
-        </div>
-      </div>
+      <CanvasToolbar
+        showAxes={showAxes}
+        onToggleAxes={() => setShowAxes(!showAxes)}
+        showGrid={showBasePlane}
+        onToggleGrid={() => setShowBasePlane(!showBasePlane)}
+        showLabels={showLabels}
+        onToggleLabels={() => setShowLabels(!showLabels)}
+        showGizmo={showGizmo}
+        onToggleGizmo={() => setShowGizmo(!showGizmo)}
+        onResetCamera={handleResetCamera}
+        resetLabel="Đặt lại Camera"
+      />
 
       {/* Navigation Gizmo (Three.js ViewHelper - rendered inside WebGL canvas, initialized in useEffect below) */}
     </div>

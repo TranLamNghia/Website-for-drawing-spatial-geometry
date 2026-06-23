@@ -7,8 +7,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { ViewHelper } from 'three/examples/jsm/helpers/ViewHelper.js'
 import { useTheme } from 'next-themes'
-import { Crosshair, Eye, Layers, RefreshCcw, Sparkles, Compass } from 'lucide-react'
 import { useGeometry } from './geometry-context'
+import { CanvasToolbar } from './canvas-toolbar'
 import { ManualDisplayPolygon, ManualDisplaySegment, ManualSolid, ManualCircle, serializeManualProject, computeSolidPlaneIntersection, ManualSnapTarget, Vec3, resolveCircleProps } from './manual-editor'
 
 type InteractiveHit = {
@@ -784,6 +784,9 @@ export function ManualCanvas3D() {
     controls.minDistance = 0.1
     controls.maxDistance = 120
     controls.target.set(0, 0, 0)
+    // P3-3: gesture cảm ứng — 1 ngón xoay, 2 ngón pan/zoom
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+    renderer.domElement.style.touchAction = 'none'
     controlsRef.current = controls
 
     const viewHelper = new ViewHelper(camera, renderer.domElement)
@@ -3695,54 +3698,17 @@ export function ManualCanvas3D() {
     <div className="w-full h-full relative bg-background overflow-hidden">
       <div ref={mountRef} className="absolute inset-0" />
 
-      <div className="absolute top-5 left-1/2 -translate-x-1/2 z-50">
-        <div className="flex bg-card/95 backdrop-blur-md border border-border rounded-2xl shadow-xl p-1.5 items-center gap-1">
-          <button
-            onClick={() => setShowAxes(!showAxes)}
-            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showAxes ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title={'\u1ea8n/Hi\u1ec7n tr\u1ee5c t\u1ecda \u0111\u1ed9'}
-          >
-            <Crosshair size={18} />
-            <span className="text-xs">{'Tr\u1ee5c t\u1ecda \u0111\u1ed9'}</span>
-          </button>
-          <div className="w-px h-4 bg-border mx-1" />
-          <button
-            onClick={() => setShowGrid(!showGrid)}
-            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showGrid ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title={'\u1ea8n/Hi\u1ec7n l\u01b0\u1edbi \u0111\u00e1y'}
-          >
-            <Layers size={18} />
-            <span className="text-xs">{'L\u01b0\u1edbi \u0111\u00e1y'}</span>
-          </button>
-          <div className="w-px h-4 bg-border mx-1" />
-          <button
-            onClick={() => setShowLabels(!showLabels)}
-            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showLabels ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title={'\u1ea8n/Hi\u1ec7n nh\u00e3n \u0111i\u1ec3m'}
-          >
-            <Eye size={18} />
-            <span className="text-xs">{'Nh\u00e3n'}</span>
-          </button>
-          <button
-            onClick={() => setShowGizmo(!showGizmo)}
-            className={`p-2.5 rounded-xl hover:bg-muted transition-all flex items-center gap-2 ${showGizmo ? 'text-primary bg-primary/10 font-semibold' : 'text-muted-foreground'}`}
-            title="Ẩn/Hiện khối điều hướng"
-          >
-            <Compass size={18} />
-            <span className="text-xs">Điều hướng</span>
-          </button>
-
-          <div className="w-px h-6 bg-border mx-2" />
-          <button
-            onClick={handleResetCamera}
-            className="p-2.5 rounded-xl hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all flex items-center gap-2"
-            title={'\u0110\u1eb7t l\u1ea1i g\u00f3c nh\u00ecn'}
-          >
-            <RefreshCcw size={18} />
-            <span className="text-xs font-medium">{'\u0110\u1eb7t l\u1ea1i'}</span>
-          </button>
-        </div>
-      </div>
+      <CanvasToolbar
+        showAxes={showAxes}
+        onToggleAxes={() => setShowAxes(!showAxes)}
+        showGrid={showGrid}
+        onToggleGrid={() => setShowGrid(!showGrid)}
+        showLabels={showLabels}
+        onToggleLabels={() => setShowLabels(!showLabels)}
+        showGizmo={showGizmo}
+        onToggleGizmo={() => setShowGizmo(!showGizmo)}
+        onResetCamera={handleResetCamera}
+      />
 
       <div className="absolute bottom-6 left-6 z-50 rounded-xl border border-border bg-card/95 backdrop-blur-md px-3 py-2 shadow-lg">
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">

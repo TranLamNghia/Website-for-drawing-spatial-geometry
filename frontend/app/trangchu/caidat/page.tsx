@@ -16,21 +16,21 @@ export default function SettingsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-8 py-10">
-        <h1 className="text-2xl font-bold tracking-tight">Cài đặt</h1>
+      <div className="max-w-3xl mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Cài đặt</h1>
         <p className="text-sm text-muted-foreground mt-1">Tùy chỉnh giao diện.</p>
 
-        <div className="mt-8 space-y-6">
+        <div className="mt-6 space-y-6 sm:mt-8">
           <div>
             <p className="text-xs font-semibold tracking-widest uppercase text-muted-foreground">Giao diện</p>
             <Card className="mt-3">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">Chế độ sáng/tối</CardTitle>
               </CardHeader>
-              <CardContent className="flex items-center justify-between gap-4">
+              <CardContent className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-muted-foreground">Chọn chế độ hiển thị cho toàn bộ ứng dụng.</div>
                 <Select value={theme ?? 'system'} onValueChange={setTheme}>
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Hệ thống" />
                   </SelectTrigger>
                   <SelectContent>

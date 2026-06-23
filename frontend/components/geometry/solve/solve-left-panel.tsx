@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { AlertCircle, CheckCircle2, MessageSquareWarning, Play, Sparkles, ArrowLeft } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Play, Sparkles, Home } from 'lucide-react'
 import { useGeometry } from '@/components/geometry/geometry-context'
 import { applyBackendResultToState, applyRawJsonToGeometry, solveProblemText } from './solve-logic'
 
@@ -41,8 +41,6 @@ function pushReport(item: ReportItem) {
 
 export function SolveLeftPanel() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const projectId = searchParams.get('id')
   const {
     geometryData,
     setGeometryData,
@@ -112,20 +110,17 @@ export function SolveLeftPanel() {
 
   return (
     <>
-    <div className="h-full flex flex-col p-6 gap-6 bg-card text-card-foreground border-r border-border shadow-inner">
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto border-r border-border bg-card p-6 text-card-foreground shadow-inner">
       {/* Navigation Buttons */}
       <div className="flex pb-4 border-b border-border/60">
         <Button
           variant="outline"
           size="sm"
-          onClick={() => {
-            const targetUrl = projectId ? `/chedotuve?id=${projectId}` : '/chedotuve'
-            router.push(targetUrl)
-          }}
+          onClick={() => router.push('/')}
           className="w-full flex items-center justify-center gap-1.5 rounded-xl text-xs py-1.5 h-8 font-semibold bg-background hover:bg-accent/40"
         >
-          <ArrowLeft size={14} />
-          Bản vẽ cá nhân
+          <Home size={14} />
+          Trang chủ
         </Button>
       </div>
 
@@ -137,13 +132,13 @@ export function SolveLeftPanel() {
         <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-widest">Trình vẽ từ đề bài</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)} className="flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)} className="flex flex-col">
         <TabsList className="grid w-full grid-cols-2 hidden">
           <TabsTrigger value="input">Đề bài</TabsTrigger>
           <TabsTrigger value="json">Dữ liệu JSON</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="input" className="flex-1 flex flex-col gap-4 mt-4">
+        <TabsContent value="input" className="mt-4 flex flex-col gap-4">
           <div className="space-y-2">
             <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
               Đề bài toán học
@@ -152,7 +147,7 @@ export function SolveLeftPanel() {
               value={problem}
               onChange={e => setProblem(e.target.value)}
               placeholder="Nhập đề bài hình học tại đây..."
-              className="w-full h-[320px] bg-background border-border resize-none text-[13px] leading-relaxed p-4 rounded-2xl focus:ring-primary/20 transition-all shadow-inner"
+              className="h-[240px] w-full resize-none rounded-2xl border-border bg-background p-4 text-[13px] leading-relaxed shadow-inner transition-all focus:ring-primary/20 lg:h-[320px]"
             />
           </div>
 
@@ -203,14 +198,14 @@ export function SolveLeftPanel() {
           )}
         </TabsContent>
 
-        <TabsContent value="json" className="flex-1 flex flex-col gap-4 mt-4 overflow-hidden">
-          <div className="flex-1 flex flex-col min-h-0">
+        <TabsContent value="json" className="mt-4 flex flex-col gap-4">
+          <div className="flex flex-col">
             <label className="text-xs font-bold text-muted-foreground uppercase">Chỉnh sửa / Dán JSON phản hồi</label>
             <Textarea
               value={jsonInput}
               onChange={e => setJsonInput(e.target.value)}
               placeholder='Dán JSON vào đây (vd: { "points": { "A": {"x":0,"y":0,"z":0} }, ... })'
-              className="flex-1 mt-2 font-mono text-[10px] bg-background border-border resize-none text-foreground rounded-2xl shadow-inner"
+              className="mt-2 h-[280px] resize-none rounded-2xl border-border bg-background font-mono text-xs text-foreground shadow-inner lg:h-[360px]"
             />
           </div>
           <Button onClick={handleApplyJson} variant="outline" className="w-full border-primary text-primary hover:bg-primary/10">

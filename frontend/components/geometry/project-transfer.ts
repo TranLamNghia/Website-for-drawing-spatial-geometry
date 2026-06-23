@@ -38,9 +38,10 @@ export function readTransferredProject(): SavedProject | null {
 }
 
 export function clearTransferredProjectStorage() {
+  cachedProject = null
   if (typeof window === 'undefined') return
   try {
-    localStorage.clear()
+    localStorage.removeItem(TRANSFER_KEY)
   } catch {
     // Ignore.
   }

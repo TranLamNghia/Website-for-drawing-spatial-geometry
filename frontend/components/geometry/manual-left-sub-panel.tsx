@@ -270,7 +270,7 @@ export function ManualLeftSubPanel() {
   if (activeTool === 'select') return null
 
   return (
-    <div className="flex h-full w-[340px] flex-col gap-4 overflow-y-auto p-4">
+    <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-4 lg:w-[min(340px,40vw)] xl:w-[340px]">
       <div>
         <div className="flex items-center gap-2">
           <Info className="h-4 w-4 text-primary" />
@@ -329,7 +329,7 @@ export function ManualLeftSubPanel() {
               ) : (
                 <div className="flex flex-col gap-2">
                   <span>Click chọn lần lượt 2 Điểm (mới hoặc đã có sẵn) làm đỉnh cơ sở để tự động dựng tam giác đặc biệt.</span>
-                  <div className="rounded-md bg-blue-500/10 p-2 border border-blue-500/20 text-[10px] text-blue-500 leading-normal">
+                  <div className="rounded-md border border-blue-500/20 bg-blue-500/10 p-2 text-[11px] leading-normal text-blue-500">
                     <span className="font-semibold block mb-0.5">💡 Lưu ý quan trọng:</span>
                     Nếu bạn đã có sẵn 3 điểm (ví dụ A, B, C) trên lưới vẽ và muốn kết nối chúng thành tam giác, hãy chọn công cụ <strong className="text-foreground">Tam giác thường</strong>.
                     Nếu chọn công cụ tam giác đặc biệt (ví dụ Tam giác vuông) và chọn 2 điểm A, B, hệ thống sẽ tự động dựng điểm thứ ba D mới hoàn toàn để thỏa mãn tính chất hình học, tạo thành tam giác ABD mới thay vì kết nối với C.
@@ -368,7 +368,7 @@ export function ManualLeftSubPanel() {
                     <p className="text-xs font-semibold">Điểm được tạo từ</p>
                     <div className="grid grid-cols-3 gap-2">
                       <div className="space-y-1">
-                        <label className="text-[10px] text-muted-foreground font-semibold">Điểm 1</label>
+                        <label className="text-[11px] font-semibold text-muted-foreground">Điểm 1</label>
                         <Input
                           className="h-8 text-xs font-medium uppercase"
                           value={slicePt1}
@@ -377,7 +377,7 @@ export function ManualLeftSubPanel() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] text-muted-foreground font-semibold">Điểm 2</label>
+                        <label className="text-[11px] font-semibold text-muted-foreground">Điểm 2</label>
                         <Input
                           className="h-8 text-xs font-medium uppercase"
                           value={slicePt2}
@@ -386,7 +386,7 @@ export function ManualLeftSubPanel() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] text-muted-foreground font-semibold">Điểm 3</label>
+                        <label className="text-[11px] font-semibold text-muted-foreground">Điểm 3</label>
                         <Input
                           className="h-8 text-xs font-medium uppercase"
                           value={slicePt3}
@@ -632,7 +632,7 @@ export function ManualLeftSubPanel() {
                             </option>
                           ))}
                         </select>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground">
                           * Hoặc click chọn một điểm có sẵn trên canvas để gán làm đỉnh.
                         </p>
                       </div>
@@ -668,7 +668,7 @@ export function ManualLeftSubPanel() {
                               </option>
                             ))}
                         </select>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground">
                           * Hoặc click chọn một điểm có sẵn trên canvas.
                         </p>
                       </div>
@@ -769,7 +769,7 @@ export function ManualLeftSubPanel() {
                           </option>
                         ))}
                       </select>
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-[11px] text-muted-foreground">
                         * Hoặc click chọn một đường tròn trực tiếp trên canvas.
                       </p>
                     </div>
@@ -827,7 +827,7 @@ export function ManualLeftSubPanel() {
                           </option>
                         ))}
                       </select>
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-[11px] text-muted-foreground">
                         * Hoặc click chọn một đường tròn trực tiếp trên canvas.
                       </p>
                     </div>
@@ -1082,7 +1082,7 @@ export function ManualLeftSubPanel() {
                           key={item.code}
                           type="button"
                           variant={(draftOperation.height ?? 1) === item.code ? 'default' : 'outline'}
-                          className="h-7 text-[9px] px-0 py-0 rounded-lg"
+                          className="h-7 text-[11px] px-0 py-0 rounded-lg"
                           onClick={() =>
                             setDraftOperation({
                               ...draftOperation,
@@ -1109,7 +1109,7 @@ export function ManualLeftSubPanel() {
                       const pid = draftOperation.pointIds?.[idx]
                       const point = pid ? manualDocument.points.find((p) => p.id === pid) : null
                       return (
-                        <Badge key={idx} variant={point ? 'default' : 'outline'} className="text-[10px]">
+                        <Badge key={idx} variant={point ? 'default' : 'outline'} className="text-xs">
                           {point ? point.label : idx === 0 ? 'Tâm...' : `Đỉnh ${idx + 1}...`}
                         </Badge>
                       )
@@ -1158,13 +1158,13 @@ export function ManualLeftSubPanel() {
                     {(draftOperation.pointIds ?? []).map((pid, idx) => {
                       const point = manualDocument.points.find((p) => p.id === pid)
                       return (
-                        <Badge key={pid} variant="default" className="text-[10px]">
+                        <Badge key={pid} variant="default" className="text-xs">
                           {point ? point.label : `Điểm ${idx + 1}`}
                         </Badge>
                       )
                     })}
                     {(draftOperation.pointIds ?? []).length === 0 && (
-                      <p className="text-[10px] text-muted-foreground italic">Chưa chọn điểm nào...</p>
+                      <p className="text-[11px] text-muted-foreground italic">Chưa chọn điểm nào...</p>
                     )}
                   </div>
                   <Button
@@ -1377,7 +1377,7 @@ export function ManualLeftSubPanel() {
                     Chọn điểm từ danh sách
                   </label>
                   {manualDocument.points.filter((pt) => pt.trackable !== false).length === 0 ? (
-                    <p className="text-[10px] text-muted-foreground italic">Chưa có điểm nào trong bản vẽ</p>
+                    <p className="text-[11px] text-muted-foreground italic">Chưa có điểm nào trong bản vẽ</p>
                   ) : (
                     <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 border border-border/60 rounded-xl bg-background/40">
                       {manualDocument.points.filter((pt) => pt.trackable !== false).map((pt) => {
@@ -1387,7 +1387,7 @@ export function ManualLeftSubPanel() {
                             key={pt.id}
                             type="button"
                             variant={isSelected ? 'default' : 'outline'}
-                            className={`h-6 text-[10px] px-2 rounded-lg font-bold transition-all ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-accent/40'
+                            className={`h-8 rounded-lg px-2 text-xs font-bold transition-all ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-accent/40'
                               }`}
                             onClick={() => {
                               const currentIds = draftOperation.pointIds || []

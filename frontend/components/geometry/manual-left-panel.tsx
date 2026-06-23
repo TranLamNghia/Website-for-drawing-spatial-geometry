@@ -377,7 +377,8 @@ export function ManualLeftPanel({
             <div key={category.id} className="border border-border/80 rounded-xl overflow-hidden bg-background/50">
               <button
                 onClick={() => toggleGroup(category.id)}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 bg-secondary/40 hover:bg-secondary/70 transition-colors text-left"
+                aria-expanded={!!isOpen}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 bg-secondary/40 hover:bg-secondary/70 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
               >
                 <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{category.label}</span>
                 <span className="text-xs text-muted-foreground/60 transition-transform duration-300 font-bold">
@@ -395,7 +396,8 @@ export function ManualLeftPanel({
                       <button
                         key={tool.id}
                         onClick={() => handleToolClick(tool.id)}
-                        className={`rounded-xl border p-2 text-left transition-all duration-200 flex flex-col items-start ${
+                        aria-pressed={isActive}
+                        className={`rounded-xl border p-2 text-left transition-all duration-200 flex flex-col items-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
                           isActive
                             ? 'border-primary bg-primary/10 text-primary shadow-sm font-bold scale-[0.98]'
                             : 'border-border/60 bg-background/40 hover:border-primary/20 hover:bg-accent/40'

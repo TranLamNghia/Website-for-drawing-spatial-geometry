@@ -79,6 +79,38 @@ function NewProjectCard({
   )
 }
 
+function NewAIProjectCard({
+  onClick,
+}: {
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group relative aspect-[4/3] rounded-2xl border border-primary/20 transition-all overflow-hidden text-left
+        hover:border-primary/60 hover:shadow-xl hover:shadow-primary/20 bg-card/60 backdrop-blur-sm"
+    >
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-primary/10 to-transparent opacity-30 group-hover:opacity-100 transition-opacity" />
+      <div className="relative h-full p-4 flex flex-col justify-between">
+        <div className="w-10 h-10 rounded-xl bg-primary/20 ring-1 ring-primary/30 flex items-center justify-center animate-pulse">
+          <Sparkles size={18} className="text-primary" />
+        </div>
+        <div>
+          <p className="text-[13px] font-extrabold text-primary flex items-center gap-1.5">
+            Tạo bằng AI <Sparkles size={12} />
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+            Vẽ hình từ văn bản với trợ lý ảo
+          </p>
+          <div className="mt-2.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 text-[9px] font-bold text-primary border border-primary/20 uppercase tracking-tighter">
+            Trí tuệ nhân tạo
+          </div>
+        </div>
+      </div>
+    </button>
+  )
+}
+
 function ProjectCard({
   project,
   onOpen,
@@ -119,22 +151,23 @@ function ProjectCard({
             </div>
           </div>
 
-          <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
             <button
               onClick={() => setMenuOpen(v => !v)}
-              className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-muted/80 transition-all text-muted-foreground hover:text-foreground"
-              title="Tùy chọn"
+              aria-label="Tùy chọn bản vẽ"
+              aria-expanded={menuOpen}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted-foreground opacity-100 transition-all hover:bg-muted/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 lg:opacity-0 lg:group-hover:opacity-100"
             >
-              <MoreHorizontal size={14} />
+              <MoreHorizontal size={16} />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 mt-2 w-44 rounded-xl border border-border bg-popover shadow-xl overflow-hidden z-20">
+              <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-popover shadow-xl">
                 <button
                   onClick={() => {
                     setMenuOpen(false)
                     onDelete(project.id)
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-destructive hover:bg-destructive/10"
+                  className="flex min-h-11 w-full items-center gap-2 px-3 text-[12px] text-destructive hover:bg-destructive/10"
                 >
                   <Trash2 size={14} />
                   Xóa bản vẽ
@@ -150,39 +183,43 @@ function ProjectCard({
 
 interface DashboardViewProps {
   onNewProject: () => void
+  onNewAIProject: () => void
   onOpenProject: (project: SavedProject) => void
 }
 
-export function DashboardView({ onNewProject, onOpenProject }: DashboardViewProps) {
+export function DashboardView({ onNewProject, onNewAIProject, onOpenProject }: DashboardViewProps) {
   const { projects, isLimitReached, deleteProject } = useProjectStore()
 
   const sorted = useMemo(() => projects, [projects])
 
   return (
     <div className="h-full flex flex-col overflow-hidden min-w-0">
-      <header className="flex-shrink-0 px-8 pt-8 pb-5 border-b border-border/40">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
+      <header className="flex-shrink-0 border-b border-border/40 px-2 pt-2 pb-1.5 sm:px-2.5 sm:pt-2.5 lg:px-3 lg:pt-3 lg:pb-2">
+        <div className="mx-auto w-full max-w-6xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-2">
               <Sparkles size={13} className="text-primary" />
-              <span className="text-[11px] font-bold text-primary tracking-widest uppercase">Công cụ vẽ hình không gian</span>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-primary">Công cụ vẽ hình không gian</span>
             </div>
-            <h1 className="text-[28px] font-bold text-foreground tracking-tight leading-tight">
+            <h1 className="text-xl font-bold leading-tight tracking-tight text-foreground sm:text-2xl lg:text-[28px]">
               Chào mừng bạn đến với công cụ vẽ hình không gian 3D!
             </h1>
-            <p className="text-[13px] text-muted-foreground mt-1.5 leading-relaxed">
+            <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
               Tạo, khám phá và phân tích hình học không gian 3D với sự hỗ trợ của trí tuệ nhân tạo.
             </p>
           </div>
         </div>
-        <div className="mt-4 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-500/90 text-[12px] font-medium leading-relaxed flex items-center gap-3">
-          <AlertCircle size={16} className="shrink-0 text-amber-500 animate-pulse" />
+        <div className="mt-4 flex flex-col gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-[12px] font-medium leading-relaxed text-amber-500/90 sm:flex-row sm:items-start sm:gap-3 sm:p-4">
+          <AlertCircle size={16} className="mt-0.5 shrink-0 text-amber-500 animate-pulse sm:mt-0" />
           <span>Vì website đang trong giai đoạn chờ kiểm tra tính ổn định nên chưa thể lưu các bản vẽ cũ, chức năng này sẽ có mặt trong thời gian sớm nhất có thể.</span>
+        </div>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-8 py-6">
-        <div className="flex items-center justify-between mb-6">
+      <main className="flex-1 overflow-y-auto px-2 py-2 sm:px-2.5 sm:py-2 lg:px-3 lg:py-2.5">
+        <div className="mx-auto w-full max-w-6xl">
+        <div className="mb-6 flex items-center justify-between">
           <div>
             <h2 className="text-[15px] font-bold text-foreground">Danh sách bản vẽ</h2>
             <p className="text-[12px] text-muted-foreground mt-0.5">
@@ -193,11 +230,13 @@ export function DashboardView({ onNewProject, onOpenProject }: DashboardViewProp
           </div>
         </div>
 
-        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:gap-4">
           <NewProjectCard onClick={onNewProject} disabled={isLimitReached} count={sorted.length} />
+          <NewAIProjectCard onClick={onNewAIProject} />
           {sorted.map(project => (
             <ProjectCard key={project.id} project={project} onOpen={onOpenProject} onDelete={deleteProject} />
           ))}
+        </div>
         </div>
       </main>
     </div>
