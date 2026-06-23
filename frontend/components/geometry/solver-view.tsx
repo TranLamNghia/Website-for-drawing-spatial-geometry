@@ -130,10 +130,6 @@ export function SolverView({ onBack }: SolverViewProps) {
         <Canvas3D />
       </div>
 
-
-
-      {/* FloatingToolbar removed: Canvas3D already provides the unified toolbar for both modes. */}
-
       {/* Left Sidebar overlay */}
       <div
         className={`absolute left-0 top-0 bottom-0 z-30 transition-transform duration-500 ease-in-out border-r border-border bg-card/50 backdrop-blur-md shadow-xl ${

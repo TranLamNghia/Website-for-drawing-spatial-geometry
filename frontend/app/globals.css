@@ -29,6 +29,13 @@
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.625rem;
+  --app-content-max-width: 72rem;
+  --app-page-x-mobile: 1rem;
+  --app-page-x-tablet: 1.5rem;
+  --app-page-x-desktop: 2rem;
+  --app-page-x-ultra: 3rem;
+  --app-touch-target-compact: 2.75rem;
+  --app-touch-target-desktop: 2rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -105,6 +112,13 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --spacing-app-content-max: var(--app-content-max-width);
+  --spacing-app-page-x-mobile: var(--app-page-x-mobile);
+  --spacing-app-page-x-tablet: var(--app-page-x-tablet);
+  --spacing-app-page-x-desktop: var(--app-page-x-desktop);
+  --spacing-app-page-x-ultra: var(--app-page-x-ultra);
+  --spacing-app-touch-compact: var(--app-touch-target-compact);
+  --spacing-app-touch-desktop: var(--app-touch-target-desktop);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
