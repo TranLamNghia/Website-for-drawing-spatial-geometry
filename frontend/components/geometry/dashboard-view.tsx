@@ -151,22 +151,23 @@ function ProjectCard({
             </div>
           </div>
 
-          <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
             <button
               onClick={() => setMenuOpen(v => !v)}
-              className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-muted/80 transition-all text-muted-foreground hover:text-foreground"
-              title="Tùy chọn"
+              aria-label="Tùy chọn bản vẽ"
+              aria-expanded={menuOpen}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted-foreground opacity-100 transition-all hover:bg-muted/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 lg:opacity-0 lg:group-hover:opacity-100"
             >
-              <MoreHorizontal size={14} />
+              <MoreHorizontal size={16} />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 mt-2 w-44 rounded-xl border border-border bg-popover shadow-xl overflow-hidden z-20">
+              <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-popover shadow-xl">
                 <button
                   onClick={() => {
                     setMenuOpen(false)
                     onDelete(project.id)
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-destructive hover:bg-destructive/10"
+                  className="flex min-h-11 w-full items-center gap-2 px-3 text-[12px] text-destructive hover:bg-destructive/10"
                 >
                   <Trash2 size={14} />
                   Xóa bản vẽ

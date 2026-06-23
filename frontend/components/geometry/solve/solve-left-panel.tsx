@@ -112,7 +112,7 @@ export function SolveLeftPanel() {
 
   return (
     <>
-    <div className="h-full flex flex-col p-6 gap-6 bg-card text-card-foreground border-r border-border shadow-inner">
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto border-r border-border bg-card p-6 text-card-foreground shadow-inner">
       {/* Navigation Buttons */}
       <div className="flex pb-4 border-b border-border/60">
         <Button
@@ -137,13 +137,13 @@ export function SolveLeftPanel() {
         <p className="text-[11px] text-muted-foreground uppercase font-bold tracking-widest">Trình vẽ từ đề bài</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)} className="flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)} className="flex min-h-0 flex-1 flex-col">
         <TabsList className="grid w-full grid-cols-2 hidden">
           <TabsTrigger value="input">Đề bài</TabsTrigger>
           <TabsTrigger value="json">Dữ liệu JSON</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="input" className="flex-1 flex flex-col gap-4 mt-4">
+        <TabsContent value="input" className="mt-4 flex flex-1 flex-col gap-4 overflow-y-auto">
           <div className="space-y-2">
             <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
               Đề bài toán học
@@ -152,7 +152,7 @@ export function SolveLeftPanel() {
               value={problem}
               onChange={e => setProblem(e.target.value)}
               placeholder="Nhập đề bài hình học tại đây..."
-              className="w-full h-[320px] bg-background border-border resize-none text-[13px] leading-relaxed p-4 rounded-2xl focus:ring-primary/20 transition-all shadow-inner"
+              className="h-[240px] w-full resize-none rounded-2xl border-border bg-background p-4 text-[13px] leading-relaxed shadow-inner transition-all focus:ring-primary/20 lg:h-[320px]"
             />
           </div>
 

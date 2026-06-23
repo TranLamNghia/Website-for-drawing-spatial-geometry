@@ -143,7 +143,7 @@ export function SolverView({ onBack }: SolverViewProps) {
 
         <button
           onClick={() => setLeftOpen(!leftOpen)}
-          className="absolute -right-10 top-1/2 -translate-y-1/2 z-40 bg-card/95 backdrop-blur-sm border border-l-0 border-border shadow-xl rounded-r-2xl p-3 hover:bg-primary hover:text-primary-foreground transition-all text-muted-foreground flex items-center justify-center pointer-events-auto"
+          className="absolute -right-10 top-1/2 z-40 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-r-2xl border border-l-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl backdrop-blur-sm transition-all hover:bg-primary hover:text-primary-foreground pointer-events-auto"
         >
           {leftOpen ? <ChevronLeft size={24} /> : <ChevronRight size={24} />}
         </button>
@@ -174,7 +174,7 @@ export function SolverView({ onBack }: SolverViewProps) {
 
         <button
           onClick={() => setRightOpen(!rightOpen)}
-          className="absolute -left-10 top-1/2 -translate-y-1/2 z-40 bg-card/95 backdrop-blur-sm border border-r-0 border-border shadow-xl rounded-l-2xl p-3 hover:bg-primary hover:text-primary-foreground transition-all text-muted-foreground flex items-center justify-center pointer-events-auto"
+          className="absolute -left-10 top-1/2 z-40 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-l-2xl border border-r-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl backdrop-blur-sm transition-all hover:bg-primary hover:text-primary-foreground pointer-events-auto"
         >
           {rightOpen ? <ChevronRight size={24} /> : <ChevronLeft size={24} />}
         </button>

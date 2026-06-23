@@ -164,7 +164,7 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
               setSubOpen(true)
             }
           }}
-          className="pointer-events-auto absolute top-1/2 right-0 translate-x-full z-[101] flex -translate-y-1/2 items-center justify-center rounded-r-2xl border border-l-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl transition-all hover:bg-primary hover:text-primary-foreground backdrop-blur-sm"
+          className="pointer-events-auto absolute top-1/2 right-0 translate-x-full z-[101] flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-r-2xl border border-l-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl backdrop-blur-sm transition-all hover:bg-primary hover:text-primary-foreground"
         >
           {leftOpen ? <ChevronLeft size={24} /> : <ChevronRight size={24} />}
         </button>
@@ -184,7 +184,7 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
 
         <button
           onClick={() => setRightOpen(!rightOpen)}
-          className="pointer-events-auto absolute top-1/2 -left-10 z-[101] flex -translate-y-1/2 items-center justify-center rounded-l-2xl border border-r-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl transition-all hover:bg-primary hover:text-primary-foreground backdrop-blur-sm"
+          className="pointer-events-auto absolute top-1/2 -left-10 z-[101] flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-l-2xl border border-r-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl backdrop-blur-sm transition-all hover:bg-primary hover:text-primary-foreground"
         >
           {rightOpen ? <ChevronRight size={24} /> : <ChevronLeft size={24} />}
         </button>

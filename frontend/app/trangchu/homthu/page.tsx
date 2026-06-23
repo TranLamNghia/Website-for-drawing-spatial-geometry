@@ -171,7 +171,7 @@ export default function FeedbackPage() {
                     <label className="text-xs font-semibold text-foreground block">
                       Đánh giá độ hài lòng ({rating > 0 ? `${rating}/10` : 'Chọn số sao'})
                     </label>
-                    <div className="flex items-center gap-1.5 py-2.5 px-3.5 rounded-xl border border-border/60 bg-muted/20 w-fit">
+                    <div className="flex max-w-full flex-wrap items-center gap-1 rounded-xl border border-border/60 bg-muted/20 p-2 sm:gap-1.5 sm:p-2.5">
                       {Array.from({ length: 10 }, (_, i) => i + 1).map(star => {
                         const isHighlighted = hoverRating !== null ? star <= hoverRating : star <= rating
                         return (
@@ -181,11 +181,11 @@ export default function FeedbackPage() {
                             onClick={() => setRating(star)}
                             onMouseEnter={() => setHoverRating(star)}
                             onMouseLeave={() => setHoverRating(null)}
-                            className="p-0.5 transition-transform hover:scale-125 focus:outline-none"
-                            title={`${star} sao`}
+                            aria-label={`${star} sao`}
+                            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
                           >
                             <Star
-                              className={`w-5 h-5 transition-colors duration-150 ${
+                              className={`h-5 w-5 transition-colors duration-150 sm:h-[22px] sm:w-[22px] ${
                                 isHighlighted ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/40 hover:text-muted-foreground/60'
                               }`}
                             />
@@ -213,17 +213,17 @@ export default function FeedbackPage() {
 
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-foreground">Ảnh đính kèm ({images.length}/3)</label>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {images.map((img, idx) => (
-                        <div key={`${img.name}-${idx}`} className="relative aspect-square rounded-xl overflow-hidden border border-border/80 group">
-                          <img src={img.dataUrl} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
+                        <div key={`${img.name}-${idx}`} className="group relative aspect-square overflow-hidden rounded-xl border border-border/80">
+                          <img src={img.dataUrl} alt={`Preview ${idx + 1}`} className="h-full w-full object-cover" />
                           <button
                             type="button"
                             onClick={() => removeImage(idx)}
-                            className="absolute top-1 right-1 p-1 rounded-full bg-destructive/80 hover:bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Xóa ảnh"
+                            aria-label="Xóa ảnh"
+                            className="absolute top-1.5 right-1.5 flex min-h-8 min-w-8 items-center justify-center rounded-full bg-destructive/90 text-destructive-foreground opacity-100 transition-opacity hover:bg-destructive sm:opacity-0 sm:group-hover:opacity-100"
                           >
-                            <X size={12} />
+                            <X size={14} />
                           </button>
                         </div>
                       ))}
