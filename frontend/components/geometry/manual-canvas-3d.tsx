@@ -784,6 +784,9 @@ export function ManualCanvas3D() {
     controls.minDistance = 0.1
     controls.maxDistance = 120
     controls.target.set(0, 0, 0)
+    // P3-3: gesture cảm ứng — 1 ngón xoay, 2 ngón pan/zoom
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+    renderer.domElement.style.touchAction = 'none'
     controlsRef.current = controls
 
     const viewHelper = new ViewHelper(camera, renderer.domElement)
