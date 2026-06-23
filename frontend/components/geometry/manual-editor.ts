@@ -60,6 +60,9 @@ export interface ManualPoint extends ManualEntityMeta {
     | 'bisectorLinePoint'
     | 'specialShapeVertex'
     | 'centroid'
+    | 'incenter'
+    | 'orthocenter'
+    | 'circumcenter'
     | 'angleBisectorPoint'
     | 'parallelLinePoint'
     | 'solidVertex'
@@ -432,6 +435,78 @@ export function centroid(points: Vec3[]): Vec3 {
     total[0] / points.length,
     total[1] / points.length,
     total[2] / points.length,
+  ]
+}
+
+function solveLinearSystem3x3(coeff: number[][], rhs: number[]): Vec3 | null {
+  const a = coeff.map((row) => [...row])
+  const b = [...rhs]
+  for (let col = 0; col < 3; col += 1) {
+    let pivot = col
+    for (let row = col + 1; row < 3; row += 1) {
+      if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row
+    }
+    if (Math.abs(a[pivot][col]) < 1e-10) return null
+    if (pivot !== col) {
+      ;[a[col], a[pivot]] = [a[pivot], a[col]]
+      ;[b[col], b[pivot]] = [b[pivot], b[col]]
+    }
+    for (let row = col + 1; row < 3; row += 1) {
+      const factor = a[row][col] / a[col][col]
+      for (let k = col; k < 3; k += 1) a[row][k] -= factor * a[col][k]
+      b[row] -= factor * b[col]
+    }
+  }
+  const result: Vec3 = [0, 0, 0]
+  for (let row = 2; row >= 0; row -= 1) {
+    let sum = b[row]
+    for (let k = row + 1; k < 3; k += 1) sum -= a[row][k] * result[k]
+    if (Math.abs(a[row][row]) < 1e-10) return null
+    result[row] = sum / a[row][row]
+  }
+  return result
+}
+
+export function triangleIncenter(a: Vec3, b: Vec3, c: Vec3): Vec3 {
+  const sideA = distance(b, c)
+  const sideB = distance(a, c)
+  const sideC = distance(a, b)
+  const sum = sideA + sideB + sideC
+  if (sum < 1e-9) return [a[0], a[1], a[2]]
+  return [
+    (sideA * a[0] + sideB * b[0] + sideC * c[0]) / sum,
+    (sideA * a[1] + sideB * b[1] + sideC * c[1]) / sum,
+    (sideA * a[2] + sideB * b[2] + sideC * c[2]) / sum,
+  ]
+}
+
+export function triangleCircumcenter(a: Vec3, b: Vec3, c: Vec3): Vec3 | null {
+  const ab = subVec3(b, a)
+  const ac = subVec3(c, a)
+  const normal = crossVec3(ab, ac)
+  if (Math.hypot(normal[0], normal[1], normal[2]) < 1e-9) return null
+
+  const coeff = [
+    [2 * (b[0] - a[0]), 2 * (b[1] - a[1]), 2 * (b[2] - a[2])],
+    [2 * (c[0] - a[0]), 2 * (c[1] - a[1]), 2 * (c[2] - a[2])],
+    [normal[0], normal[1], normal[2]],
+  ]
+  const rhs = [
+    dotVec3(b, b) - dotVec3(a, a),
+    dotVec3(c, c) - dotVec3(a, a),
+    dotVec3(normal, a),
+  ]
+  return solveLinearSystem3x3(coeff, rhs)
+}
+
+export function triangleOrthocenter(a: Vec3, b: Vec3, c: Vec3): Vec3 {
+  const center = triangleCircumcenter(a, b, c)
+  const g = centroid([a, b, c])
+  if (!center) return g
+  return [
+    3 * g[0] - 2 * center[0],
+    3 * g[1] - 2 * center[1],
+    3 * g[2] - 2 * center[2],
   ]
 }
 
@@ -988,6 +1063,23 @@ export function resolvePointPositions(document: ManualDocument) {
         visiting.delete(pointId)
         return positions[pointId]
       }
+    }
+
+    if (
+      (point.pointKind === 'incenter' || point.pointKind === 'orthocenter' || point.pointKind === 'circumcenter')
+      && point.sourcePointIds
+      && point.sourcePointIds.length >= 3
+    ) {
+      const [posA, posB, posC] = point.sourcePointIds.map((pid) => resolvePoint(pid, visiting))
+      if (point.pointKind === 'incenter') {
+        positions[pointId] = triangleIncenter(posA, posB, posC)
+      } else if (point.pointKind === 'orthocenter') {
+        positions[pointId] = triangleOrthocenter(posA, posB, posC)
+      } else {
+        positions[pointId] = triangleCircumcenter(posA, posB, posC) ?? posA
+      }
+      visiting.delete(pointId)
+      return positions[pointId]
     }
 
     if (point.pointKind === 'angleBisectorPoint' && point.sourcePointIds && point.sourcePointIds.length >= 3) {

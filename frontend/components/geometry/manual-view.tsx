@@ -1,13 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, PanelLeft, PanelRight, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { ManualCanvas3D } from './manual-canvas-3d'
 import { ManualLeftPanel } from './manual-left-panel'
 import { ManualLeftSubPanel } from './manual-left-sub-panel'
 import { ManualRightPanel } from './manual-right-panel'
+import { GeometryTabletBanner } from './geometry-tablet-banner'
 import { useGeometry } from './geometry-context'
+import { useViewportTier } from '@/hooks/use-viewport-tier'
 
 interface ManualViewProps {
   onBack: () => void
@@ -18,10 +21,94 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [subOpen, setSubOpen] = useState(true)
+  const [activeSheet, setActiveSheet] = useState<'left' | 'right' | null>(null)
   const { activeTool } = useGeometry()
+  const tier = useViewportTier()
 
   const isSubPanelVisible = subOpen && activeTool !== 'select'
 
+  if (tier === null) {
+    return (
+      <div className="flex h-svh min-h-dvh items-center justify-center bg-background text-muted-foreground">
+        {'\u0110ang t\u1ea3i kh\u00f4ng gian l\u00e0m vi\u1ec7c...'}
+      </div>
+    )
+  }
+
+  // Tablet (< lg): panel dạng Sheet phủ trên canvas, mở tối đa 1 panel.
+  if (tier === 'tablet') {
+    return (
+      <div className="relative h-svh min-h-dvh overflow-hidden bg-background text-foreground">
+        <div className="absolute inset-0 z-0">
+          <ManualCanvas3D />
+        </div>
+
+        <GeometryTabletBanner />
+
+        <div className="pointer-events-auto absolute right-4 top-16 z-50">
+          <Button
+            onClick={onSwitchToSolver}
+            size="sm"
+            className="flex items-center gap-2 rounded-xl shadow-lg shadow-primary/20"
+          >
+            <Sparkles size={16} />
+            {"D\u00f9ng AI gi\u1ea3i to\u00e1n"}
+          </Button>
+        </div>
+
+        {/* FAB mở panel công cụ (trái) */}
+        <button
+          onClick={() => setActiveSheet('left')}
+          aria-label="Mở bảng công cụ"
+          className="pointer-events-auto absolute bottom-5 left-5 z-50 flex size-12 items-center justify-center rounded-2xl border border-border bg-card/95 text-foreground shadow-xl backdrop-blur-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+        >
+          <PanelLeft size={22} />
+        </button>
+
+        {/* FAB mở panel thuộc tính (phải) */}
+        <button
+          onClick={() => setActiveSheet('right')}
+          aria-label="Mở bảng thuộc tính"
+          className="pointer-events-auto absolute bottom-5 right-5 z-50 flex size-12 items-center justify-center rounded-2xl border border-border bg-card/95 text-foreground shadow-xl backdrop-blur-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+        >
+          <PanelRight size={22} />
+        </button>
+
+        <Sheet
+          open={activeSheet === 'left'}
+          onOpenChange={(open) => setActiveSheet(open ? 'left' : null)}
+        >
+          <SheetContent
+            side="left"
+            className="w-[90vw] max-w-[380px] gap-0 overflow-y-auto p-0 sm:max-w-[380px]"
+          >
+            <SheetTitle className="sr-only">{'B\u1ea3ng c\u00f4ng c\u1ee5'}</SheetTitle>
+            <ManualLeftPanel subOpen={subOpen} setSubOpen={setSubOpen} />
+            {isSubPanelVisible && (
+              <div className="border-t border-border">
+                <ManualLeftSubPanel />
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
+
+        <Sheet
+          open={activeSheet === 'right'}
+          onOpenChange={(open) => setActiveSheet(open ? 'right' : null)}
+        >
+          <SheetContent
+            side="right"
+            className="w-[92vw] max-w-[440px] gap-0 overflow-y-auto p-0 sm:max-w-[440px]"
+          >
+            <SheetTitle className="sr-only">{'B\u1ea3ng thu\u1ed9c t\u00ednh'}</SheetTitle>
+            <ManualRightPanel />
+          </SheetContent>
+        </Sheet>
+      </div>
+    )
+  }
+
+  // Laptop trở lên (>= lg): giữ layout overlay cố định như cũ.
   return (
     <div className="relative h-svh min-h-dvh overflow-hidden bg-background text-foreground">
       <div className="absolute inset-0 z-0">
@@ -105,4 +192,3 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
     </div>
   )
 }
-

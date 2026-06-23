@@ -7,7 +7,7 @@ import { GeometryProvider, useGeometry } from '@/components/geometry/geometry-co
 import { GeometryMobileGate } from '@/components/geometry/geometry-mobile-gate'
 import { isManualProjectSnapshot } from '@/components/geometry/manual-editor'
 import { useProjectStore } from '@/hooks/use-project-store'
-import { useMinWidth } from '@/hooks/use-min-width'
+import { useGeometryLayoutMode } from '@/hooks/use-viewport-tier'
 import { clearTransferredProjectStorage, readTransferredProject } from '@/components/geometry/project-transfer'
 
 function SmartSolverContent() {
@@ -133,13 +133,13 @@ function SmartSolverContent() {
 }
 
 export default function SmartSolverPage() {
-  const canOpenWorkspace = useMinWidth(768)
+  const layoutMode = useGeometryLayoutMode()
 
-  if (canOpenWorkspace === false) {
+  if (layoutMode === 'blocked') {
     return <GeometryMobileGate />
   }
 
-  if (canOpenWorkspace === null) {
+  if (layoutMode === null) {
     return (
       <div className="h-svh min-h-dvh bg-background flex items-center justify-center px-4 text-center text-muted-foreground">
         Đang kiểm tra kích thước màn hình...

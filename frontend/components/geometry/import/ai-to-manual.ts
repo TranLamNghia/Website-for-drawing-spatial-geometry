@@ -2,8 +2,12 @@
 
 import type { GeometryData, SolveArtifact, SectionData } from '../geometry-context'
 import {
+  addVec3,
   createEmptyManualDocument,
+  dotVec3,
+  scaleVec3,
   serializeManualProject,
+  subVec3,
   type ManualCircle,
   type ManualCut,
   type ManualDocument,
@@ -479,6 +483,81 @@ function parseRatioTarget(data: any) {
   return null
 }
 
+function getManualPoint(document: ManualDocument, pointMap: Map<string, string>, label: string) {
+  const pointId = pointMap.get(normalizeLabel(label))
+  if (!pointId) return null
+  return document.points.find((candidate) => candidate.id === pointId) ?? null
+}
+
+function computeSegmentParameter(start: Vec3, end: Vec3, point: Vec3) {
+  const dx = end[0] - start[0]
+  const dy = end[1] - start[1]
+  const dz = end[2] - start[2]
+  const lenSq = dx * dx + dy * dy + dz * dz
+  if (lenSq < 1e-9) return 0
+  const px = point[0] - start[0]
+  const py = point[1] - start[1]
+  const pz = point[2] - start[2]
+  return (px * dx + py * dy + pz * dz) / lenSq
+}
+
+function computeAngleBisectorDistance(
+  vertex: Vec3,
+  rayA: Vec3,
+  rayC: Vec3,
+  point: Vec3,
+) {
+  const vBA = subVec3(rayA, vertex)
+  const vBC = subVec3(rayC, vertex)
+  const lenBA = Math.hypot(vBA[0], vBA[1], vBA[2])
+  const lenBC = Math.hypot(vBC[0], vBC[1], vBC[2])
+  if (lenBA < 1e-9 || lenBC < 1e-9) return 20
+
+  const uBA = scaleVec3(vBA, 1 / lenBA)
+  const uBC = scaleVec3(vBC, 1 / lenBC)
+  let dir = addVec3(uBA, uBC)
+  let lenDir = Math.hypot(dir[0], dir[1], dir[2])
+  if (lenDir < 1e-5) {
+    dir = [-uBA[1], uBA[0], 0]
+    lenDir = Math.hypot(dir[0], dir[1])
+  }
+  if (lenDir < 1e-9) return 20
+  const dirNorm = scaleVec3(dir, 1 / lenDir)
+  const offset = subVec3(point, vertex)
+  return Math.abs(dotVec3(offset, dirNorm)) || 20
+}
+
+function applyTriangleCenterFact(
+  document: ManualDocument,
+  pointMap: Map<string, string>,
+  segmentMap: Map<string, string>,
+  polygonMap: Map<string, string>,
+  usedIds: Set<string>,
+  pointLabel: string,
+  shapeName: string,
+  pointKind: 'centroid' | 'incenter' | 'orthocenter' | 'circumcenter',
+  createdByTool: ManualPoint['createdByTool'],
+) {
+  const shapeLabels = parseEntityLabels(shapeName)
+  if (shapeLabels.length < 3) return
+
+  const vertexIds = shapeLabels
+    .map((label) => pointMap.get(label))
+    .filter(Boolean) as string[]
+  if (vertexIds.length < 3) return
+
+  const polygonId = ensurePolygon(document, polygonMap, segmentMap, usedIds, pointMap, shapeLabels)
+  const manualPoint = getManualPoint(document, pointMap, pointLabel)
+  if (!manualPoint) return
+
+  manualPoint.pointKind = pointKind
+  manualPoint.createdByTool = createdByTool
+  manualPoint.sourcePointIds = vertexIds
+  if (polygonId) manualPoint.targetPolygonId = polygonId
+  manualPoint.dependsOn = polygonId ? [polygonId, ...vertexIds] : [...vertexIds]
+  manualPoint.locked = true
+}
+
 function applyConstructionFacts(
   document: ManualDocument,
   pointMap: Map<string, string>,
@@ -500,15 +579,26 @@ function applyConstructionFacts(
     const type = String(fact.type || '').toLowerCase()
     const data = fact.data || {}
 
+    if (type === 'shape') {
+      const target = String(data?.target || data?.Target || '')
+      const labels = parseEntityLabels(target)
+      if (labels.length >= 3) {
+        ensurePolygon(document, polygonMap, segmentMap, usedIds, pointMap, labels)
+      }
+    }
+  })
+
+  construction.facts.forEach((fact) => {
+    const type = String(fact.type || '').toLowerCase()
+    const data = fact.data || {}
+
     if (type === 'midpoint') {
       const { point, labels } = parseSimpleMidpointData(data)
       if (!point || labels.length < 2) return
       const startId = pointMap.get(labels[0])
       const endId = pointMap.get(labels[1])
       if (!startId || !endId) return
-      const pointId = pointMap.get(point)
-      if (!pointId) return
-      const manualPoint = document.points.find((candidate) => candidate.id === pointId)
+      const manualPoint = getManualPoint(document, pointMap, point)
       if (!manualPoint) return
       manualPoint.pointKind = 'midpoint'
       manualPoint.createdByTool = 'midpoint'
@@ -526,9 +616,7 @@ function applyConstructionFacts(
       if (!startId || !endId) return
       const segmentId = ensureSegment(document, segmentMap, usedIds, pointMap, ratio.start, ratio.end)
       if (!segmentId) return
-      const pointId = pointMap.get(ratio.point)
-      if (!pointId) return
-      const manualPoint = document.points.find((candidate) => candidate.id === pointId)
+      const manualPoint = getManualPoint(document, pointMap, ratio.point)
       if (!manualPoint) return
       manualPoint.pointKind = 'segment'
       manualPoint.createdByTool = 'segment'
@@ -544,9 +632,7 @@ function applyConstructionFacts(
       if (!point || !from || !onto) return
       const fromId = pointMap.get(from)
       if (!fromId) return
-      const pointId = pointMap.get(point)
-      if (!pointId) return
-      const manualPoint = document.points.find((candidate) => candidate.id === pointId)
+      const manualPoint = getManualPoint(document, pointMap, point)
       if (!manualPoint) return
       const ontoLabels = parseEntityLabels(onto)
       manualPoint.pointKind = 'projection'
@@ -571,6 +657,132 @@ function applyConstructionFacts(
           manualPoint.dependsOn = [fromId, segmentId]
         }
       }
+      return
+    }
+
+    if (type === 'centroid') {
+      const pointLabel = normalizeLabel(String(data?.point || data?.Point || ''))
+      const objects = Array.isArray(data?.objects) ? data.objects.map((value: unknown) => String(value)) : []
+      if (!pointLabel || objects.length === 0) return
+      applyTriangleCenterFact(
+        document,
+        pointMap,
+        segmentMap,
+        polygonMap,
+        usedIds,
+        pointLabel,
+        objects[0],
+        'centroid',
+        'centroid',
+      )
+      return
+    }
+
+    if (type === 'incenter' || type === 'orthocenter' || type === 'circumcenter') {
+      const pointLabel = normalizeLabel(String(data?.point || data?.Point || ''))
+      const shapeName = String(data?.shape || data?.Shape || '')
+      if (!pointLabel || !shapeName) return
+      applyTriangleCenterFact(
+        document,
+        pointMap,
+        segmentMap,
+        polygonMap,
+        usedIds,
+        pointLabel,
+        shapeName,
+        type as 'incenter' | 'orthocenter' | 'circumcenter',
+        'select',
+      )
+      return
+    }
+
+    if (type === 'intersection') {
+      const { objects, value } = parseSimpleIntersectionData(data)
+      if (!value || objects.length < 2) return
+      const seg1 = parseEntityLabels(objects[0])
+      const seg2 = parseEntityLabels(objects[1])
+      if (seg1.length !== 2 || seg2.length !== 2) return
+      const segmentIdA = ensureSegment(document, segmentMap, usedIds, pointMap, seg1[0], seg1[1])
+      const segmentIdB = ensureSegment(document, segmentMap, usedIds, pointMap, seg2[0], seg2[1])
+      if (!segmentIdA || !segmentIdB) return
+      const manualPoint = getManualPoint(document, pointMap, value)
+      if (!manualPoint) return
+      manualPoint.pointKind = 'intersection'
+      manualPoint.createdByTool = 'intersection'
+      manualPoint.sourceSegmentIds = [segmentIdA, segmentIdB]
+      manualPoint.dependsOn = [segmentIdA, segmentIdB]
+      manualPoint.locked = true
+      return
+    }
+
+    if (type === 'belongs_to') {
+      const { point, target } = parseSimpleBelongsToData(data)
+      if (!point || !target) return
+      const targetLabels = parseEntityLabels(target)
+      const manualPoint = getManualPoint(document, pointMap, point)
+      if (!manualPoint) return
+
+      if (targetLabels.length === 2) {
+        const startId = pointMap.get(targetLabels[0])
+        const endId = pointMap.get(targetLabels[1])
+        if (!startId || !endId) return
+        const segmentId = ensureSegment(document, segmentMap, usedIds, pointMap, targetLabels[0], targetLabels[1])
+        if (!segmentId) return
+        const startPoint = document.points.find((candidate) => candidate.id === startId)
+        const endPoint = document.points.find((candidate) => candidate.id === endId)
+        if (!startPoint || !endPoint) return
+        manualPoint.pointKind = 'segment'
+        manualPoint.createdByTool = 'segment'
+        manualPoint.segmentId = segmentId
+        manualPoint.t = computeSegmentParameter(startPoint.position, endPoint.position, manualPoint.position)
+        manualPoint.dependsOn = [startId, endId, segmentId]
+        manualPoint.locked = true
+        return
+      }
+
+      if (targetLabels.length >= 3) {
+        const vertexIds = targetLabels
+          .map((label) => pointMap.get(label))
+          .filter(Boolean) as string[]
+        if (vertexIds.length < 3) return
+        manualPoint.pointKind = 'facePoint'
+        manualPoint.createdByTool = 'select'
+        manualPoint.sourcePointIds = vertexIds.slice(0, 3)
+        manualPoint.dependsOn = vertexIds.slice(0, 3)
+        manualPoint.locked = true
+      }
+      return
+    }
+
+    if (type === 'angle_bisector') {
+      const pointLabel = normalizeLabel(String(data?.point || data?.Point || ''))
+      const vertexLabel = normalizeLabel(String(data?.vertex || data?.Vertex || ''))
+      const ray1Label = normalizeLabel(String(data?.ray_1 || data?.ray1 || data?.Ray_1 || ''))
+      const ray2Label = normalizeLabel(String(data?.ray_2 || data?.ray2 || data?.Ray_2 || ''))
+      if (!pointLabel || !vertexLabel || !ray1Label || !ray2Label) return
+
+      const vertexId = pointMap.get(vertexLabel)
+      const ray1Id = pointMap.get(ray1Label)
+      const ray2Id = pointMap.get(ray2Label)
+      const manualPoint = getManualPoint(document, pointMap, pointLabel)
+      if (!vertexId || !ray1Id || !ray2Id || !manualPoint) return
+
+      const vertexPoint = document.points.find((candidate) => candidate.id === vertexId)
+      const ray1Point = document.points.find((candidate) => candidate.id === ray1Id)
+      const ray2Point = document.points.find((candidate) => candidate.id === ray2Id)
+      if (!vertexPoint || !ray1Point || !ray2Point) return
+
+      manualPoint.pointKind = 'angleBisectorPoint'
+      manualPoint.createdByTool = 'angleBisector'
+      manualPoint.sourcePointIds = [ray1Id, vertexId, ray2Id]
+      manualPoint.t = computeAngleBisectorDistance(
+        vertexPoint.position,
+        ray1Point.position,
+        ray2Point.position,
+        manualPoint.position,
+      )
+      manualPoint.dependsOn = [ray1Id, vertexId, ray2Id]
+      manualPoint.locked = true
     }
   })
 }
