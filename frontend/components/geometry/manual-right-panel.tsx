@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Circle, Pentagon, ChevronRight, PencilRuler, Pyramid, Save, Trash2, Triangle, Square, Eye, EyeOff, GripVertical, Layers, Scissors, Lock, Unlock } from 'lucide-react'
+import { Box, Circle, Pentagon, ChevronRight, ChevronUp, ChevronDown, PencilRuler, Pyramid, Save, Trash2, Triangle, Square, Eye, EyeOff, GripVertical, Layers, Scissors, Lock, Unlock } from 'lucide-react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1019,6 +1019,22 @@ export function ManualRightPanel() {
     updateManualSolidCuts(solidId, [...items, ...hiddenCuts])
   }
 
+  const moveCut = (solidId: string, allCuts: import('./manual-editor').ManualCut[], index: number, direction: -1 | 1) => {
+    const visibleCuts = allCuts.filter(c => c.visible)
+    const hiddenCuts = allCuts.filter(c => !c.visible)
+    const destinationIndex = index + direction
+
+    if (destinationIndex < 0 || destinationIndex >= visibleCuts.length) return
+
+    const items = Array.from(visibleCuts)
+    const [movedItem] = items.splice(index, 1)
+    items.splice(destinationIndex, 0, movedItem)
+
+    const nextVis = migrateVisibility(solidId, visibleCuts, items)
+    setBitmaskVisibility(nextVis)
+    updateManualSolidCuts(solidId, [...items, ...hiddenCuts])
+  }
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     points: true,
     segments: true,
@@ -1368,6 +1384,26 @@ export function ManualRightPanel() {
                                           </div>
                                           <span className="font-bold w-4 text-muted-foreground">{index + 1}.</span>
                                           <span className="flex-1">Cắt bởi ({label})</span>
+                                          <div className="ml-auto flex items-center gap-1 lg:hidden">
+                                            <button
+                                              type="button"
+                                              onClick={() => moveCut(solid.id, solid.cuts!, index, -1)}
+                                              disabled={index === 0}
+                                              aria-label={`Đưa lát cắt ${label} lên trên`}
+                                              className="flex min-h-8 min-w-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-35"
+                                            >
+                                              <ChevronUp size={13} />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => moveCut(solid.id, solid.cuts!, index, 1)}
+                                              disabled={index === solidCuts.length - 1}
+                                              aria-label={`Đưa lát cắt ${label} xuống dưới`}
+                                              className="flex min-h-8 min-w-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-35"
+                                            >
+                                              <ChevronDown size={13} />
+                                            </button>
+                                          </div>
                                         </div>
                                       )}
                                     </Draggable>

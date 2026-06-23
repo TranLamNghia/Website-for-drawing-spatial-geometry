@@ -221,7 +221,7 @@ export default function FeedbackPage() {
                             type="button"
                             onClick={() => removeImage(idx)}
                             aria-label="Xóa ảnh"
-                            className="absolute top-1.5 right-1.5 flex min-h-8 min-w-8 items-center justify-center rounded-full bg-destructive/90 text-destructive-foreground opacity-100 transition-opacity hover:bg-destructive sm:opacity-0 sm:group-hover:opacity-100"
+                            className="absolute top-1.5 right-1.5 flex min-h-8 min-w-8 items-center justify-center rounded-full bg-destructive/90 text-destructive-foreground opacity-100 transition-opacity hover:bg-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/60 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                           >
                             <X size={14} />
                           </button>

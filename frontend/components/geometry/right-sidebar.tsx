@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Scissors, Expand, Layers, ChevronRight, ChevronDown, Box, Cuboid, GripVertical, Check, Save, Sparkles, Eye, EyeOff } from 'lucide-react'
+import { Scissors, Expand, Layers, ChevronRight, ChevronDown, ChevronUp, Box, Cuboid, GripVertical, Check, Save, Sparkles, Eye, EyeOff } from 'lucide-react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { useGeometry } from './geometry-context'
 import type { SectionData } from './geometry-context'
@@ -376,6 +376,19 @@ export function RightSidebar() {
     setBitmaskVisibility(nextVis)
   }
 
+  const moveSection = (index: number, direction: -1 | 1) => {
+    const destinationIndex = index + direction
+    if (destinationIndex < 0 || destinationIndex >= orderedSectionIds.length) return
+
+    const items = Array.from(orderedSectionIds)
+    const [movedItem] = items.splice(index, 1)
+    items.splice(destinationIndex, 0, movedItem)
+
+    const nextVis = migrateVisibility(items)
+    setOrderedSectionIds(items)
+    setBitmaskVisibility(nextVis)
+  }
+
   return (
     <div className="h-full flex flex-col p-6 gap-6 overflow-hidden bg-card/95 backdrop-blur-md">
       <div className="flex-shrink-0">
@@ -453,6 +466,26 @@ export function RightSidebar() {
                                         </div>
                                         <span className="font-bold w-4 text-muted-foreground">{index + 1}.</span>
                                         <span className="flex-1 font-bold">({label})</span>
+                                        <div className="ml-auto flex items-center gap-1 lg:hidden">
+                                          <button
+                                            type="button"
+                                            onClick={() => moveSection(index, -1)}
+                                            disabled={index === 0}
+                                            aria-label={`Đưa mặt phẳng ${label} lên trên`}
+                                            className="flex min-h-8 min-w-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-35"
+                                          >
+                                            <ChevronUp size={14} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => moveSection(index, 1)}
+                                            disabled={index === orderedSectionIds.length - 1}
+                                            aria-label={`Đưa mặt phẳng ${label} xuống dưới`}
+                                            className="flex min-h-8 min-w-8 items-center justify-center rounded-md border border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-35"
+                                          >
+                                            <ChevronDown size={14} />
+                                          </button>
+                                        </div>
                                       </div>
                                     )}
                                   </Draggable>

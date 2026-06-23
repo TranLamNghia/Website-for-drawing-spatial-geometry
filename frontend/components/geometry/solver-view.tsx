@@ -25,6 +25,8 @@ export function SolverView({ onBack }: SolverViewProps) {
   const tier = useViewportTier()
   const hasInitializedDefaults = useRef(false)
 
+  const leftPanelWidth = tier === 'ultra' ? 'clamp(400px, 26vw, 520px)' : '400px'
+
   useEffect(() => {
     if (!tier || hasInitializedDefaults.current) return
 
@@ -32,6 +34,11 @@ export function SolverView({ onBack }: SolverViewProps) {
     if (tier === 'laptop') {
       setLeftOpen(true)
       setRightOpen(false)
+    }
+
+    // P3-5: trên ultra-wide, right panel khởi đầu rộng hơn.
+    if (tier === 'ultra') {
+      setRightWidth(Math.min(Math.round(window.innerWidth * 0.28), 580))
     }
 
     hasInitializedDefaults.current = true
@@ -132,10 +139,11 @@ export function SolverView({ onBack }: SolverViewProps) {
 
       {/* Left Sidebar overlay */}
       <div
-        className={`absolute left-0 top-0 bottom-0 z-30 transition-transform duration-500 ease-in-out border-r border-border bg-card/50 backdrop-blur-md shadow-xl ${
-          leftOpen ? 'translate-x-0' : '-translate-x-[400px]'
-        }`}
-        style={{ width: 400 }}
+        className="absolute left-0 top-0 bottom-0 z-30 transition-transform duration-500 ease-in-out border-r border-border bg-card/50 backdrop-blur-md shadow-xl"
+        style={{
+          width: leftPanelWidth,
+          transform: leftOpen ? 'translateX(0)' : `translateX(-${leftPanelWidth})`,
+        }}
       >
         <div className="w-full h-full overflow-hidden">
           <SolveLeftPanel />

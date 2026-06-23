@@ -28,6 +28,9 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
 
   const isSubPanelVisible = subOpen && activeTool !== 'select'
 
+  const leftPanelWidth = tier === 'ultra' ? 'clamp(320px, 20vw, 480px)' : '320px'
+  const rightPanelWidth = tier === 'ultra' ? 'clamp(400px, 26vw, 560px)' : '440px'
+
   useEffect(() => {
     if (!tier || hasInitializedDefaults.current) return
 
@@ -146,9 +149,9 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
         }`}
       >
         {/* Sidebar chính: Danh mục công cụ */}
-        <div 
+        <div
           className="h-full border-r border-border bg-card/92 backdrop-blur-md overflow-hidden"
-          style={{ width: 320 }}
+          style={{ width: leftPanelWidth }}
         >
           <ManualLeftPanel subOpen={subOpen} setSubOpen={setSubOpen} />
         </div>
@@ -186,8 +189,8 @@ export function ManualView({ onBack, onSwitchToSolver }: ManualViewProps) {
       <div
         className="absolute top-0 right-0 bottom-0 z-[100] border-l border-border bg-card/92 shadow-2xl backdrop-blur-md transition-transform duration-500 ease-in-out"
         style={{
-          width: 440,
-          transform: rightOpen ? 'translateX(0px)' : 'translateX(440px)',
+          width: rightPanelWidth,
+          transform: rightOpen ? 'translateX(0)' : `translateX(${rightPanelWidth})`,
         }}
       >
         <div className="h-full w-full overflow-hidden">

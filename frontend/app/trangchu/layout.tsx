@@ -65,6 +65,7 @@ function NavItem({
       className={`
         w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
         transition-all duration-200 group text-left
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60
         ${
           active
             ? 'bg-primary/15 text-primary'
