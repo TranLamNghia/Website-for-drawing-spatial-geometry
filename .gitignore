@@ -76,12 +76,9 @@ MANIFEST
 *.db
 
 # ==============================
-# 04. FRONTEND (NODEJS / REACT / VUE)
+# 04. FRONTEND (NEXT.JS / NODE)
 # ==============================
-# Thư viện rác nặng nhất
 node_modules/
-jspm_packages/
-bower_components/
 
 # Logs NodeJS
 npm-debug.log*
@@ -90,19 +87,23 @@ yarn-error.log*
 pnpm-debug.log*
 .pnpm-store
 
-# Thư mục build
+# Next.js / bundler output & cache
 dist/
 build/
 .next/
 out/
-.nuxt/
-.vuepress/
-.serverless/
-.output/
+.turbo/
+.eslintcache
 
-# Test reports
+# Unit test coverage
 coverage/
 .nyc_output/
+
+# Playwright (npm run test:e2e) — output sinh ra khi chạy test, không commit
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
 
 # TypeScript build info
 *.tsbuildinfo

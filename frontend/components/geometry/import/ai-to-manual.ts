@@ -849,6 +849,7 @@ function createFallbackGeometryDocument(
     const centerId = pointMap.get(normalizeLabel(sphere.center))
     if (!centerId) return
     const solidId = safeId('solid', `sphere_${sphere.center}`, usedIds)
+    const ringId = safeId('sring', sphere.center, usedIds)
     document.solids.push({
       id: solidId,
       label: sphere.center,
@@ -861,6 +862,7 @@ function createFallbackGeometryDocument(
       solidType: 'sphere',
       centerPointId: centerId,
       radius: sphere.radius,
+      sphereRings: [{ id: ringId, phi: Math.PI / 2, theta: 0 }],
     })
   })
 
