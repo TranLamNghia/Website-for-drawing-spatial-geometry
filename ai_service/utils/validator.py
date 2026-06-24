@@ -7,6 +7,59 @@ from datetime import datetime
 BASE_DIR = Path(__file__).parent.parent
 SCHEMA_PATH = BASE_DIR / "schemas" / "geometry_schema.json"
 schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+def _ensure_query_type_support(schema_obj: dict, query_type: str) -> None:
+    try:
+        query_enum = (
+            schema_obj
+            .setdefault("properties", {})
+            .setdefault("queries", {})
+            .setdefault("items", {})
+            .setdefault("properties", {})
+            .setdefault("type", {})
+            .setdefault("enum", [])
+        )
+        if query_type not in query_enum:
+            query_enum.append(query_type)
+
+        definitions = schema_obj.setdefault("definitions", {})
+        query_def = definitions.setdefault("query_intersection_line", {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": query_type
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "type": "object",
+                        "additionalProperties": True
+                    }
+                }
+            }
+        })
+        if isinstance(query_def, dict):
+            query_def.setdefault("if", {}).setdefault("properties", {}).setdefault("type", {}).setdefault("const", query_type)
+            then_props = query_def.setdefault("then", {}).setdefault("properties", {})
+            then_props.setdefault("data", {}).setdefault("type", "object")
+            then_props["data"].setdefault("additionalProperties", True)
+
+        query_all_of = (
+            schema_obj
+            .setdefault("properties", {})
+            .setdefault("queries", {})
+            .setdefault("items", {})
+            .setdefault("allOf", [])
+        )
+        if not any(isinstance(item, dict) and item.get("$ref") == "#/definitions/query_intersection_line" for item in query_all_of):
+            query_all_of.append({"$ref": "#/definitions/query_intersection_line"})
+    except Exception:
+        # Keep validator resilient even if schema structure changes.
+        pass
+
+_ensure_query_type_support(schema, "intersection_line")
 validator = Draft7Validator(schema) # Initialize Base Validator
 
 def clean_markdown_json(raw_text: str) -> str:

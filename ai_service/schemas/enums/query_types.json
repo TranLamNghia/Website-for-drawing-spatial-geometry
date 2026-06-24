@@ -17,8 +17,8 @@
     "equation_plane",
     "equation_sphere",
     "coordinates",
-    "proof_existence",
     "length",
-    "shape"
+    "shape",
+    "intersection_line"
   ]
 }
