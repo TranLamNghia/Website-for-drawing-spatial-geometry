@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Circle, Pentagon, ChevronRight, ChevronUp, ChevronDown, PencilRuler, Pyramid, Trash2, Triangle, Square, Eye, EyeOff, GripVertical, Layers, Scissors, Lock, Unlock } from 'lucide-react'
+import { Box, Circle, Cone, Cylinder, Pentagon, ChevronRight, ChevronUp, ChevronDown, PencilRuler, Pyramid, Trash2, Triangle, Square, Eye, EyeOff, GripVertical, Layers, Scissors, Lock, Unlock } from 'lucide-react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,7 +12,9 @@ import {
   ManualSegment,
   ManualSolid,
   ManualCircle,
+  resolveEntityStyle,
 } from './manual-editor'
+import { EntityStyleControls } from './entity-style-controls'
 import { ChunkTree } from './right-sidebar'
 
 function formatCoord(value: number) {
@@ -30,6 +32,14 @@ function getSolidDisplayName(
   }
   if (solid.solidType === 'regularPyramid') return 'Ch\u00f3p \u0111\u1ec1u'
   if (solid.solidType === 'prism') return 'L\u0103ng tr\u1ee5'
+  if (solid.solidType === 'sphere') {
+    if (solid.createdByTool === 'solidIncenter') return 'H\u00ecnh c\u1ea7u n\u1ed9i ti\u1ebfp'
+    if (solid.createdByTool === 'solidCircumcenter') return 'H\u00ecnh c\u1ea7u ngo\u1ea1i ti\u1ebfp'
+    return 'H\u00ecnh c\u1ea7u'
+  }
+  if (solid.solidType === 'cone') return 'H\u00ecnh n\u00f3n'
+  if (solid.solidType === 'cylinder') return 'H\u00ecnh tr\u1ee5'
+  if (solid.solidType === 'cube') return 'L\u1eadp ph\u01b0\u01a1ng'
 
   if (!solid.cornerPointIds) return 'H\u00ecnh h\u1ed9p'
   const start = pointPositions[solid.cornerPointIds[0]]
@@ -44,6 +54,27 @@ function getSolidDisplayName(
     Math.abs(width - height) < 1e-6
 
   return isCube ? 'L\u1eadp ph\u01b0\u01a1ng' : 'H\u00ecnh h\u1ed9p'
+}
+
+function getSolidIcon(solid: ManualSolid) {
+  switch (solid.solidType) {
+    case 'pyramid':
+    case 'regularPyramid':
+      return <Pyramid size={14} />
+    case 'sphere':
+      return <Circle size={14} />
+    case 'cone':
+      return <Cone size={14} />
+    case 'cylinder':
+      return <Cylinder size={14} />
+    case 'cube':
+    case 'prism':
+      return <Box size={14} />
+    case 'box':
+      return <Square size={14} />
+    default:
+      return <Box size={14} />
+  }
 }
 
 function TypePill({
@@ -316,6 +347,8 @@ function ObjectRow({
   onRemoveRing,
   onToggleVisibility,
   onRename,
+  onUpdateStyle,
+  styleEnabled,
   basePoints = [],
 }: {
   typeLabel: string
@@ -333,6 +366,8 @@ function ObjectRow({
   onRemoveRing?: (ringId: string) => void
   onToggleVisibility: () => void
   onRename: (newName: string) => void
+  onUpdateStyle: (style: { color?: string | null; opacity?: number | null }) => void
+  styleEnabled: boolean
   basePoints?: string[]
 }) {
   const [heightDraft, setHeightDraft] = useState(heightVal ? heightVal.toString() : '')
@@ -382,7 +417,7 @@ function ObjectRow({
             onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
             onClick={(e) => {
               e.stopPropagation()
-              onSelect()
+              if (!selected) onSelect()
             }}
             maxLength={30}
             className="h-7 border-none bg-transparent p-0 text-left text-[14px] font-semibold tracking-tight focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:bg-background/80 truncate w-full"
@@ -457,6 +492,15 @@ function ObjectRow({
             onKeyDown={(e) => e.key === 'Enter' && commitHeight()}
           />
         </div>
+      )}
+
+      {solid && styleEnabled && (
+        <EntityStyleControls
+          color={resolveEntityStyle(solid).color}
+          opacity={resolveEntityStyle(solid).opacity}
+          hasCustom={solid.color !== undefined || solid.opacity !== undefined}
+          onChange={onUpdateStyle}
+        />
       )}
 
       {selected && solid?.solidType === 'sphere' && (
@@ -677,6 +721,8 @@ function CircleRow({
   radiusVal,
   onToggleVisibility,
   onRename,
+  onUpdateStyle,
+  styleEnabled,
   basePoints = [],
 }: {
   circle: any
@@ -688,10 +734,13 @@ function CircleRow({
   radiusVal?: number
   onToggleVisibility: () => void
   onRename: (newName: string) => void
+  onUpdateStyle: (style: { color?: string | null; opacity?: number | null }) => void
+  styleEnabled: boolean
   basePoints?: string[]
 }) {
   const [radiusDraft, setRadiusDraft] = useState(radiusVal ? radiusVal.toString() : '')
   const [labelDraft, setLabelDraft] = useState(circle.label)
+  const circleStyle = resolveEntityStyle(circle)
 
   useEffect(() => {
     if (radiusVal !== undefined) {
@@ -739,7 +788,7 @@ function CircleRow({
             onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
             onClick={(e) => {
               e.stopPropagation()
-              onSelect()
+              if (!selected) onSelect()
             }}
             maxLength={30}
             className="h-7 border-none bg-transparent p-0 text-left text-[13px] font-semibold tracking-tight focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:bg-background/80 truncate w-full"
@@ -806,6 +855,15 @@ function CircleRow({
           />
         </div>
       )}
+
+      {styleEnabled && (
+        <EntityStyleControls
+          color={circleStyle.color}
+          opacity={circleStyle.opacity}
+          hasCustom={circle.color !== undefined || circle.opacity !== undefined}
+          onChange={onUpdateStyle}
+        />
+      )}
     </div>
   )
 }
@@ -821,6 +879,8 @@ function PolygonRow({
   isSpecialShape,
   onToggleVisibility,
   onRename,
+  onUpdateStyle,
+  styleEnabled,
   basePoints = [],
 }: {
   polygon: ManualPolygon
@@ -832,9 +892,12 @@ function PolygonRow({
   isSpecialShape: boolean
   onToggleVisibility: () => void
   onRename: (newName: string) => void
+  onUpdateStyle: (style: { color?: string | null; opacity?: number | null }) => void
+  styleEnabled: boolean
   basePoints?: string[]
 }) {
   const [labelDraft, setLabelDraft] = useState(polygon.label)
+  const polygonStyle = resolveEntityStyle(polygon)
 
   useEffect(() => {
     setLabelDraft(polygon.label)
@@ -867,7 +930,7 @@ function PolygonRow({
             onKeyDown={(event) => event.key === 'Enter' && commitLabel()}
             onClick={(e) => {
               e.stopPropagation()
-              onSelect()
+              if (!selected) onSelect()
             }}
             maxLength={30}
             className="h-7 border-none bg-transparent p-0 text-left text-[13px] font-semibold tracking-tight focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:bg-background/80 truncate w-full"
@@ -914,6 +977,15 @@ function PolygonRow({
           ))}
         </div>
       )}
+
+      {styleEnabled && (
+        <EntityStyleControls
+          color={polygonStyle.color}
+          opacity={polygonStyle.opacity}
+          hasCustom={polygon.color !== undefined || polygon.opacity !== undefined}
+          onChange={onUpdateStyle}
+        />
+      )}
     </div>
   )
 }
@@ -932,6 +1004,8 @@ export function ManualRightPanel() {
     updateSolidHeight,
     updateManualSolidCuts,
     updateCircleRadius,
+    updateManualEntityStyle,
+    colorCustomizationEnabled,
     updatePointT,
     updatePointAngle,
     createSphereAngleDependentPoint,
@@ -1270,11 +1344,19 @@ export function ManualRightPanel() {
                         icon={<IconComponent size={14} />}
                         basePoints={polygonPointMap[polygon.id] ?? []}
                         selected={manualSelection?.kind === 'polygon' && manualSelection.id === polygon.id}
-                        onSelect={() => setManualSelection({ kind: 'polygon', id: polygon.id })}
+                        onSelect={() =>
+                          setManualSelection(
+                            manualSelection?.kind === 'polygon' && manualSelection.id === polygon.id
+                              ? null
+                              : { kind: 'polygon', id: polygon.id },
+                          )
+                        }
                         onDelete={() => removeManualEntity('polygon', polygon.id)}
                         isSpecialShape={true}
                         onToggleVisibility={() => toggleManualVisibility('polygon', polygon.id)}
                         onRename={(newName: string) => renameManualEntity('polygon', polygon.id, newName)}
+                        onUpdateStyle={(style) => updateManualEntityStyle('polygon', polygon.id, style)}
+                        styleEnabled={colorCustomizationEnabled}
                       />
                     )
                   })}
@@ -1289,6 +1371,10 @@ export function ManualRightPanel() {
                       const labels = circle.sourcePointIds?.map((pid: string) => pointLabelMap[pid] ?? '?') ?? []
                       desc = `Qua ${labels.join(', ')}`
                       circlePoints = circle.sourcePointIds?.map((pid: string) => pointLabelMap[pid] ?? '?') ?? []
+                    } else if (circle.circleKind === 'triangleIncircle' || circle.circleKind === 'triangleCircumcircle') {
+                      const labels = circle.sourcePointIds?.map((pid: string) => pointLabelMap[pid] ?? '?') ?? []
+                      desc = `${circle.circleKind === 'triangleIncircle' ? 'Nội tiếp' : 'Ngoại tiếp'} ${labels.join(', ')}`
+                      circlePoints = labels
                     } else if (circle.circleKind === 'centerRadius') {
                       desc = `Tâm ${centerLabel}`
                       isEditable = true
@@ -1305,12 +1391,20 @@ export function ManualRightPanel() {
                         desc={desc}
                         basePoints={circlePoints}
                         selected={manualSelection?.kind === 'circle' && manualSelection.id === circle.id}
-                        onSelect={() => setManualSelection({ kind: 'circle', id: circle.id })}
+                        onSelect={() =>
+                          setManualSelection(
+                            manualSelection?.kind === 'circle' && manualSelection.id === circle.id
+                              ? null
+                              : { kind: 'circle', id: circle.id },
+                          )
+                        }
                         onDelete={() => removeManualEntity('circle', circle.id)}
                         onUpdateRadius={isEditable ? (newRad) => updateCircleRadius(circle.id, newRad) : undefined}
                         radiusVal={isEditable ? Number(circle.radius) : undefined}
                         onToggleVisibility={() => toggleManualVisibility('circle', circle.id)}
                         onRename={(newName: string) => renameManualEntity('circle', circle.id, newName)}
+                        onUpdateStyle={(style) => updateManualEntityStyle('circle', circle.id, style)}
+                        styleEnabled={colorCustomizationEnabled}
                       />
                     )
                   })}
@@ -1424,12 +1518,18 @@ export function ManualRightPanel() {
                     <ObjectRow
                       key={solid.id}
                       typeLabel={getSolidDisplayName(solid, manualDerived.pointPositions)}
-                      icon={solid.solidType === 'pyramid' ? <Pyramid size={14} /> : <Box size={14} />}
+                      icon={getSolidIcon(solid)}
                       name={solid.label}
                       values={[]}
                       basePoints={[]}
                       selected={manualSelection?.kind === 'solid' && manualSelection.id === solid.id}
-                      onSelect={() => setManualSelection({ kind: 'solid', id: solid.id })}
+                      onSelect={() =>
+                        setManualSelection(
+                          manualSelection?.kind === 'solid' && manualSelection.id === solid.id
+                            ? null
+                            : { kind: 'solid', id: solid.id },
+                        )
+                      }
                       onDelete={() => removeManualEntity('solid', solid.id)}
                       onUpdateHeight={solid.height !== undefined ? (newH) => updateSolidHeight(solid.id, newH) : undefined}
                       heightVal={solid.height}
@@ -1439,6 +1539,8 @@ export function ManualRightPanel() {
                       onRemoveRing={(ringId) => removeSphereRing(solid.id, ringId)}
                       onToggleVisibility={() => toggleManualVisibility('solid', solid.id)}
                       onRename={(newName: string) => renameManualEntity('solid', solid.id, newName)}
+                      onUpdateStyle={(style) => updateManualEntityStyle('solid', solid.id, style)}
+                      styleEnabled={colorCustomizationEnabled}
                     />
                   ))}
                 </div>

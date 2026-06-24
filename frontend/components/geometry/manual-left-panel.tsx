@@ -65,6 +65,9 @@ const TOOLS: Array<{
   { id: 'specialQuadrilateral_vuong', label: 'Hình vuông', icon: Square },
   { id: 'circle', label: 'Đường tròn', icon: Compass, group: '2d_special' },
   { id: 'centroid', label: 'Trọng tâm', icon: Target, group: '2d_special' },
+  { id: 'incenter', label: 'Đường tròn nội tiếp tam giác', icon: Target, group: '2d_special' },
+  { id: 'circumcenter', label: 'Đường tròn ngoại tiếp tam giác', icon: Crosshair, group: '2d_special' },
+  { id: 'orthocenter', label: 'Trực tâm', icon: Activity, group: '2d_special' },
   { id: 'perpendicularBisector', label: 'Đ.trung trực', icon: Activity, group: '2d_special' },
   { id: 'angleBisector', label: 'Tia phân giác', icon: Scissors, group: '2d_special' },
   { id: 'parallelLine', label: 'Đ.song song', icon: Equal, group: '2d_special' },
@@ -76,6 +79,8 @@ const TOOLS: Array<{
   { id: 'rightPyramid', label: 'Hình chóp vuông', icon: Pyramid },
   { id: 'prism', label: 'Lăng trụ', icon: Box },
   { id: 'sphere', label: 'Hình cầu', icon: Circle },
+  { id: 'solidIncenter', label: 'Hình cầu nội tiếp', icon: Target },
+  { id: 'solidCircumcenter', label: 'Hình cầu ngoại tiếp', icon: Crosshair },
   { id: 'cone', label: 'Hình nón', icon: Cone },
   { id: 'cylinder', label: 'Hình trụ', icon: Cylinder },
   { id: 'slice', label: 'Lát cắt hình 3D', icon: Scissors },
@@ -85,7 +90,7 @@ const CATEGORIES = [
   {
     id: 'points_lines',
     label: 'Điểm & Đường thẳng',
-    tools: ['select', 'point', 'segment', 'midpoint', 'intersection', 'projection', 'centroid', 'perpendicularBisector', 'angleBisector', 'parallelLine', 'perpendicularLine']
+    tools: ['select', 'point', 'segment', 'midpoint', 'intersection', 'projection', 'centroid', 'orthocenter', 'perpendicularBisector', 'angleBisector', 'parallelLine', 'perpendicularLine']
   },
   {
     id: 'triangles',
@@ -100,12 +105,12 @@ const CATEGORIES = [
   {
     id: 'circles',
     label: 'Đường tròn',
-    tools: ['circle']
+    tools: ['circle', 'incenter', 'circumcenter']
   },
   {
     id: 'solids',
     label: 'Hình khối 3D',
-    tools: ['box', 'cube', 'pyramid', 'regularPyramid', 'rightPyramid', 'prism', 'sphere', 'cone', 'cylinder', 'slice']
+    tools: ['box', 'cube', 'pyramid', 'regularPyramid', 'rightPyramid', 'prism', 'sphere', 'solidIncenter', 'solidCircumcenter', 'cone', 'cylinder', 'slice']
   }
 ]
 
@@ -291,6 +296,19 @@ export function ManualLeftPanel({
 
     if (tool === 'centroid') {
       setDraftOperation({ tool: 'centroid', pointIds: [] })
+      return
+    }
+
+    if (tool === 'incenter' || tool === 'circumcenter' || tool === 'orthocenter') {
+      setDraftOperation({ tool, pointIds: [] })
+      return
+    }
+
+    if (tool === 'solidIncenter' || tool === 'solidCircumcenter') {
+      setDraftOperation({
+        tool,
+        targetId: manualSelection?.kind === 'solid' ? manualSelection.id : null,
+      })
       return
     }
 

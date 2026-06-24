@@ -9,7 +9,7 @@ import { ViewHelper } from 'three/examples/jsm/helpers/ViewHelper.js'
 import { useTheme } from 'next-themes'
 import { useGeometry } from './geometry-context'
 import { CanvasToolbar } from './canvas-toolbar'
-import { ManualDisplayPolygon, ManualDisplaySegment, ManualSolid, ManualCircle, serializeManualProject, computeSolidPlaneIntersection, ManualSnapTarget, Vec3, resolveCircleProps } from './manual-editor'
+import { ManualDisplayPolygon, ManualDisplaySegment, ManualSolid, ManualCircle, serializeManualProject, computeSolidPlaneIntersection, ManualSnapTarget, Vec3, resolveCircleProps, resolveEntityStyle } from './manual-editor'
 
 type InteractiveHit = {
   kind: 'point' | 'segment' | 'polygon' | 'solid' | 'circle'
@@ -18,6 +18,16 @@ type InteractiveHit = {
   bitmaskKey?: string
   facePointIds?: string[]
   isVirtual?: boolean
+}
+
+// Style mặc định theo theme khi tắt chức năng đổi màu (giao diện như trước đây).
+function defaultThemeStyle(
+  sourceKind: 'polygon' | 'solid',
+  colors: ReturnType<typeof getColors>,
+): { color: number; opacity: number } {
+  return sourceKind === 'solid'
+    ? { color: colors.solid, opacity: 0.14 }
+    : { color: colors.polygon, opacity: 0.18 }
 }
 
 function getColors(isDark: boolean) {
@@ -342,14 +352,17 @@ export function ManualCanvas3D() {
     setShowGrid,
     showLabels,
     setShowLabels,
+    colorCustomizationEnabled,
+    setColorCustomizationEnabled,
     saveManualState,
     createMidpoint,
     createIntersection,
     createProjection,
     createProjectionByPoints,
     createCentroid,
-    createPerpendicularBisector,
-    createAngleBisector,
+    createTriangleCenter,
+    createTriangleCircle,
+    createSolidSphere,
     createParallelLine,
     createPerpendicularLine,
     removeManualEntity,
@@ -863,6 +876,10 @@ export function ManualCanvas3D() {
         depthWrite: false,
       }),
     )
+    // Luôn vẽ lưới đáy trước (phía sau) các khối. Nếu để mặc định, ở chế độ đổi màu
+    // (khối trong suốt, không có depth blocker) mặt lưới sẽ bị sắp xếp đè lên nửa dưới
+    // của khối khi xoay về hướng Oxy, gây tối/đục khó chịu.
+    basePlane.renderOrder = -1
     environment.add(basePlane)
 
     const axesGroup = new THREE.Group()
@@ -1084,6 +1101,9 @@ export function ManualCanvas3D() {
             new THREE.BufferGeometry().setFromPoints(gridPoints),
             new THREE.LineBasicMaterial({ color: colors.grid, transparent: true, opacity: 0.8, depthWrite: false }),
           )
+          // Luôn vẽ lưới ô phía sau các khối, tránh việc lưới bị sắp xếp đè lên/lộ qua
+          // khối trong suốt (ở chế độ đổi màu không còn depth blocker) khi xoay về Oxy.
+          dynamicGrid.renderOrder = -1
           environment.add(dynamicGrid)
         }
       }
@@ -1228,16 +1248,25 @@ export function ManualCanvas3D() {
         }
         faceGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
         faceGeometry.computeVertexNormals()
+        const faceFallback = defaultThemeStyle(polygon.sourceKind === 'solid' ? 'solid' : 'polygon', colors)
+        const faceColor = colorCustomizationEnabled ? polygon.fillColor : faceFallback.color
+        const faceOpacity = colorCustomizationEnabled ? polygon.opacity : faceFallback.opacity
+        // Khi bật đổi màu: tắt depthWrite + bỏ depth blocker để độ trong suốt điều
+        // khiển liên tục mức nhìn xuyên (kéo trong suốt cao -> thấy rõ khối bên trong,
+        // giảm dần -> mờ dần, về 0 -> đặc, che hẳn). Khi tắt: giữ giao diện đặc như cũ.
         const material = new THREE.MeshBasicMaterial({
-          color: polygon.sourceKind === 'solid' ? colors.solid : colors.polygon,
+          color: faceColor,
           transparent: true,
-          opacity: polygon.opacity,
+          opacity: faceOpacity,
           side: THREE.DoubleSide,
+          depthWrite: !colorCustomizationEnabled,
           polygonOffset: true,
           polygonOffsetFactor: 1 + pIdx * 0.1,
           polygonOffsetUnits: 1,
         })
         const mesh = new THREE.Mesh(faceGeometry, material)
+        mesh.userData.baseColor = faceColor
+        mesh.userData.baseOpacity = faceOpacity
         mesh.userData.entity = {
           kind: polygon.sourceKind === 'solid' ? 'solid' : 'polygon',
           id: polygon.sourceKind === 'solid' ? polygon.id : polygon.sourceId,
@@ -1245,17 +1274,19 @@ export function ManualCanvas3D() {
           ...(polygon.pointIds ? { facePointIds: polygon.pointIds } : {}),
         } satisfies InteractiveHit
         group.add(mesh)
-        const blockerMaterial = new THREE.MeshBasicMaterial({
-          colorWrite: false,
-          depthWrite: true,
-          side: THREE.DoubleSide,
-          polygonOffset: true,
-          polygonOffsetFactor: 1 + pIdx * 0.1,
-          polygonOffsetUnits: 1,
-        })
-        const blockerMesh = new THREE.Mesh(faceGeometry, blockerMaterial)
-        blockerMesh.renderOrder = 1
-        group.add(blockerMesh)
+        if (!colorCustomizationEnabled) {
+          const blockerMaterial = new THREE.MeshBasicMaterial({
+            colorWrite: false,
+            depthWrite: true,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: 1 + pIdx * 0.1,
+            polygonOffsetUnits: 1,
+          })
+          const blockerMesh = new THREE.Mesh(faceGeometry, blockerMaterial)
+          blockerMesh.renderOrder = 1
+          group.add(blockerMesh)
+        }
       })
 
     manualDerived.displaySegments
@@ -1369,29 +1400,38 @@ export function ManualCanvas3D() {
           if (processedSpheres.has(c.sourceId)) return
           processedSpheres.add(c.sourceId)
 
-          // Create invisible depth blocker sphere slightly smaller to prevent Z-fighting
-          const blockerGeometry = new THREE.SphereGeometry(c.radius * 0.993, 32, 32)
-          const blockerMaterial = new THREE.MeshBasicMaterial({
-            colorWrite: false,
-            depthWrite: true,
-            side: THREE.DoubleSide,
-          })
-          const blockerMesh = new THREE.Mesh(blockerGeometry, blockerMaterial)
-          blockerMesh.position.set(c.center[0], c.center[1], c.center[2])
-          blockerMesh.renderOrder = 1
-          group.add(blockerMesh)
-
           // Create semi-transparent solid mesh for raycasting and visual background
+          const sphereSolid = manualDocument.solids.find((s) => s.id === c.sourceId)
+          const sphereStyle = colorCustomizationEnabled && sphereSolid
+            ? resolveEntityStyle(sphereSolid)
+            : { color: colors.solid, opacity: 0.12 }
+
+          // Create invisible depth blocker sphere slightly smaller to prevent Z-fighting
+          if (!colorCustomizationEnabled) {
+            const blockerGeometry = new THREE.SphereGeometry(c.radius * 0.993, 32, 32)
+            const blockerMaterial = new THREE.MeshBasicMaterial({
+              colorWrite: false,
+              depthWrite: true,
+              side: THREE.DoubleSide,
+            })
+            const blockerMesh = new THREE.Mesh(blockerGeometry, blockerMaterial)
+            blockerMesh.position.set(c.center[0], c.center[1], c.center[2])
+            blockerMesh.renderOrder = 1
+            group.add(blockerMesh)
+          }
+
           const sphereGeometry = new THREE.SphereGeometry(c.radius, 32, 32)
           const sphereMaterial = new THREE.MeshBasicMaterial({
-            color: colors.solid,
+            color: sphereStyle.color,
             transparent: true,
-            opacity: 0.12,
+            opacity: sphereStyle.opacity,
             side: THREE.DoubleSide,
             depthWrite: false,
           })
           const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial)
           sphereMesh.position.set(c.center[0], c.center[1], c.center[2])
+          sphereMesh.userData.baseColor = sphereStyle.color
+          sphereMesh.userData.baseOpacity = sphereStyle.opacity
           sphereMesh.userData.entity = {
             kind: 'solid',
             id: c.sourceId,
@@ -1457,29 +1497,37 @@ export function ManualCanvas3D() {
           }
         }
 
-        // Create invisible depth blocker mesh
-        const blockerMaterial = new THREE.MeshBasicMaterial({
-          colorWrite: false,
-          depthWrite: true,
-          side: THREE.DoubleSide,
-        })
-        const blockerMesh = new THREE.Mesh(blockerGeom, blockerMaterial)
-        blockerMesh.position.set(meshCenter[0], meshCenter[1], meshCenter[2])
-        blockerMesh.quaternion.copy(quaternion)
-        blockerMesh.renderOrder = 1
-        group.add(blockerMesh)
-
         // Create semi-transparent solid mesh for raycasting and visual background
+        const coneCylStyle = colorCustomizationEnabled
+          ? resolveEntityStyle(solid)
+          : { color: colors.solid, opacity: 0.12 }
+
+        // Create invisible depth blocker mesh
+        if (!colorCustomizationEnabled) {
+          const blockerMaterial = new THREE.MeshBasicMaterial({
+            colorWrite: false,
+            depthWrite: true,
+            side: THREE.DoubleSide,
+          })
+          const blockerMesh = new THREE.Mesh(blockerGeom, blockerMaterial)
+          blockerMesh.position.set(meshCenter[0], meshCenter[1], meshCenter[2])
+          blockerMesh.quaternion.copy(quaternion)
+          blockerMesh.renderOrder = 1
+          group.add(blockerMesh)
+        }
+
         const material = new THREE.MeshBasicMaterial({
-          color: colors.solid,
+          color: coneCylStyle.color,
           transparent: true,
-          opacity: 0.12,
+          opacity: coneCylStyle.opacity,
           side: THREE.DoubleSide,
           depthWrite: false,
         })
         const mesh = new THREE.Mesh(geom, material)
         mesh.position.set(meshCenter[0], meshCenter[1], meshCenter[2])
         mesh.quaternion.copy(quaternion)
+        mesh.userData.baseColor = coneCylStyle.color
+        mesh.userData.baseOpacity = coneCylStyle.opacity
         mesh.userData.entity = {
           kind: 'solid',
           id: solid.id,
@@ -1525,7 +1573,9 @@ export function ManualCanvas3D() {
             circle.sourceId === hoveredEntityIdRef.current ||
             (circle.sourceKind === 'solid' && circle.sourceId === hoveredEntityIdRef.current)
 
-          let lineColor = circle.sourceKind === 'solid' ? colors.solid : colors.polygon
+          const defaultLineColor = circle.sourceKind === 'solid' ? colors.solid : colors.polygon
+          let lineColor: string | number =
+            colorCustomizationEnabled ? circle.strokeColor ?? defaultLineColor : defaultLineColor
           if (isSelected) {
             lineColor = colors.pointSelected
           } else if (isHovered) {
@@ -1533,10 +1583,13 @@ export function ManualCanvas3D() {
           }
 
           // 1. Solid line (front / LessEqualDepth)
+          const lineOpacity = colorCustomizationEnabled ? circle.opacity ?? 1 : 1
           const material = new THREE.LineBasicMaterial({
             color: lineColor,
             linewidth: isSelected ? 2.5 : 1.5,
             depthFunc: THREE.LessEqualDepth,
+            transparent: lineOpacity < 1,
+            opacity: lineOpacity,
           })
           const line = new THREE.Line(geometry, material)
           line.renderOrder = 10
@@ -1679,10 +1732,15 @@ export function ManualCanvas3D() {
               }
 
               const isSelected = manualSelection?.kind === 'solid' && manualSelection.id === solid.id
+              const slicedFaceFallback = defaultThemeStyle('solid', colors)
               const material = new THREE.MeshBasicMaterial({
-                color: isSelected ? colors.pointSelected : colors.solid,
+                color: isSelected
+                  ? colors.pointSelected
+                  : colorCustomizationEnabled
+                    ? polygon.fillColor
+                    : slicedFaceFallback.color,
                 transparent: true,
-                opacity: polygon.opacity,
+                opacity: colorCustomizationEnabled ? polygon.opacity : slicedFaceFallback.opacity,
                 side: THREE.DoubleSide,
                 clippingPlanes: clips,
                 polygonOffset: true,
@@ -1813,10 +1871,13 @@ export function ManualCanvas3D() {
               bitmaskGroup.add(blockerMesh)
 
               const isSelected = manualSelection?.kind === 'solid' && manualSelection.id === solid.id
+              const slicedStyle = colorCustomizationEnabled
+                ? resolveEntityStyle(solid)
+                : { color: colors.solid, opacity: 0.12 }
               const material = new THREE.MeshBasicMaterial({
-                color: isSelected ? colors.pointSelected : colors.solid,
+                color: isSelected ? colors.pointSelected : slicedStyle.color,
                 transparent: true,
-                opacity: 0.12,
+                opacity: slicedStyle.opacity,
                 side: THREE.DoubleSide,
                 depthWrite: false,
                 clippingPlanes: clips,
@@ -1847,11 +1908,14 @@ export function ManualCanvas3D() {
               bitmaskGroup.add(blockerMesh)
 
               const isSelected = manualSelection?.kind === 'solid' && manualSelection.id === solid.id
+              const slicedSphereStyle = colorCustomizationEnabled
+                ? resolveEntityStyle(solid)
+                : { color: colors.solid, opacity: 0.12 }
               const sphereGeometry = new THREE.SphereGeometry(sphereRing.radius, 32, 32)
               const sphereMaterial = new THREE.MeshBasicMaterial({
-                color: isSelected ? colors.pointSelected : colors.solid,
+                color: isSelected ? colors.pointSelected : slicedSphereStyle.color,
                 transparent: true,
-                opacity: 0.12,
+                opacity: slicedSphereStyle.opacity,
                 side: THREE.DoubleSide,
                 depthWrite: false,
                 clippingPlanes: clips,
@@ -2166,6 +2230,7 @@ export function ManualCanvas3D() {
     showLabels,
     bitmaskVisibility,
     explodeAmount,
+    colorCustomizationEnabled,
   ])
 
   useEffect(() => {
@@ -2196,10 +2261,18 @@ export function ManualCanvas3D() {
 
       if (activeTool === 'select') {
         setSelectedBitmaskKey(hit?.bitmaskKey ?? null)
-        if (hit?.kind === 'solid' && hit.solidId) {
-          setManualSelection({ kind: 'solid', id: hit.solidId })
+        const nextSelection =
+          hit?.kind === 'solid' && hit.solidId ? { kind: 'solid' as const, id: hit.solidId } : hit ?? null
+        // Click lại vào object đang được chọn -> bỏ chọn (về trạng thái không chọn gì).
+        if (
+          nextSelection &&
+          manualSelection &&
+          manualSelection.kind === nextSelection.kind &&
+          manualSelection.id === nextSelection.id
+        ) {
+          setManualSelection(null)
         } else {
-          setManualSelection(hit ?? null)
+          setManualSelection(nextSelection)
         }
         return
       }
@@ -2592,10 +2665,73 @@ export function ManualCanvas3D() {
         return
       }
 
+      if (activeTool === 'incenter' || activeTool === 'circumcenter') {
+        const circleKind = activeTool === 'incenter' ? 'triangleIncircle' : 'triangleCircumcircle'
+        if (hit?.kind === 'polygon') {
+          createTriangleCircle(circleKind, hit.id)
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: activeTool, pointIds: [] })
+          return
+        }
+        if (hit?.kind === 'solid' && hit.facePointIds && hit.facePointIds.length >= 3) {
+          createTriangleCircle(circleKind, undefined, hit.facePointIds.slice(0, 3))
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: activeTool, pointIds: [] })
+          return
+        }
+        const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+        if (clickedPointId) {
+          const currentIds = draftOperation?.tool === activeTool ? [...(draftOperation.pointIds ?? [])] : []
+          if (!currentIds.includes(clickedPointId)) {
+            const nextIds = [...currentIds, clickedPointId]
+            if (nextIds.length === 3) {
+              createTriangleCircle(circleKind, undefined, nextIds)
+              autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: activeTool, pointIds: [] })
+            } else {
+              setDraftOperation({ tool: activeTool, pointIds: nextIds })
+            }
+          }
+        }
+        return
+      }
+
+      if (activeTool === 'orthocenter') {
+        if (hit?.kind === 'polygon') {
+          createTriangleCenter(activeTool, hit.id)
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: activeTool, pointIds: [] })
+          return
+        }
+        if (hit?.kind === 'solid' && hit.facePointIds && hit.facePointIds.length >= 3) {
+          createTriangleCenter(activeTool, undefined, hit.facePointIds.slice(0, 3))
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: activeTool, pointIds: [] })
+          return
+        }
+        const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
+        if (clickedPointId) {
+          const currentIds = draftOperation?.tool === activeTool ? [...(draftOperation.pointIds ?? [])] : []
+          if (!currentIds.includes(clickedPointId)) {
+            const nextIds = [...currentIds, clickedPointId]
+            if (nextIds.length === 3) {
+              createTriangleCenter(activeTool, undefined, nextIds)
+              autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: activeTool, pointIds: [] })
+            } else {
+              setDraftOperation({ tool: activeTool, pointIds: nextIds })
+            }
+          }
+        }
+        return
+      }
+
+      if (activeTool === 'solidIncenter' || activeTool === 'solidCircumcenter') {
+        const solidId = hit?.kind === 'solid' ? hit.solidId ?? hit.id : null
+        if (solidId) {
+          createSolidSphere(activeTool, solidId)
+          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: activeTool, targetId: null })
+        }
+        return
+      }
+
       if (activeTool === 'perpendicularBisector') {
         if (hit?.kind === 'segment') {
-          createPerpendicularBisector(hit.id)
-          autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [] })
+          setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [hit.id], radius: draftOperation?.radius ?? 20 })
           return
         }
         const clickedPointId = hit?.kind === 'point' ? hit.id : (snapTarget?.kind === 'point' ? snapTarget.pointId : null)
@@ -2603,12 +2739,7 @@ export function ManualCanvas3D() {
           const currentIds = draftOperation?.tool === 'perpendicularBisector' ? [...(draftOperation.pointIds ?? [])] : []
           if (!currentIds.includes(clickedPointId)) {
             const nextIds = [...currentIds, clickedPointId]
-            if (nextIds.length === 2) {
-              createPerpendicularBisector(undefined, nextIds[0], nextIds[1])
-              autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [] })
-            } else {
-              setDraftOperation({ tool: 'perpendicularBisector', pointIds: nextIds, segmentIds: [] })
-            }
+            setDraftOperation({ tool: 'perpendicularBisector', pointIds: nextIds.slice(0, 2), segmentIds: [], radius: draftOperation?.radius ?? 20 })
           }
         }
         return
@@ -2620,12 +2751,7 @@ export function ManualCanvas3D() {
           const currentIds = draftOperation?.tool === 'angleBisector' ? [...(draftOperation.pointIds ?? [])] : []
           if (!currentIds.includes(clickedPointId)) {
             const nextIds = [...currentIds, clickedPointId]
-            if (nextIds.length === 3) {
-              createAngleBisector(nextIds[0], nextIds[1], nextIds[2])
-              autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'angleBisector', pointIds: [] })
-            } else {
-              setDraftOperation({ tool: 'angleBisector', pointIds: nextIds })
-            }
+            setDraftOperation({ tool: 'angleBisector', pointIds: nextIds.slice(0, 3), radius: draftOperation?.radius ?? 20 })
           }
         }
         return
@@ -2907,12 +3033,17 @@ export function ManualCanvas3D() {
                 mat.opacity = 0
               }
             } else {
+              const baseColor = obj.userData.baseColor as string | undefined
+              const baseOpacity = obj.userData.baseOpacity as number | undefined
               if (isSelected) {
                 mat.color.set(colors.pointSelected)
-                mat.opacity = 0.35
+                mat.opacity = Math.max(0.35, baseOpacity ?? 0.35)
               } else if (isHovered) {
                 mat.color.set(colors.pointHovered)
-                mat.opacity = 0.35
+                mat.opacity = Math.max(0.35, baseOpacity ?? 0.35)
+              } else if (baseColor) {
+                mat.color.set(baseColor)
+                mat.opacity = baseOpacity ?? (entity.kind === 'solid' ? 0.14 : 0.18)
               } else {
                 mat.color.set(entity.kind === 'solid' ? colors.solid : colors.polygon)
                 mat.opacity = entity.kind === 'solid' ? 0.14 : 0.18
@@ -3352,10 +3483,13 @@ export function ManualCanvas3D() {
     }
 
     const handlePointerUp = (event: PointerEvent) => {
-      if (viewHelperRef.current && stateRefs.current.showGizmo) {
-        const ptrDown = interactionRef.current.pointerDown
-        const dx = event.clientX - (ptrDown ? ptrDown.x : event.clientX)
-        const dy = event.clientY - (ptrDown ? ptrDown.y : event.clientY)
+      // ViewHelper gizmo chỉ phản hồi khi thao tác bắt đầu trên canvas. Vì listener
+      // gắn ở window, click ngoài canvas (vd nút ẩn/xóa trong panel) cũng gọi tới đây;
+      // nếu không chặn, handleClick sẽ vô tình xoay camera theo trục gizmo.
+      const gizmoPtrDown = interactionRef.current.pointerDown
+      if (viewHelperRef.current && stateRefs.current.showGizmo && gizmoPtrDown) {
+        const dx = event.clientX - gizmoPtrDown.x
+        const dy = event.clientY - gizmoPtrDown.y
         if (Math.hypot(dx, dy) <= 3) {
            viewHelperRef.current.handleClick(event)
         }
@@ -3708,6 +3842,8 @@ export function ManualCanvas3D() {
         showGizmo={showGizmo}
         onToggleGizmo={() => setShowGizmo(!showGizmo)}
         onResetCamera={handleResetCamera}
+        showColors={colorCustomizationEnabled}
+        onToggleColors={() => setColorCustomizationEnabled(!colorCustomizationEnabled)}
       />
 
       <div className="absolute bottom-6 left-6 z-50 rounded-xl border border-border bg-card/95 backdrop-blur-md px-3 py-2 shadow-lg">

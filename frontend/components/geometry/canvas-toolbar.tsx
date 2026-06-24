@@ -1,7 +1,7 @@
 'use client'
 
 import type * as React from 'react'
-import { Compass, Crosshair, Eye, Layers, RefreshCcw } from 'lucide-react'
+import { Compass, Crosshair, Eye, Layers, Palette, RefreshCcw } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useViewportTier } from '@/hooks/use-viewport-tier'
 
@@ -15,6 +15,8 @@ type CanvasToolbarProps = {
   showGizmo: boolean
   onToggleGizmo: () => void
   onResetCamera: () => void
+  showColors?: boolean
+  onToggleColors?: () => void
   gridLabel?: string
   resetLabel?: string
 }
@@ -77,6 +79,8 @@ export function CanvasToolbar({
   showGizmo,
   onToggleGizmo,
   onResetCamera,
+  showColors,
+  onToggleColors,
   gridLabel = 'Lưới đáy',
   resetLabel = 'Đặt lại',
 }: CanvasToolbarProps) {
@@ -120,6 +124,15 @@ export function CanvasToolbar({
           label="Điều hướng"
           onClick={onToggleGizmo}
         />
+        {onToggleColors && (
+          <ToolbarButton
+            active={!!showColors}
+            compact={compact}
+            icon={<Palette size={18} />}
+            label="Đổi màu"
+            onClick={onToggleColors}
+          />
+        )}
         <div className="mx-2 h-6 w-px shrink-0 bg-border" />
         <ToolbarButton
           compact={compact}

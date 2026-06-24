@@ -26,10 +26,15 @@ export type ManualTool =
   | 'specialQuadrilateral'
   | 'circle'
   | 'centroid'
+  | 'incenter'
+  | 'circumcenter'
+  | 'orthocenter'
   | 'perpendicularBisector'
   | 'angleBisector'
   | 'parallelLine'
   | 'perpendicularLine'
+  | 'solidIncenter'
+  | 'solidCircumcenter'
   | 'slice'
 
 export type ManualSelection =
@@ -45,6 +50,8 @@ export interface ManualEntityMeta {
   visible: boolean
   selectable: boolean
   trackable?: boolean
+  color?: string
+  opacity?: number
 }
 
 export interface ManualPoint extends ManualEntityMeta {
@@ -74,6 +81,8 @@ export interface ManualPoint extends ManualEntityMeta {
     | 'conePoint'
     | 'cylinderPoint'
     | 'facePoint'
+    | 'solidIncenter'
+    | 'solidCircumcenter'
   position: Vec3
   segmentId?: string
   t?: number
@@ -121,7 +130,7 @@ export interface ManualPolygon extends ManualEntityMeta {
 
 export interface ManualCircle extends ManualEntityMeta {
   entityType: 'circle'
-  circleKind: 'threePoints' | 'centerRadius' | 'centerPoint'
+  circleKind: 'threePoints' | 'centerRadius' | 'centerPoint' | 'triangleIncircle' | 'triangleCircumcircle'
   centerPointId?: string
   radiusPointId?: string
   radius?: number
@@ -147,6 +156,7 @@ export interface ManualSolid extends ManualEntityMeta {
   apexAnchorPointId?: string
   topPointId?: string
   radiusPointId?: string
+  sourceSolidId?: string
   sphereRings?: {
     id: string
     phi: number
@@ -268,6 +278,9 @@ export interface ManualDisplayCircle {
   sourceKind: 'circle' | 'solid'
   sourceId: string
   visible: boolean
+  strokeColor?: string
+  fillColor?: string
+  opacity?: number
 }
 
 export interface ManualDerived {
@@ -281,6 +294,47 @@ export interface ManualDerived {
   segmentInfo: Record<string, ManualSegmentInfo>
   polygonInfo: Record<string, ManualPolygonInfo>
   solidInfo: Record<string, ManualSolidInfo>
+}
+
+export interface EntityStyle {
+  color: string
+  opacity: number
+}
+
+const DEFAULT_POLYGON_STYLE: EntityStyle = { color: '#0f766e', opacity: 0.18 }
+const DEFAULT_CIRCLE_STYLE: EntityStyle = { color: '#14b8a6', opacity: 1 }
+
+function getDefaultSolidStyle(solid: ManualSolid): EntityStyle {
+  // Mặc định khối ở trạng thái rất trong suốt (~95%) để khi bật chế độ đổi màu là
+  // thấy ngay khối bên trong. Riêng hình cầu nội tiếp giữ đậm hơn vì nó là khối
+  // "highlight" bên trong cần nhìn rõ.
+  if (solid.solidType === 'sphere') {
+    if (solid.createdByTool === 'solidIncenter') return { color: '#f97316', opacity: 0.35 }
+    if (solid.createdByTool === 'solidCircumcenter') return { color: '#a855f7', opacity: 0.05 }
+    return { color: '#3b82f6', opacity: 0.05 }
+  }
+  if (solid.solidType === 'pyramid' || solid.solidType === 'regularPyramid') {
+    return { color: '#ea580c', opacity: 0.05 }
+  }
+  if (solid.solidType === 'cone' || solid.solidType === 'cylinder') {
+    return { color: '#3b82f6', opacity: 0.05 }
+  }
+  // box, cube, prism
+  return { color: '#2563eb', opacity: 0.05 }
+}
+
+export function getDefaultEntityStyle(entity: ManualPolygon | ManualCircle | ManualSolid): EntityStyle {
+  if (entity.entityType === 'solid') return getDefaultSolidStyle(entity)
+  if (entity.entityType === 'circle') return DEFAULT_CIRCLE_STYLE
+  return DEFAULT_POLYGON_STYLE
+}
+
+export function resolveEntityStyle(entity: ManualPolygon | ManualCircle | ManualSolid): EntityStyle {
+  const fallback = getDefaultEntityStyle(entity)
+  return {
+    color: entity.color ?? fallback.color,
+    opacity: entity.opacity ?? fallback.opacity,
+  }
 }
 
 export interface ManualProjectSnapshot {
@@ -480,6 +534,15 @@ export function triangleIncenter(a: Vec3, b: Vec3, c: Vec3): Vec3 {
   ]
 }
 
+function triangleInradius(a: Vec3, b: Vec3, c: Vec3): number {
+  const sideA = distance(b, c)
+  const sideB = distance(a, c)
+  const sideC = distance(a, b)
+  const semiperimeter = (sideA + sideB + sideC) / 2
+  const area = Math.hypot(...crossVec3(subVec3(b, a), subVec3(c, a))) / 2
+  return semiperimeter > 1e-9 ? area / semiperimeter : 0
+}
+
 export function triangleCircumcenter(a: Vec3, b: Vec3, c: Vec3): Vec3 | null {
   const ab = subVec3(b, a)
   const ac = subVec3(c, a)
@@ -508,6 +571,167 @@ export function triangleOrthocenter(a: Vec3, b: Vec3, c: Vec3): Vec3 {
     3 * g[1] - 2 * center[1],
     3 * g[2] - 2 * center[2],
   ]
+}
+
+function circumcenterFromPoints(points: Vec3[]): Vec3 | null {
+  if (points.length < 4) return points.length === 3 ? triangleCircumcenter(points[0], points[1], points[2]) : null
+  const base = points[0]
+  for (let i = 1; i < points.length - 2; i += 1) {
+    for (let j = i + 1; j < points.length - 1; j += 1) {
+      for (let k = j + 1; k < points.length; k += 1) {
+        const coeff = [points[i], points[j], points[k]].map((point) => [
+          2 * (point[0] - base[0]),
+          2 * (point[1] - base[1]),
+          2 * (point[2] - base[2]),
+        ])
+        const rhs = [points[i], points[j], points[k]].map((point) => dotVec3(point, point) - dotVec3(base, base))
+        const center = solveLinearSystem3x3(coeff, rhs)
+        if (center) return center
+      }
+    }
+  }
+  return null
+}
+
+function getSolidPointPositions(document: ManualDocument, solid: ManualSolid, pointPositions: Record<string, Vec3>): Vec3[] {
+  const pointIds = new Set<string>()
+  solid.cornerPointIds?.forEach((id) => pointIds.add(id))
+  if (solid.centerPointId) pointIds.add(solid.centerPointId)
+  if (solid.apexPointId) pointIds.add(solid.apexPointId)
+  if (solid.topPointId) pointIds.add(solid.topPointId)
+
+  if (solid.basePolygonId) {
+    const basePolygon = document.polygons.find((polygon) => polygon.id === solid.basePolygonId)
+    basePolygon?.pointIds.forEach((id) => pointIds.add(id))
+  }
+
+  document.points.forEach((point) => {
+    if (point.pointKind === 'solidVertex' && point.solidId === solid.id) {
+      pointIds.add(point.id)
+    }
+  })
+
+  return [...pointIds].map((id) => pointPositions[id]).filter(Boolean)
+}
+
+function getSolidFacePointGroups(document: ManualDocument, solid: ManualSolid, pointPositions: Record<string, Vec3>): Vec3[][] {
+  const pointById = (id?: string) => (id ? pointPositions[id] : undefined)
+  const solidVertexIds = new Map<number, string>()
+  document.points.forEach((point) => {
+    if (point.pointKind === 'solidVertex' && point.solidId === solid.id && point.vertexIndex !== undefined) {
+      solidVertexIds.set(point.vertexIndex, point.id)
+    }
+  })
+
+  if ((solid.solidType === 'box' || solid.solidType === 'cube')) {
+    const ids = new Array<string | undefined>(8)
+    solid.cornerPointIds?.forEach((id, index) => {
+      ids[index] = id
+    })
+    solidVertexIds.forEach((id, index) => {
+      ids[index] = id
+    })
+    const vertices = ids.map((id) => pointById(id))
+    if (vertices.every(Boolean)) {
+      const faceIndices = [
+        [0, 1, 2, 3],
+        [4, 5, 6, 7],
+        [0, 1, 5, 4],
+        [1, 2, 6, 5],
+        [2, 3, 7, 6],
+        [3, 0, 4, 7],
+      ]
+      return faceIndices.map((face) => face.map((index) => vertices[index]!))
+    }
+  }
+
+  if (solid.solidType === 'prism' && solid.basePolygonId) {
+    const basePolygon = document.polygons.find((polygon) => polygon.id === solid.basePolygonId)
+    if (!basePolygon) return []
+    const baseIds = basePolygon.pointIds
+    const topIds = new Array<string | undefined>(baseIds.length)
+    if (solid.topPointId) topIds[0] = solid.topPointId
+    solidVertexIds.forEach((id, index) => {
+      if (index >= baseIds.length) topIds[index - baseIds.length] = id
+    })
+    const base = baseIds.map((id) => pointById(id))
+    const top = topIds.map((id) => pointById(id))
+    if (!base.every(Boolean) || !top.every(Boolean)) return []
+    const faces: Vec3[][] = [base as Vec3[], top as Vec3[]]
+    for (let index = 0; index < base.length; index += 1) {
+      faces.push([
+        base[index]!,
+        base[(index + 1) % base.length]!,
+        top[(index + 1) % top.length]!,
+        top[index]!,
+      ])
+    }
+    return faces
+  }
+
+  if ((solid.solidType === 'pyramid' || solid.solidType === 'regularPyramid') && solid.basePolygonId) {
+    const basePolygon = document.polygons.find((polygon) => polygon.id === solid.basePolygonId)
+    const apex = pointById(solid.apexPointId) ?? pointById(solidVertexIds.get(0))
+    if (!basePolygon || !apex) return []
+    const base = basePolygon.pointIds.map((id) => pointById(id))
+    if (!base.every(Boolean)) return []
+    const faces: Vec3[][] = [base as Vec3[]]
+    for (let index = 0; index < base.length; index += 1) {
+      faces.push([base[index]!, base[(index + 1) % base.length]!, apex])
+    }
+    return faces
+  }
+
+  return []
+}
+
+function distancePointToPlane(point: Vec3, face: Vec3[]): number | null {
+  if (face.length < 3) return null
+  const normal = crossVec3(subVec3(face[1], face[0]), subVec3(face[2], face[0]))
+  const normalLength = Math.hypot(normal[0], normal[1], normal[2])
+  if (normalLength < 1e-9) return null
+  return Math.abs(dotVec3(subVec3(point, face[0]), normal)) / normalLength
+}
+
+function resolveSourceSolidSphereRadius(
+  document: ManualDocument,
+  solid: ManualSolid,
+  center: Vec3,
+  pointPositions: Record<string, Vec3>,
+): number {
+  if (!solid.sourceSolidId) return solid.radius ?? 3
+  const sourceSolid = document.solids.find((item) => item.id === solid.sourceSolidId)
+  if (!sourceSolid) return solid.radius ?? 3
+
+  if (sourceSolid.solidType === 'sphere') {
+    return sourceSolid.radius ?? solid.radius ?? 3
+  }
+
+  if ((sourceSolid.solidType === 'cone' || sourceSolid.solidType === 'cylinder') && sourceSolid.baseCircleId) {
+    const circle = document.circles.find((item) => item.id === sourceSolid.baseCircleId)
+    const props = circle ? resolveCircleProps(circle, pointPositions) : null
+    const radius = sourceSolid.radius ?? props?.radius ?? 3
+    const height = Math.abs(sourceSolid.height ?? 5)
+    if (sourceSolid.solidType === 'cylinder') {
+      return solid.createdByTool === 'solidIncenter' ? Math.min(radius, height / 2) : Math.sqrt(radius * radius + (height / 2) ** 2)
+    }
+    const slant = Math.sqrt(radius * radius + height * height)
+    return solid.createdByTool === 'solidIncenter'
+      ? (radius * height) / (slant + radius)
+      : (height * height + radius * radius) / Math.max(2 * height, 1e-9)
+  }
+
+  const points = getSolidPointPositions(document, sourceSolid, pointPositions)
+  if (!points.length) return solid.radius ?? 3
+  if (solid.createdByTool === 'solidIncenter') {
+    const faceDistances = getSolidFacePointGroups(document, sourceSolid, pointPositions)
+      .map((face) => distancePointToPlane(center, face))
+      .filter((value): value is number => value !== null && value > 1e-9)
+    if (faceDistances.length) return Math.min(...faceDistances)
+  }
+  const distances = points.map((point) => distance(center, point)).filter((value) => value > 1e-9)
+  if (!distances.length) return solid.radius ?? 3
+  return Math.max(...distances)
 }
 
 function polygonArea2D(points: Vec3[]) {
@@ -713,6 +937,106 @@ export function resolvePointPositions(document: ManualDocument) {
       }
     }
     return null
+  }
+
+  const resolveSolidSphereCenter = (
+    solidId: string,
+    centerKind: 'solidIncenter' | 'solidCircumcenter',
+    visiting: Set<string>,
+  ): Vec3 | null => {
+    const solid = document.solids.find((s) => s.id === solidId)
+    if (!solid) return null
+
+    if (solid.solidType === 'sphere' && solid.centerPointId) {
+      return resolvePoint(solid.centerPointId, visiting)
+    }
+
+    if ((solid.solidType === 'cone' || solid.solidType === 'cylinder') && solid.baseCircleId) {
+      const circle = document.circles.find((c) => c.id === solid.baseCircleId)
+      if (circle) {
+        const circlePointPositions = { ...positions }
+        if (circle.centerPointId) circlePointPositions[circle.centerPointId] = resolvePoint(circle.centerPointId, visiting)
+        if (circle.radiusPointId) circlePointPositions[circle.radiusPointId] = resolvePoint(circle.radiusPointId, visiting)
+        circle.sourcePointIds?.forEach((id) => {
+          circlePointPositions[id] = resolvePoint(id, visiting)
+        })
+        const props = resolveCircleProps(circle, circlePointPositions)
+        if (props) {
+          const height = solid.height ?? 5
+          if (Math.abs(height) < 1e-9) return props.center
+          const normal = props.normal
+          let axisOffset = height / 2
+          if (solid.solidType === 'cone') {
+            const radius = solid.radius ?? props.radius
+            if (centerKind === 'solidIncenter') {
+              const slant = Math.sqrt(radius * radius + height * height)
+              axisOffset = (radius * height) / (slant + radius)
+            } else {
+              axisOffset = (height * height - radius * radius) / (2 * height)
+            }
+          }
+          return addVec3(props.center, scaleVec3(normal, axisOffset))
+        }
+      }
+    }
+
+    if (
+      centerKind === 'solidIncenter' &&
+      (solid.solidType === 'pyramid' || solid.solidType === 'regularPyramid') &&
+      solid.basePolygonId
+    ) {
+      const basePolygon = document.polygons.find((polygon) => polygon.id === solid.basePolygonId)
+      const apexId = solid.apexPointId ?? document.points.find((point) =>
+        point.pointKind === 'solidVertex' && point.solidId === solid.id && point.vertexIndex === 0
+      )?.id
+      if (basePolygon && apexId) {
+        const basePoints = basePolygon.pointIds.map((id) => resolvePoint(id, visiting))
+        const apex = resolvePoint(apexId, visiting)
+        const baseCenter = centroid(basePoints)
+        const normal = getPolygonNormal(basePoints)
+        const signedHeight = dotVec3(subVec3(apex, baseCenter), normal)
+        const height = Math.abs(signedHeight)
+        if (height > 1e-9) {
+          const axisNormal = signedHeight >= 0 ? normal : scaleVec3(normal, -1)
+          const edgeDistances = basePoints.map((point, index) => {
+            const next = basePoints[(index + 1) % basePoints.length]
+            return distance(projectPointOnLine(baseCenter, point, next), baseCenter)
+          }).filter((value) => value > 1e-9)
+          const apothem = edgeDistances.length ? Math.min(...edgeDistances) : 0
+          if (apothem > 1e-9) {
+            const slantHeight = Math.sqrt(height * height + apothem * apothem)
+            const radius = (height * apothem) / (height + slantHeight)
+            return addVec3(baseCenter, scaleVec3(axisNormal, radius))
+          }
+        }
+      }
+    }
+
+    const pointIds = new Set<string>()
+    solid.cornerPointIds?.forEach((id) => pointIds.add(id))
+    if (solid.centerPointId) pointIds.add(solid.centerPointId)
+    if (solid.apexPointId) pointIds.add(solid.apexPointId)
+    if (solid.topPointId) pointIds.add(solid.topPointId)
+
+    if (solid.basePolygonId) {
+      const basePolygon = document.polygons.find((polygon) => polygon.id === solid.basePolygonId)
+      basePolygon?.pointIds.forEach((id) => pointIds.add(id))
+    }
+
+    document.points.forEach((candidate) => {
+      if (candidate.pointKind === 'solidVertex' && candidate.solidId === solid.id) {
+        pointIds.add(candidate.id)
+      }
+    })
+
+    const solidPoints = [...pointIds].map((id) => resolvePoint(id, visiting)).filter(Boolean)
+    if (!solidPoints.length) return null
+
+    if (centerKind === 'solidCircumcenter') {
+      return circumcenterFromPoints(solidPoints) ?? centroid(solidPoints)
+    }
+
+    return centroid(solidPoints)
   }
 
   const resolvePoint = (pointId: string, visiting = new Set<string>()): Vec3 => {
@@ -1078,6 +1402,15 @@ export function resolvePointPositions(document: ManualDocument) {
       } else {
         positions[pointId] = triangleCircumcenter(posA, posB, posC) ?? posA
       }
+      visiting.delete(pointId)
+      return positions[pointId]
+    }
+
+    if (
+      (point.pointKind === 'solidIncenter' || point.pointKind === 'solidCircumcenter') &&
+      point.solidId
+    ) {
+      positions[pointId] = resolveSolidSphereCenter(point.solidId, point.pointKind, visiting) ?? point.position
       visiting.delete(pointId)
       return positions[pointId]
     }
@@ -1568,6 +1901,22 @@ export function resolveCircleProps(
     if (p1 && p2 && p3) {
       return circleThreePoints3D(p1, p2, p3)
     }
+  } else if (
+    (circle.circleKind === 'triangleIncircle' || circle.circleKind === 'triangleCircumcircle') &&
+    circle.sourcePointIds &&
+    circle.sourcePointIds.length >= 3
+  ) {
+    const p1 = pointPositions[circle.sourcePointIds[0]]
+    const p2 = pointPositions[circle.sourcePointIds[1]]
+    const p3 = pointPositions[circle.sourcePointIds[2]]
+    const center = circle.centerPointId ? pointPositions[circle.centerPointId] : null
+    if (p1 && p2 && p3 && center) {
+      const normal = getPolygonNormal([p1, p2, p3])
+      const radius = circle.circleKind === 'triangleIncircle'
+        ? triangleInradius(p1, p2, p3)
+        : distance(center, p1)
+      return { center, radius, normal }
+    }
   } else if (circle.circleKind === 'centerRadius' && circle.centerPointId && circle.radius) {
     const cPos = pointPositions[circle.centerPointId]
     if (cPos) {
@@ -1738,6 +2087,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
 
     // If this polygon is the base of a hidden solid, inherit the solid's visibility
     const effectivePolygonVisible = hiddenBasePolygonIds.has(polygon.id) ? false : polygon.visible
+    const polygonStyle = resolveEntityStyle(polygon)
 
     displayPolygons.push({
       id: polygon.id,
@@ -1745,8 +2095,8 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       points: polygonPoints,
       sourceKind: 'polygon',
       sourceId: polygon.id,
-      fillColor: '#0f766e',
-      opacity: 0.18,
+      fillColor: polygonStyle.color,
+      opacity: polygonStyle.opacity,
       visible: effectivePolygonVisible,
     })
 
@@ -1914,6 +2264,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         [2, 3, 7, 6],
         [3, 0, 4, 7],
       ]
+      const boxStyle = resolveEntityStyle(solid)
       faces.forEach((indices, faceIndex) => {
         displayPolygons.push({
           id: `${solid.id}_face_${faceIndex}`,
@@ -1922,15 +2273,15 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
           pointIds: indices.map((index) => allPointIds[index]).filter(Boolean),
           sourceKind: 'solid',
           sourceId: solid.id,
-          fillColor: '#2563eb',
-          opacity: 0.14,
+          fillColor: boxStyle.color,
+          opacity: boxStyle.opacity,
           visible: solid.visible,
         })
         pushGeometryPlane(
           geometry,
           indices.map((index) => allLabels[index]),
-          '#2563eb',
-          0.12,
+          boxStyle.color,
+          boxStyle.opacity,
         )
       })
 
@@ -2011,6 +2362,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         })
       }
 
+      const pyramidStyle = resolveEntityStyle(solid)
       for (let index = 0; index < basePoints.length; index += 1) {
         pushGeometryEdge(geometry, baseLabels[index], baseLabels[(index + 1) % baseLabels.length])
         pushGeometryEdge(geometry, baseLabels[index], apexLabel)
@@ -2035,8 +2387,8 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         pushGeometryPlane(
           geometry,
           [baseLabels[index], baseLabels[(index + 1) % baseLabels.length], apexLabel],
-          '#ea580c',
-          0.12,
+          pyramidStyle.color,
+          pyramidStyle.opacity,
         )
         displayPolygons.push({
           id: `${solid.id}_face_${index}`,
@@ -2049,12 +2401,12 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
           ],
           sourceKind: 'solid',
           sourceId: solid.id,
-          fillColor: '#ea580c',
-          opacity: 0.12,
+          fillColor: pyramidStyle.color,
+          opacity: pyramidStyle.opacity,
           visible: solid.visible,
         })
       }
-      pushGeometryPlane(geometry, baseLabels, '#f59e0b', 0.12)
+      pushGeometryPlane(geometry, baseLabels, pyramidStyle.color, pyramidStyle.opacity)
 
       // Pyramid base face polygon for picking
       displayPolygons.push({
@@ -2064,8 +2416,8 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         pointIds: basePolygon.pointIds,
         sourceKind: 'solid',
         sourceId: solid.id,
-        fillColor: '#f59e0b',
-        opacity: 0.12,
+        fillColor: pyramidStyle.color,
+        opacity: pyramidStyle.opacity,
         visible: solid.visible,
       })
 
@@ -2148,6 +2500,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
     })
     const basePointIds = basePolygon.pointIds
 
+    const prismStyle = resolveEntityStyle(solid)
     for (let index = 0; index < basePoints.length; index += 1) {
       pushGeometryEdge(geometry, baseLabels[index], baseLabels[(index + 1) % baseLabels.length])
       pushGeometryEdge(geometry, topLabels[index], topLabels[(index + 1) % topLabels.length])
@@ -2196,8 +2549,8 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         ].filter(Boolean),
         sourceKind: 'solid',
         sourceId: solid.id,
-        fillColor: '#7c3aed',
-        opacity: 0.12,
+        fillColor: prismStyle.color,
+        opacity: prismStyle.opacity,
         visible: solid.visible,
       })
       pushGeometryPlane(
@@ -2208,13 +2561,13 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
           topLabels[(index + 1) % topLabels.length],
           topLabels[index],
         ],
-        '#7c3aed',
-        0.12,
+        prismStyle.color,
+        prismStyle.opacity,
       )
     }
 
-    pushGeometryPlane(geometry, baseLabels, '#0f766e', 0.1)
-    pushGeometryPlane(geometry, topLabels, '#7c3aed', 0.1)
+    pushGeometryPlane(geometry, baseLabels, prismStyle.color, prismStyle.opacity)
+    pushGeometryPlane(geometry, topLabels, prismStyle.color, prismStyle.opacity)
     
     // Add missing top face polygon for selection/interaction
     displayPolygons.push({
@@ -2224,8 +2577,8 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       pointIds: topPointIds,
       sourceKind: 'solid',
       sourceId: solid.id,
-      fillColor: '#7c3aed',
-      opacity: 0.12,
+      fillColor: prismStyle.color,
+      opacity: prismStyle.opacity,
       visible: solid.visible,
     })
 
@@ -2237,8 +2590,8 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       pointIds: basePointIds,
       sourceKind: 'solid',
       sourceId: solid.id,
-      fillColor: '#0f766e',
-      opacity: 0.12,
+      fillColor: prismStyle.color,
+      opacity: prismStyle.opacity,
       visible: solid.visible,
     })
 
@@ -2288,10 +2641,11 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
       const center = pointPositions[solid.centerPointId]
       const centerPoint = pointMap.get(solid.centerPointId)
       if (!center || !centerPoint) return
-      const r = solid.radius
+      const r = resolveSourceSolidSphereRadius(document, solid, center, pointPositions)
 
       // Generate circles from solid.sphereRings
       if (solid.sphereRings && solid.sphereRings.length > 0) {
+        const sphereStyle = resolveEntityStyle(solid)
         solid.sphereRings.forEach((ring) => {
           const phi = ring.phi
           const theta = ring.theta
@@ -2309,6 +2663,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
             sourceKind: 'solid',
             sourceId: solid.id,
             visible: solid.visible,
+            strokeColor: sphereStyle.color,
           })
         })
       }
@@ -2627,68 +2982,23 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
   // Resolve Manual Circles
   if (document.circles) {
     document.circles.forEach((circle) => {
-      let center: Vec3 = [0, 0, 0]
-      let radius = 1
-      let normal: Vec3 = [0, 0, 1]
-
-      if (circle.circleKind === 'threePoints' && circle.sourcePointIds && circle.sourcePointIds.length >= 3) {
-        const p1 = pointPositions[circle.sourcePointIds[0]]
-        const p2 = pointPositions[circle.sourcePointIds[1]]
-        const p3 = pointPositions[circle.sourcePointIds[2]]
-        if (p1 && p2 && p3) {
-          const solved = circleThreePoints3D(p1, p2, p3)
-          if (solved) {
-            center = solved.center
-            radius = solved.radius
-            normal = solved.normal
-          }
-        }
-      } else if (circle.circleKind === 'centerRadius' && circle.centerPointId && circle.radius) {
-        const cPos = pointPositions[circle.centerPointId]
-        if (cPos) {
-          center = cPos
-          radius = Number(circle.radius)
-          normal = [0, 0, 1]
-        }
-      } else if (circle.circleKind === 'centerPoint' && circle.centerPointId && circle.radiusPointId) {
-        const cPos = pointPositions[circle.centerPointId]
-        const rPos = pointPositions[circle.radiusPointId]
-        if (cPos && rPos) {
-          const vx = rPos[0] - cPos[0]
-          const vy = rPos[1] - cPos[1]
-          const vz = rPos[2] - cPos[2]
-          const len2DSq = vx * vx + vy * vy
-          center = cPos
-          normal = [0, 0, 1]
-          radius = Math.hypot(vx, vy)
-          if (len2DSq > 1e-9) {
-            const rawNormal: Vec3 = [-vx * vz, -vy * vz, len2DSq]
-            const lenN = Math.hypot(rawNormal[0], rawNormal[1], rawNormal[2])
-            if (lenN > 1e-9) {
-              normal = [rawNormal[0] / lenN, rawNormal[1] / lenN, rawNormal[2] / lenN]
-            }
-            radius = Math.sqrt(vx * vx + vy * vy + vz * vz)
-          } else {
-            radius = Math.abs(vz)
-            normal = [1, 0, 0]
-          }
-          if (normal[2] < 0) {
-            normal = [-normal[0], -normal[1], -normal[2]]
-          }
-        }
-      }
+      const props = resolveCircleProps(circle, pointPositions)
+      if (!props) return
 
       const effectiveCircleVisible = hiddenBaseCircleIds.has(circle.id) ? false : circle.visible
+      const circleStyle = resolveEntityStyle(circle)
 
       displayCircles.push({
         id: circle.id,
         label: circle.label,
-        center,
-        radius,
-        normal,
+        center: props.center,
+        radius: props.radius,
+        normal: props.normal,
         sourceKind: 'circle',
         sourceId: circle.id,
         visible: effectiveCircleVisible,
+        strokeColor: circleStyle.color,
+        opacity: circleStyle.opacity,
       })
     })
   }
