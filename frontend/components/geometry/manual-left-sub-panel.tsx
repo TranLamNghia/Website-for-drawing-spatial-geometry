@@ -33,6 +33,11 @@ export function ManualLeftSubPanel() {
     createSpecialTriangle,
     createSpecialQuadrilateral,
     createCentroid,
+    createTriangleCenter,
+    createTriangleCircle,
+    createSolidSphere,
+    createPerpendicularBisector,
+    createAngleBisector,
     createProjectionByPoints,
     manualDocument,
     manualDerived,
@@ -251,6 +256,47 @@ export function ManualLeftSubPanel() {
     autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'centroid', pointIds: [] })
   }
 
+  const handleTriangleCenterCreate = (centerKind: 'incenter' | 'circumcenter' | 'orthocenter') => {
+    if (draftOperation?.tool !== centerKind) return
+    const pts = draftOperation.pointIds ?? []
+    if (pts.length < 3) return
+    if (centerKind === 'orthocenter') {
+      createTriangleCenter(centerKind, undefined, pts)
+    } else {
+      createTriangleCircle(centerKind === 'incenter' ? 'triangleIncircle' : 'triangleCircumcircle', undefined, pts)
+    }
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: centerKind, pointIds: [] })
+  }
+
+  const handleSolidSphereCenterCreate = (centerKind: 'solidIncenter' | 'solidCircumcenter') => {
+    if (draftOperation?.tool !== centerKind) return
+    const solidId = draftOperation.targetId
+    if (!solidId) return
+    createSolidSphere(centerKind, solidId)
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: centerKind, targetId: null })
+  }
+
+  const handlePerpendicularBisectorCreate = () => {
+    if (draftOperation?.tool !== 'perpendicularBisector') return
+    if ((draftOperation.segmentIds?.length ?? 0) > 0) {
+      createPerpendicularBisector(draftOperation.segmentIds![0])
+      autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [], radius: draftOperation.radius ?? 20 })
+      return
+    }
+    const pts = draftOperation.pointIds ?? []
+    if (pts.length < 2) return
+    createPerpendicularBisector(undefined, pts[0], pts[1])
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'perpendicularBisector', pointIds: [], segmentIds: [], radius: draftOperation.radius ?? 20 })
+  }
+
+  const handleAngleBisectorCreate = () => {
+    if (draftOperation?.tool !== 'angleBisector') return
+    const pts = draftOperation.pointIds ?? []
+    if (pts.length < 3) return
+    createAngleBisector(pts[0], pts[1], pts[2])
+    autoRevertToSelect ? setActiveTool('select') : setDraftOperation({ tool: 'angleBisector', pointIds: [], radius: draftOperation.radius ?? 20 })
+  }
+
   const handleSegmentCreate = () => {
     if (draftOperation?.tool !== 'segment') return
     const pts = draftOperation.pointIds ?? []
@@ -338,6 +384,9 @@ export function ManualLeftSubPanel() {
               )
             )}
             {activeTool === 'centroid' && 'Click vào 1 Đa giác hoặc Mặt của khối hình trên canvas,\nhoặc chọn lần lượt các Điểm để tạo trọng tâm.'}
+            {activeTool === 'incenter' && 'Click vào 1 Tam giác hoặc chọn lần lượt 3 Điểm để tạo đường tròn nội tiếp tam giác và tâm của nó.'}
+            {activeTool === 'circumcenter' && 'Click vào 1 Tam giác hoặc chọn lần lượt 3 Điểm để tạo đường tròn ngoại tiếp tam giác và tâm của nó.'}
+            {activeTool === 'orthocenter' && 'Click vào 1 Tam giác hoặc chọn lần lượt 3 Điểm để tạo trực tâm.'}
             {activeTool === 'perpendicularBisector' && 'Click chọn 1 Đoạn thẳng,\nhoặc chọn lần lượt 2 Điểm tự do để dựng đường trung trực.'}
             {activeTool === 'angleBisector' && '1. Click chọn điểm thuộc tia thứ nhất.\n2. Click chọn đỉnh của góc.\n3. Click chọn điểm thuộc tia thứ hai.'}
             {activeTool === 'specialQuadrilateral' && (draftOperation?.height === 1
@@ -348,6 +397,8 @@ export function ManualLeftSubPanel() {
                   ? 'Click chọn lần lượt 2 Điểm (A, B) xác định một cạnh.\nHai đỉnh còn lại (C, D) sẽ tự động dựng để tạo Hình thoi.'
                   : 'Click chọn lần lượt 2 Điểm (A, B) xác định một cạnh.\nHai đỉnh còn lại (C, D) sẽ tự động dựng vuông góc để tạo Hình vuông.')}
             {activeTool === 'sphere' && '1. Click chọn (hoặc tạo mới) một Điểm làm tâm.\n2. Nhập bán kính trong bảng Thiết lập bên dưới.'}
+            {activeTool === 'solidIncenter' && 'Click chọn 1 khối 3D để tạo hình cầu nội tiếp và tâm của nó.'}
+            {activeTool === 'solidCircumcenter' && 'Click chọn 1 khối 3D để tạo hình cầu ngoại tiếp và tâm của nó.'}
             {activeTool === 'cone' && '1. Click chọn duy nhất 1 Đường tròn ĐÃ CÓ trên canvas.\n2. Nhập chiều cao (mặc định là 5) và bấm nút "Tạo hình nón".'}
             {activeTool === 'cylinder' && '1. Click chọn duy nhất 1 Đường tròn ĐÃ CÓ trên canvas.\n2. Nhập chiều cao (mặc định là 5) và bấm nút "Tạo hình trụ".'}
             {activeTool === 'slice' && '1. Nhập nhãn 3 điểm (VD: A, B, C) vào các ô Điểm 1, 2, 3.\n2. Chọn khối 3D cần cắt từ danh sách "Khối 3D cần cắt".\n3. Nhấn "Xác nhận lát cắt" để tạo thiết diện.'}
@@ -1178,6 +1229,64 @@ export function ManualLeftSubPanel() {
                 </div>
               )}
 
+              {(draftOperation?.tool === 'incenter' || draftOperation?.tool === 'circumcenter' || draftOperation?.tool === 'orthocenter') && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">
+                    {draftOperation.tool === 'incenter'
+                      ? 'Đường tròn nội tiếp tam giác'
+                      : draftOperation.tool === 'circumcenter'
+                        ? 'Đường tròn ngoại tiếp tam giác'
+                        : 'Trực tâm'}
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[0, 1, 2].map((index) => (
+                      <div key={index} className="space-y-1">
+                        <label className="text-[11px] text-muted-foreground font-medium">Điểm {index + 1}</label>
+                        <div>
+                          <Badge variant={(draftOperation.pointIds?.length ?? 0) > index ? 'default' : 'outline'}>
+                            {(draftOperation.pointIds?.length ?? 0) > index
+                              ? manualDocument.points.find((p) => p.id === draftOperation.pointIds?.[index])?.label ?? 'Đã chọn'
+                              : 'Chưa chọn'}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full font-bold mt-2"
+                    onClick={() => handleTriangleCenterCreate(draftOperation.tool as 'incenter' | 'circumcenter' | 'orthocenter')}
+                    disabled={(draftOperation.pointIds?.length ?? 0) < 3}
+                  >
+                    {draftOperation.tool === 'orthocenter' ? 'Tạo trực tâm' : 'Tạo đường tròn'}
+                  </Button>
+                </div>
+              )}
+
+              {(draftOperation?.tool === 'solidIncenter' || draftOperation?.tool === 'solidCircumcenter') && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold">
+                    {draftOperation.tool === 'solidIncenter' ? 'Hình cầu nội tiếp khối' : 'Hình cầu ngoại tiếp khối'}
+                  </p>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground font-medium">Khối 3D</label>
+                    <div>
+                      <Badge variant={draftOperation.targetId ? 'default' : 'outline'}>
+                        {manualDocument.solids.find((solid) => solid.id === draftOperation.targetId)?.label ?? 'Chưa chọn'}
+                      </Badge>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full font-bold mt-2"
+                    onClick={() => handleSolidSphereCenterCreate(draftOperation.tool as 'solidIncenter' | 'solidCircumcenter')}
+                    disabled={!draftOperation.targetId}
+                  >
+                    Tạo khối cầu
+                  </Button>
+                </div>
+              )}
+
               {draftOperation?.tool === 'perpendicularBisector' && (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold">Đường trung trực</p>
@@ -1229,6 +1338,14 @@ export function ManualLeftSubPanel() {
                       className="rounded-xl h-8 text-xs"
                     />
                   </div>
+                  <Button
+                    size="sm"
+                    className="w-full font-bold mt-2"
+                    onClick={handlePerpendicularBisectorCreate}
+                    disabled={(draftOperation.segmentIds?.length ?? 0) === 0 && (draftOperation.pointIds?.length ?? 0) < 2}
+                  >
+                    Tạo đường trung trực
+                  </Button>
                 </div>
               )}
 
@@ -1282,6 +1399,14 @@ export function ManualLeftSubPanel() {
                       className="rounded-xl h-8 text-xs"
                     />
                   </div>
+                  <Button
+                    size="sm"
+                    className="w-full font-bold mt-2"
+                    onClick={handleAngleBisectorCreate}
+                    disabled={(draftOperation.pointIds?.length ?? 0) < 3}
+                  >
+                    Tạo tia phân giác
+                  </Button>
                 </div>
               )}
 

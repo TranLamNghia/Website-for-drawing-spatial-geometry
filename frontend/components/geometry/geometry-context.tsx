@@ -9,6 +9,7 @@ import {
   ManualDisplayPoint,
   ManualDocument,
   ManualDraft,
+  ManualCircle,
   ManualPoint,
   ManualSelection,
   ManualSnapTarget,
@@ -176,6 +177,8 @@ interface GeometryContextType {
   setShowLabels: (v: boolean) => void
   showSmartGuides: boolean
   setShowSmartGuides: (v: boolean) => void
+  colorCustomizationEnabled: boolean
+  setColorCustomizationEnabled: (v: boolean) => void
   resetTrigger: number
   resetCamera: () => void
 
@@ -205,6 +208,11 @@ interface GeometryContextType {
   updateSolidHeight: (solidId: string, newHeight: number) => void
   updateManualSolidCuts: (solidId: string, cuts: ManualCut[]) => void
   updateCircleRadius: (circleId: string, newRadius: number) => void
+  updateManualEntityStyle: (
+    kind: 'polygon' | 'circle' | 'solid',
+    id: string,
+    style: { color?: string | null; opacity?: number | null },
+  ) => void
   createCircleAngleDependentPoint: (sourcePointId: string, customAngleRad?: number) => void
   updatePointAngle: (pointId: string, angle: number) => void
   saveManualState: () => void
@@ -213,6 +221,17 @@ interface GeometryContextType {
   createProjection: (pointId: string, targetId: string, targetKind: 'segment' | 'polygon') => string | null
   createProjectionByPoints: (pointId: string, targetPointIds: string[]) => string | null
   createCentroid: (targetPolygonId?: string, sourcePointIds?: string[]) => string | null
+  createTriangleCenter: (
+    centerKind: 'incenter' | 'circumcenter' | 'orthocenter',
+    targetPolygonId?: string,
+    sourcePointIds?: string[],
+  ) => string | null
+  createTriangleCircle: (
+    circleKind: 'triangleIncircle' | 'triangleCircumcircle',
+    targetPolygonId?: string,
+    sourcePointIds?: string[],
+  ) => string | null
+  createSolidSphere: (sphereKind: 'solidIncenter' | 'solidCircumcenter', solidId: string) => string | null
   createPerpendicularBisector: (segmentId?: string, pointIdA?: string, pointIdB?: string) => string | null
   createAngleBisector: (pointIdA: string, pointIdB: string, pointIdC: string) => string | null
   createParallelLine: (pointId: string, segmentId: string) => string | null
@@ -903,6 +922,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const [showGrid, setShowGrid] = useState(true)
   const [showLabels, setShowLabels] = useState(true)
   const [showSmartGuides, setShowSmartGuides] = useState(true)
+  const [colorCustomizationEnabled, setColorCustomizationEnabled] = useState(false)
   const [resetTrigger, setResetTrigger] = useState(0)
 
   const [manualDocument, setManualDocumentState] = useState<ManualDocument>(
@@ -2237,6 +2257,41 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
     [commitManualDocument],
   )
 
+  const updateManualEntityStyle = useCallback(
+    (
+      kind: 'polygon' | 'circle' | 'solid',
+      id: string,
+      style: { color?: string | null; opacity?: number | null },
+    ) => {
+      commitManualDocument((current) => {
+        const applyStyle = <T extends { color?: string; opacity?: number }>(entity: T): T => {
+          const next = { ...entity }
+          if (style.color !== undefined) {
+            if (style.color === null) delete next.color
+            else next.color = style.color
+          }
+          if (style.opacity !== undefined) {
+            if (style.opacity === null) delete next.opacity
+            else next.opacity = style.opacity
+          }
+          return next
+        }
+
+        if (kind === 'polygon') {
+          if (!current.polygons.some((p) => p.id === id)) return null
+          return { ...current, polygons: mapEntities(current.polygons, id, applyStyle) }
+        }
+        if (kind === 'circle') {
+          if (!current.circles?.some((c) => c.id === id)) return null
+          return { ...current, circles: mapEntities(current.circles ?? [], id, applyStyle) }
+        }
+        if (!current.solids.some((s) => s.id === id)) return null
+        return { ...current, solids: mapEntities(current.solids, id, applyStyle) }
+      })
+    },
+    [commitManualDocument],
+  )
+
   const createSegment = useCallback(
     (startPointId: string, endPointId: string) => {
       if (startPointId === endPointId) return null
@@ -2438,6 +2493,191 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       })
       setManualSelection({ kind: 'point', id: cId })
       return cId
+    },
+    [commitManualDocument, saveManualState],
+  )
+
+  const createTriangleCenter = useCallback(
+    (
+      centerKind: 'incenter' | 'circumcenter' | 'orthocenter',
+      targetPolygonId?: string,
+      sourcePointIds?: string[],
+    ) => {
+      saveManualState()
+      const pId = createEntityId('point')
+
+      commitManualDocument((current) => {
+        const polygon = targetPolygonId ? current.polygons.find((item) => item.id === targetPolygonId) : null
+        const pointIds = sourcePointIds ?? polygon?.pointIds.slice(0, 3) ?? []
+        if (pointIds.length < 3) return current
+
+        const centerPoint: ManualPoint = {
+          id: pId,
+          label: nextPointLabel(current),
+          entityType: 'point',
+          pointKind: centerKind,
+          position: [0, 0, 0],
+          sourcePointIds: pointIds.slice(0, 3),
+          targetPolygonId,
+          createdByTool: centerKind,
+          dependsOn: targetPolygonId ? [targetPolygonId] : pointIds.slice(0, 3),
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+
+        return {
+          ...current,
+          points: [...current.points, centerPoint],
+        }
+      })
+
+      setManualSelection({ kind: 'point', id: pId })
+      return pId
+    },
+    [commitManualDocument, saveManualState],
+  )
+
+  const createTriangleCircle = useCallback(
+    (
+      circleKind: 'triangleIncircle' | 'triangleCircumcircle',
+      targetPolygonId?: string,
+      sourcePointIds?: string[],
+    ) => {
+      saveManualState()
+      const centerKind = circleKind === 'triangleIncircle' ? 'incenter' : 'circumcenter'
+      const centerId = createEntityId('point')
+      const circleId = createEntityId('circle')
+      let selectedCircleId = circleId
+
+      commitManualDocument((current) => {
+        const polygon = targetPolygonId ? current.polygons.find((item) => item.id === targetPolygonId) : null
+        const pointIds = (sourcePointIds ?? polygon?.pointIds.slice(0, 3) ?? []).slice(0, 3)
+        if (pointIds.length < 3) return current
+
+        const hasSamePoints = (ids?: string[]) => {
+          if (!ids || ids.length < 3) return false
+          const source = new Set(ids.slice(0, 3))
+          return pointIds.every((id) => source.has(id))
+        }
+
+        const existingCircle = current.circles.find((circle) =>
+          circle.circleKind === circleKind && hasSamePoints(circle.sourcePointIds)
+        )
+        if (existingCircle) {
+          selectedCircleId = existingCircle.id
+          return current
+        }
+
+        const existingCenter = current.points.find((point) =>
+          point.pointKind === centerKind && hasSamePoints(point.sourcePointIds)
+        )
+
+        const resolvedCenterId = existingCenter?.id ?? centerId
+        const centerPoint: ManualPoint | null = existingCenter ? null : {
+          id: centerId,
+          label: nextPointLabel(current),
+          entityType: 'point',
+          pointKind: centerKind,
+          position: [0, 0, 0],
+          sourcePointIds: pointIds,
+          targetPolygonId,
+          createdByTool: centerKind,
+          dependsOn: targetPolygonId ? [targetPolygonId] : pointIds,
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+
+        const circle: ManualCircle = {
+          id: circleId,
+          label: circleKind === 'triangleIncircle' ? 'Đường tròn nội tiếp tam giác' : 'Đường tròn ngoại tiếp tam giác',
+          entityType: 'circle' as const,
+          circleKind,
+          centerPointId: resolvedCenterId,
+          sourcePointIds: pointIds,
+          createdByTool: centerKind,
+          dependsOn: [resolvedCenterId, ...pointIds],
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+
+        return {
+          ...current,
+          points: centerPoint ? [...current.points, centerPoint] : current.points,
+          circles: [...(current.circles ?? []), circle],
+        }
+      })
+
+      setManualSelection({ kind: 'circle', id: selectedCircleId })
+      return selectedCircleId
+    },
+    [commitManualDocument, saveManualState],
+  )
+
+  const createSolidSphere = useCallback(
+    (sphereKind: 'solidIncenter' | 'solidCircumcenter', solidId: string) => {
+      saveManualState()
+      const centerId = createEntityId('point')
+      const sphereId = createEntityId('solid')
+      let selectedSphereId = sphereId
+
+      commitManualDocument((current) => {
+        if (!current.solids.some((solid) => solid.id === solidId)) return current
+
+        const existingSphere = current.solids.find((solid) =>
+          solid.solidType === 'sphere' && solid.sourceSolidId === solidId && solid.createdByTool === sphereKind
+        )
+        if (existingSphere) {
+          selectedSphereId = existingSphere.id
+          return current
+        }
+
+        const existingCenter = current.points.find((point) =>
+          point.pointKind === sphereKind && point.solidId === solidId
+        )
+        const resolvedCenterId = existingCenter?.id ?? centerId
+
+        const centerPoint: ManualPoint | null = existingCenter ? null : {
+          id: centerId,
+          label: nextPointLabel(current),
+          entityType: 'point',
+          pointKind: sphereKind,
+          position: [0, 0, 0],
+          solidId,
+          createdByTool: sphereKind,
+          dependsOn: [solidId],
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+
+        const sphere: ManualSolid = {
+          id: sphereId,
+          label: sphereKind === 'solidIncenter' ? 'Hình cầu nội tiếp' : 'Hình cầu ngoại tiếp',
+          entityType: 'solid',
+          solidType: 'sphere',
+          centerPointId: resolvedCenterId,
+          radius: 3,
+          sourceSolidId: solidId,
+          sphereRings: [{ id: createEntityId('sphere_ring'), phi: 0, theta: 0 }],
+          createdByTool: sphereKind,
+          dependsOn: [solidId, resolvedCenterId],
+          locked: true,
+          visible: true,
+          selectable: true,
+        }
+
+        return {
+          ...current,
+          points: centerPoint ? [...current.points, centerPoint] : current.points,
+          solids: [...current.solids, sphere],
+        }
+      })
+
+      setManualSelection({ kind: 'solid', id: selectedSphereId })
+      return selectedSphereId
     },
     [commitManualDocument, saveManualState],
   )
@@ -4296,6 +4536,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       setShowLabels,
       showSmartGuides,
       setShowSmartGuides,
+      colorCustomizationEnabled,
+      setColorCustomizationEnabled,
       resetTrigger,
       resetCamera,
       manualDocument,
@@ -4324,6 +4566,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updateSolidHeight,
       updateManualSolidCuts,
       updateCircleRadius,
+      updateManualEntityStyle,
       createCircleAngleDependentPoint,
       createSphereAngleDependentPoint,
       updatePointAngle,
@@ -4344,6 +4587,9 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       createProjection,
       createProjectionByPoints,
       createCentroid,
+      createTriangleCenter,
+      createTriangleCircle,
+      createSolidSphere,
       createPerpendicularBisector,
       createAngleBisector,
       createParallelLine,
@@ -4413,6 +4659,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       showGrid,
       showLabels,
       showSmartGuides,
+      colorCustomizationEnabled,
       toggleManualLocked,
       toggleManualVisibility,
       undoManual,
@@ -4423,6 +4670,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       updateSolidHeight,
       updateManualSolidCuts,
       updateCircleRadius,
+      updateManualEntityStyle,
       createCircleAngleDependentPoint,
       createSphereAngleDependentPoint,
       updatePointAngle,
@@ -4434,6 +4682,9 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
       createProjection,
       createProjectionByPoints,
       createCentroid,
+      createTriangleCenter,
+      createTriangleCircle,
+      createSolidSphere,
       createPerpendicularBisector,
       createAngleBisector,
       createParallelLine,

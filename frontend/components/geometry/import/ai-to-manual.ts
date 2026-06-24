@@ -483,6 +483,19 @@ function parseRatioTarget(data: any) {
   return null
 }
 
+const POLYGON_SHAPE_TYPES = new Set([
+  'triangle',
+  'equilateral_triangle',
+  'isosceles_triangle',
+  'right_triangle',
+  'isosceles_right_triangle',
+  'square',
+  'rectangle',
+  'rhombus',
+  'parallelogram',
+  'trapezoid',
+])
+
 function getManualPoint(document: ManualDocument, pointMap: Map<string, string>, label: string) {
   const pointId = pointMap.get(normalizeLabel(label))
   if (!pointId) return null
@@ -581,8 +594,9 @@ function applyConstructionFacts(
 
     if (type === 'shape') {
       const target = String(data?.target || data?.Target || '')
+      const shape = String(data?.shape || data?.Shape || '').toLowerCase()
       const labels = parseEntityLabels(target)
-      if (labels.length >= 3) {
+      if (!target.includes('.') && POLYGON_SHAPE_TYPES.has(shape) && labels.length >= 3) {
         ensurePolygon(document, polygonMap, segmentMap, usedIds, pointMap, labels)
       }
     }
@@ -932,67 +946,6 @@ function buildConstructionAwareDocument(
   })
 
   applyConstructionFacts(document, pointMap, segmentMap, polygonMap, usedIds, construction)
-
-  ;(geometryData.spheres || []).forEach((sphere) => {
-    const centerId = pointMap.get(normalizeLabel(sphere.center))
-    if (!centerId) return
-    const solidId = safeId('solid', `sphere_${sphere.center}`, usedIds)
-    document.solids.push({
-      id: solidId,
-      label: sphere.center,
-      createdByTool: 'sphere',
-      dependsOn: [centerId],
-      locked: true,
-      visible: true,
-      selectable: true,
-      entityType: 'solid',
-      solidType: 'sphere',
-      centerPointId: centerId,
-      radius: sphere.radius,
-    })
-  })
-
-  ;(geometryData.cones || []).forEach((cone) => {
-    const centerId = pointMap.get(normalizeLabel(cone.center))
-    const apexId = pointMap.get(normalizeLabel(cone.apex))
-    if (!centerId || !apexId) return
-    const solidId = safeId('solid', `cone_${cone.center}_${cone.apex}`, usedIds)
-    document.solids.push({
-      id: solidId,
-      label: `${cone.center}.${cone.apex}`,
-      createdByTool: 'cone',
-      dependsOn: [centerId, apexId],
-      locked: true,
-      visible: true,
-      selectable: true,
-      entityType: 'solid',
-      solidType: 'cone',
-      centerPointId: centerId,
-      apexPointId: apexId,
-      radius: cone.radius,
-    })
-  })
-
-  ;(geometryData.cylinders || []).forEach((cyl) => {
-    const bottomId = pointMap.get(normalizeLabel(cyl.centerBottom))
-    const topId = pointMap.get(normalizeLabel(cyl.centerTop))
-    if (!bottomId || !topId) return
-    const solidId = safeId('solid', `cyl_${cyl.centerBottom}_${cyl.centerTop}`, usedIds)
-    document.solids.push({
-      id: solidId,
-      label: `${cyl.centerBottom}.${cyl.centerTop}`,
-      createdByTool: 'cylinder',
-      dependsOn: [bottomId, topId],
-      locked: true,
-      visible: true,
-      selectable: true,
-      entityType: 'solid',
-      solidType: 'cylinder',
-      centerPointId: bottomId,
-      apexPointId: topId,
-      radius: cyl.radius,
-    })
-  })
 
   return { document, warnings }
 }
