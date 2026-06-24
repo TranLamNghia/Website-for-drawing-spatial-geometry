@@ -18,6 +18,11 @@ public class GeometryExtractionService : IGeometryExtractionService
         _httpClient.BaseAddress = new Uri(baseUrl);
         
         var apiKey = configuration["AiServiceSettings:ApiKey"];
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            apiKey = configuration["INTERNAL_API_KEY"];
+        }
+
         if (!string.IsNullOrEmpty(apiKey))
         {
             _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);

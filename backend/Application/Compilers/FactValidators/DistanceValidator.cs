@@ -64,6 +64,15 @@ public class DistanceValidator : IFactValidator
                 return ValidationResult.Skip(fact.Id, "Distance", $"Chưa có tọa độ cho {from} hoặc {to}");
             actualDistance = plane.DistanceToPoint(p);
         }
+        // Case 5: Khoảng cách giữa hai mặt phẳng
+        else if (fromVertices.Count >= 3 && toVertices.Count >= 3)
+        {
+            var plane1 = context.GetPlane(from);
+            var plane2 = context.GetPlane(to);
+            if (plane1 == null || plane2 == null)
+                return ValidationResult.Skip(fact.Id, "Distance", $"Chưa có đủ tọa độ cho {from} hoặc {to}");
+            actualDistance = plane1.DistanceToPlane(plane2);
+        }
         else
         {
             return ValidationResult.Skip(fact.Id, "Distance", $"Không nhận dạng được loại khoảng cách: {from} -> {to}");

@@ -43,7 +43,7 @@ public class ShapeHandler : IFactHandler
             Console.WriteLine($"[HANDLER] Đã thêm đường tròn tâm {centerName}, bán kính {r}");
         }
         // Handle Explicit Sphere
-        else if (data.Shape == ShapeType.Sphere)
+        else if (data.Shape == ShapeType.Sphere || data.Shape == ShapeType.Regular_sphere)
         {
             string centerName = string.IsNullOrEmpty(data.Center) ? "O" : data.Center;
             var centerPoint = context.GetPoint(centerName);

@@ -12,10 +12,12 @@ public class CompilationContext
     public Dictionary<string, Point3D> Points { get; set; } = new Dictionary<string, Point3D>();
     public Dictionary<string, string> PointAliases { get; set; } = new();
     public FullValidationReport? ValidationReport { get; set; }
+    public FullValidationReport? QueryValidationReport { get; set; }
     public double UnitLength { get; set; } = 5.0; 
 
     public HashSet<string> IdentityPoints { get; set; } = new();
     public List<SectionDataDto> Sections { get; set; } = new();
+    public List<FactDto> SourceFacts { get; set; } = new();
 
     // Cross-section (Lát cắt)
     public ClippingPlaneEquation? ClippingPlane { get; set; }
@@ -68,6 +70,7 @@ public class CompilationContext
     public List<CylinderData> Cylinders { get; set; } = new();
     public HashSet<string> GeneratedSegments { get; set; } = new();
     public List<PlaneData> GeneratedPlanes { get; set; } = new();
+    public Dictionary<string, string> QueryResults { get; set; } = new();
 
     public void AddGeneratedSegment(string p1, string p2)
     {

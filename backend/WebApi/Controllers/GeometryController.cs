@@ -113,7 +113,9 @@ public class GeometryController : ControllerBase
 
     private object BuildFinalResult(GeometryProblemDto dto, CompilationContext context)
     {
-        var finalSegments = dto.Entities.Segments.Concat(context.GeneratedSegments).ToList();
+        var finalSegments = PointIntegrityHelper.FilterSegments(
+            dto.Entities,
+            dto.Entities.Segments.Concat(context.GeneratedSegments));
         var finalQueries = dto.Queries.ToList();
 
         // 1. Dọn dẹp Segments theo Aliases
@@ -159,10 +161,15 @@ public class GeometryController : ControllerBase
         }
 
         // 3. Chuẩn bị đầu ra
+        var pointIntegrity = PointIntegrityHelper.Evaluate(dto.Entities.Points, context.Points);
+        var filteredPoints = PointIntegrityHelper.FilterToDeclared(dto.Entities.Points, context.Points);
+
         var result = new Dictionary<string, object>
         {
-            ["message"] = "Biên dịch tọa độ thành công!",
-            ["points"] = context.Points,
+            ["message"] = pointIntegrity.IsValid
+                ? "Biên dịch tọa độ thành công!"
+                : "Biên dịch xong nhưng số lượng điểm không khớp entities.points.",
+            ["points"] = filteredPoints,
             ["segments"] = finalSegments,
             ["planes"] = dto.Entities.Planes
                 .Select(p => System.Text.RegularExpressions.Regex.Matches(p, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value.Trim().ToUpper()).ToArray())
@@ -236,17 +243,26 @@ public class GeometryController : ControllerBase
                 facts = dto.Facts,
                 queries = dto.Queries,
                 aliases = context.PointAliases,
-                points = context.Points,
+                points = filteredPoints,
                 sections = context.Sections,
             },
             ["validation"] = new 
             {
-                allPassed = context.ValidationReport?.AllPassed ?? true,
+                allPassed = (context.ValidationReport?.AllPassed ?? true) && pointIntegrity.IsValid,
                 totalChecked = context.ValidationReport?.TotalChecked ?? 0,
                 totalPassed = context.ValidationReport?.TotalPassed ?? 0,
                 totalFailed = context.ValidationReport?.TotalFailed ?? 0,
                 totalSkipped = context.ValidationReport?.TotalSkipped ?? 0,
-                failures = context.ValidationReport?.Failures.Select(f => new { f.FactId, f.FactType, f.ExpectedValue, f.ActualValue, f.Deviation, f.Message }) ?? Enumerable.Empty<object>()
+                failures = context.ValidationReport?.Failures.Select(f => new { f.FactId, f.FactType, f.ExpectedValue, f.ActualValue, f.Deviation, f.Message }) ?? Enumerable.Empty<object>(),
+                pointIntegrity = new
+                {
+                    expectedCount = pointIntegrity.ExpectedCount,
+                    actualCount = pointIntegrity.ActualCount,
+                    allDeclaredPresent = pointIntegrity.AllDeclaredPresent,
+                    isValid = pointIntegrity.IsValid,
+                    missingPoints = pointIntegrity.MissingPoints,
+                    extraPoints = pointIntegrity.ExtraPoints
+                }
             },
             ["sections"] = context.Sections
         };
