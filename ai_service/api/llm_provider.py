@@ -106,7 +106,7 @@ class LLMProvider:
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}",
             },
-            timeout=timeout,
+            timeout=(10.0, timeout),
         )
         if resp.status_code != 200:
             raise RuntimeError(
@@ -115,12 +115,22 @@ class LLMProvider:
         data = resp.json()
         return _vertex_response_text(data)
 
-    def get_completion(self, messages, model=None, temperature=0.1, timeout=None, allow_fallback=True):
+    def get_completion(
+        self,
+        messages,
+        model=None,
+        temperature=0.1,
+        timeout=None,
+        fallback_timeout=None,
+        allow_fallback=True,
+    ):
         target_model = model or PRIMARY_MODEL
         actual_timeout = timeout or DEFAULT_TIMEOUT
+        actual_fallback_timeout = fallback_timeout or FALLBACK_TIMEOUT
 
         print(
-            f"[LLM_PROVIDER] [{time.strftime('%H:%M:%S')}] Sending request to {target_model} (Vertex OAuth)..."
+            f"[LLM_PROVIDER] [{time.strftime('%H:%M:%S')}] Sending request to {target_model} "
+            f"(Vertex OAuth, read timeout={actual_timeout}s)..."
         )
         start_time = time.time()
 
@@ -142,15 +152,19 @@ class LLMProvider:
             )
 
             if allow_fallback and target_model == PRIMARY_MODEL:
-                print(f"[LLM_PROVIDER] [FALLBACK] Switching to {FALLBACK_MODEL}...")
-                return self._call_fallback(messages, temperature)
+                print(
+                    f"[LLM_PROVIDER] [FALLBACK] Switching to {FALLBACK_MODEL} "
+                    f"(read timeout={actual_fallback_timeout}s)..."
+                )
+                return self._call_fallback(messages, temperature, actual_fallback_timeout)
             raise e
 
-    def _call_fallback(self, messages, temperature=0.1):
+    def _call_fallback(self, messages, temperature=0.1, fallback_timeout=None):
+        actual_fallback_timeout = fallback_timeout or FALLBACK_TIMEOUT
         start_time = time.time()
         try:
             text = self._vertex_generate(
-                FALLBACK_MODEL, messages, temperature, FALLBACK_TIMEOUT
+                FALLBACK_MODEL, messages, temperature, actual_fallback_timeout
             )
             duration = time.time() - start_time
             print(

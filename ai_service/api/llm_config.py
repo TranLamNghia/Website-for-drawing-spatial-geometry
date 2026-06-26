@@ -18,6 +18,10 @@ VERTEX_LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
 PRIMARY_MODEL = "gemini-2.5-flash"
 FALLBACK_MODEL = "gemini-2.5-pro"
 
-# Default timeouts in seconds
+# Default timeouts in seconds (connect, read) — extract returns short JSON
 DEFAULT_TIMEOUT = 60.0
-FALLBACK_TIMEOUT = 30.0
+FALLBACK_TIMEOUT = 60.0
+
+# solve-math generates full SymPy Python scripts (large prompt + long output)
+SOLVE_MATH_TIMEOUT = 180.0
+SOLVE_MATH_FALLBACK_TIMEOUT = 120.0

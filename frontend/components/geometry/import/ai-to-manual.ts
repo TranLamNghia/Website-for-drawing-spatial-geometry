@@ -502,6 +502,19 @@ function getManualPoint(document: ManualDocument, pointMap: Map<string, string>,
   return document.points.find((candidate) => candidate.id === pointId) ?? null
 }
 
+// Tìm khối 3D nguồn theo biểu thức đỉnh (VD "ABCD", "S.ABCD", "SABCD").
+// So khớp theo tập hợp nhãn đỉnh nên không phụ thuộc thứ tự hay dấu chấm.
+function findSolidByLabels(document: ManualDocument, expr: string): ManualSolid | null {
+  const target = parseEntityLabels(expr).slice().sort().join('')
+  if (!target) return null
+  for (const solid of document.solids) {
+    if (solid.solidType === 'sphere') continue
+    const solidLabels = parseEntityLabels(solid.label).slice().sort().join('')
+    if (solidLabels && solidLabels === target) return solid
+  }
+  return null
+}
+
 function computeSegmentParameter(start: Vec3, end: Vec3, point: Vec3) {
   const dx = end[0] - start[0]
   const dy = end[1] - start[1]
@@ -797,6 +810,45 @@ function applyConstructionFacts(
       )
       manualPoint.dependsOn = [ray1Id, vertexId, ray2Id]
       manualPoint.locked = true
+      return
+    }
+
+    // Mặt cầu nội/ngoại tiếp khối 3D: nối tâm + cầu vào khối nguồn để chúng
+    // tự tính lại (tâm = circumcenter/incenter, bán kính = khoảng cách tới đỉnh)
+    // khi người dùng di chuyển đỉnh trong chế độ tự vẽ.
+    if (type === 'circumscribed' || type === 'inscribed') {
+      const isCircum = type === 'circumscribed'
+      const centerLabel = normalizeLabel(
+        String((isCircum ? (data?.outer ?? data?.Outer) : (data?.inner ?? data?.Inner)) ?? ''),
+      )
+      const shapeExpr = String(
+        (isCircum ? (data?.inner ?? data?.Inner) : (data?.outer ?? data?.Outer)) ?? '',
+      )
+      if (!centerLabel || !shapeExpr) return
+
+      const centerPoint = getManualPoint(document, pointMap, centerLabel)
+      if (!centerPoint) return
+
+      const sourceSolid = findSolidByLabels(document, shapeExpr)
+      if (!sourceSolid) return
+
+      const sphereKind = isCircum ? 'solidCircumcenter' : 'solidIncenter'
+
+      centerPoint.pointKind = sphereKind
+      centerPoint.createdByTool = sphereKind
+      centerPoint.solidId = sourceSolid.id
+      centerPoint.dependsOn = [sourceSolid.id]
+      centerPoint.locked = true
+
+      const sphere = document.solids.find(
+        (candidate) => candidate.solidType === 'sphere' && candidate.centerPointId === centerPoint.id,
+      )
+      if (sphere) {
+        sphere.sourceSolidId = sourceSolid.id
+        sphere.createdByTool = sphereKind
+        sphere.dependsOn = [sourceSolid.id, centerPoint.id]
+        sphere.label = isCircum ? 'Hình cầu ngoại tiếp' : 'Hình cầu nội tiếp'
+      }
     }
   })
 }

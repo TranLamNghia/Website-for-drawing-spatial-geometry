@@ -22,12 +22,21 @@ public class CircumscribedHandler : IFactHandler
         var points = context.GetPointsFromPlane(solidChars);
         if (points.Count < 3) return;
 
-        // Tính tâm ngoại tiếp nếu điểm chưa tồn tại
-        if (!context.Points.ContainsKey(spherePoint))
-        {
-            var center = Point3D.GetCircumcenter(points.ToArray());
-            if (center == null) return;
+        // Nếu fact đang nói về một khối 3D (vd ABCD/S.ABCD) nhưng compiler mới dựng
+        // được 3 điểm đáy, đừng tạo nhầm O thành tâm đường tròn đáy. Đợi đủ đỉnh rồi
+        // mới dựng mặt cầu ngoại tiếp.
+        bool isSolidCircumsphere = solidChars.Length >= 4;
+        if (isSolidCircumsphere && points.Count < solidChars.Length) return;
 
+        var center = Point3D.GetCircumcenter(points.ToArray());
+        if (center == null) return;
+
+        if (context.Points.ContainsKey(spherePoint))
+        {
+            context.Points[spherePoint] = center;
+        }
+        else
+        {
             string existingPoint = context.Points.FirstOrDefault(kvp => kvp.Value.DistanceToPoint(center) < 1e-4).Key;
             if (!string.IsNullOrEmpty(existingPoint))
             {
@@ -41,16 +50,24 @@ public class CircumscribedHandler : IFactHandler
             }
         }
 
-        // Luôn đăng ký sphere/circle dù điểm đã tồn tại từ trước (vd: được nạp từ SymPy)
+        // Luôn đăng ký hoặc cập nhật sphere/circle dù điểm đã tồn tại từ trước
+        // (vd: được nạp từ SymPy hoặc từng được dựng tạm ở pass trước).
         var centerPt = context.Points[spherePoint];
         double radius = centerPt.DistanceToPoint(points[0]);
 
         if (points.Count == 3)
         {
-            if (!context.Circles.Any(c => c.Center == spherePoint))
+            var existingCircle = context.Circles.FirstOrDefault(c => c.Center == spherePoint);
+            var plane = new Plane3D(points[0], points[1], points[2]);
+            if (existingCircle != null)
             {
-                var plane = new Plane3D(points[0], points[1], points[2]);
-                context.Circles.Add(new CircleData {
+                existingCircle.Radius = radius;
+                existingCircle.Normal = new double[] { plane.A, plane.B, plane.C };
+            }
+            else
+            {
+                context.Circles.Add(new CircleData
+                {
                     Center = spherePoint,
                     Radius = radius,
                     Normal = new double[] { plane.A, plane.B, plane.C }
@@ -59,7 +76,13 @@ public class CircumscribedHandler : IFactHandler
         }
         else
         {
-            if (!context.Spheres.Any(s => s.Center == spherePoint))
+            context.Circles.RemoveAll(c => c.Center == spherePoint);
+            var existingSphere = context.Spheres.FirstOrDefault(s => s.Center == spherePoint);
+            if (existingSphere != null)
+            {
+                existingSphere.Radius = radius;
+            }
+            else
             {
                 context.Spheres.Add(new SphereData { Center = spherePoint, Radius = radius });
             }

@@ -342,6 +342,7 @@ function ObjectRow({
   onUpdateHeight,
   heightVal,
   solid,
+  sphereRadius,
   onAddRing,
   onUpdateRing,
   onRemoveRing,
@@ -361,6 +362,7 @@ function ObjectRow({
   onUpdateHeight?: (newHeight: number) => void
   heightVal?: number
   solid?: any
+  sphereRadius?: number
   onAddRing?: () => void
   onUpdateRing?: (ringId: string, phi: number, theta: number) => void
   onRemoveRing?: (ringId: string) => void
@@ -505,6 +507,12 @@ function ObjectRow({
 
       {selected && solid?.solidType === 'sphere' && (
         <div className="col-span-full mt-2 border-t border-border/50 bg-muted/20 p-2">
+          {sphereRadius !== undefined && (
+            <div className="mb-2 flex items-center justify-between rounded bg-background/60 px-2 py-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground">Bán kính</span>
+              <span className="text-[11px] font-semibold tracking-tight text-foreground">R = {formatCoord(sphereRadius)}</span>
+            </div>
+          )}
           <div className="flex justify-between items-center mb-2">
             <span className="text-[11px] text-muted-foreground uppercase font-semibold">Các đường tròn</span>
             <Button
@@ -1534,6 +1542,7 @@ export function ManualRightPanel() {
                       onUpdateHeight={solid.height !== undefined ? (newH) => updateSolidHeight(solid.id, newH) : undefined}
                       heightVal={solid.height}
                       solid={solid}
+                      sphereRadius={solid.solidType === 'sphere' ? manualDerived.solidInfo[solid.id]?.radius : undefined}
                       onAddRing={() => addSphereRing(solid.id)}
                       onUpdateRing={(ringId, phi, theta) => updateSphereRingOrientation(solid.id, ringId, phi, theta)}
                       onRemoveRing={(ringId) => removeSphereRing(solid.id, ringId)}

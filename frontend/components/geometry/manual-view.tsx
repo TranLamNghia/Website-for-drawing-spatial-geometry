@@ -140,18 +140,7 @@ export function ManualView() {
 
         {/* Nút ẩn/hiện Sidebar Trái */}
         <button
-          onClick={() => {
-            if (leftOpen) {
-              if (isSubPanelVisible) {
-                setSubOpen(false)
-              } else {
-                setLeftOpen(false)
-              }
-            } else {
-              setLeftOpen(true)
-              setSubOpen(true)
-            }
-          }}
+          onClick={() => setLeftOpen(!leftOpen)}
           className="pointer-events-auto absolute top-1/2 right-0 translate-x-full z-[101] flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-r-2xl border border-l-0 border-border bg-card/95 p-3 text-muted-foreground shadow-xl backdrop-blur-sm transition-all hover:bg-primary hover:text-primary-foreground"
         >
           {leftOpen ? <ChevronLeft size={24} /> : <ChevronRight size={24} />}
