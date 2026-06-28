@@ -152,7 +152,7 @@ export function ManualView() {
         className="absolute top-0 right-0 bottom-0 z-[100] border-l border-border bg-card/92 shadow-2xl backdrop-blur-md transition-transform duration-500 ease-in-out"
         style={{
           width: rightPanelWidth,
-          transform: rightOpen ? 'translateX(0)' : `translateX(${rightPanelWidth})`,
+          transform: rightOpen ? 'translateX(0)' : 'translateX(100%)',
         }}
       >
         <div className="h-full w-full overflow-hidden">

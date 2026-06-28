@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
 import json
 import os
+import re
 from api.llm_client import GeometryAIEngine
 from api.sympy_engine import SympyAIEngine
 from typing import Dict, Any
@@ -188,12 +189,160 @@ def _strip_invalid_line_shape_facts(data: dict) -> None:
 
     data["facts"] = cleaned
 
+_COORD_RE = re.compile(
+    r"([A-Z][0-9]*'*)\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*(?:,\s*(-?\d+(?:\.\d+)?)\s*)?\)"
+)
+
+
+def inject_given_coordinates(data: dict, problem_text: str) -> dict:
+    """Đề hình học tọa độ cho sẵn điểm (vd 'A(1, 0)', 'C(5, 5)').
+
+    LLM không có chỗ hợp lệ để biểu diễn nên hay bịa fact 'coordinates'.
+    Ta parse trực tiếp từ đề và đưa vào field top-level 'points' (backend dùng
+    làm điểm cố định, không bị fallback ghi đè).
+    """
+    if not isinstance(data, dict) or not isinstance(problem_text, str):
+        return data
+
+    found: dict[str, dict] = {}
+    for match in _COORD_RE.finditer(problem_text):
+        label = match.group(1).upper()
+        try:
+            x = float(match.group(2))
+            y = float(match.group(3))
+            z = float(match.group(4)) if match.group(4) is not None else 0.0
+        except (TypeError, ValueError):
+            continue
+        found[label] = {"x": x, "y": y, "z": z}
+
+    if not found:
+        return data
+
+    points = data.get("points")
+    if not isinstance(points, dict):
+        points = {}
+    # Đề là nguồn chân lý cho tọa độ cho sẵn → ghi đè giá trị LLM nếu lệch.
+    for label, coord in found.items():
+        points[label] = coord
+    data["points"] = points
+
+    entities = data.setdefault("entities", {})
+    if isinstance(entities, dict):
+        entity_points = entities.setdefault("points", [])
+        if isinstance(entity_points, list):
+            existing = {p.upper() for p in entity_points if isinstance(p, str)}
+            for label in found:
+                if label not in existing:
+                    entity_points.append(label)
+                    existing.add(label)
+
+    # Dọn fact 'coordinates' rác nếu LLM lỡ tạo (không thuộc schema fact).
+    facts = data.get("facts")
+    if isinstance(facts, list):
+        data["facts"] = [
+            f for f in facts
+            if not (isinstance(f, dict) and str(f.get("type", "")).lower() == "coordinates")
+        ]
+
+    print(f"[EXTRACT] Đã nạp {len(found)} điểm tọa độ cho sẵn từ đề: {', '.join(found)}")
+    return data
+
+
+_COORD_PLANE_NAMES = {"OXY", "OYZ", "OXZ", "XOY", "YOZ", "XOZ", "OXYZ"}
+
+
+def _is_coordinate_plane(label: str) -> bool:
+    if not isinstance(label, str):
+        return False
+    norm = re.sub(r"[()\s]", "", label).upper()
+    if norm in _COORD_PLANE_NAMES:
+        return True
+    chars = set(norm)
+    return len(norm) >= 3 and "O" in chars and chars.issubset({"O", "X", "Y", "Z"})
+
+
+def strip_coordinate_plane_artifacts(data: dict) -> dict:
+    """Loại bỏ rác từ mặt phẳng tọa độ '(Oxy)'.
+
+    '(Oxy)' chỉ ý chỉ đáy nằm trên z = 0, KHÔNG phải mặt phẳng/điểm cần dựng.
+    LLM hay trích nhầm thành plane entity, điểm phantom O/X/Y, fact belongs_to,
+    hoặc mặt cắt → gây sai pointIntegrity và mặt cắt phantom.
+    """
+    if not isinstance(data, dict):
+        return data
+
+    entities = data.get("entities")
+    if not isinstance(entities, dict):
+        return data
+
+    # 1) Bỏ mặt phẳng tọa độ khỏi entities.planes
+    planes = entities.get("planes")
+    if isinstance(planes, list):
+        entities["planes"] = [p for p in planes if not _is_coordinate_plane(p)]
+
+    # 2) Bỏ section có mặt cắt là mặt phẳng tọa độ
+    sections = entities.get("sections")
+    if isinstance(sections, list):
+        kept_sections = []
+        for sec in sections:
+            cp = sec.get("cuttingPlane") if isinstance(sec, dict) else None
+            cp_label = "".join(cp) if isinstance(cp, list) else (cp if isinstance(cp, str) else "")
+            if _is_coordinate_plane(cp_label):
+                continue
+            kept_sections.append(sec)
+        entities["sections"] = kept_sections
+
+    # 3) Bỏ fact tham chiếu mặt phẳng tọa độ (belongs_to/coplanar/parallel...)
+    facts = data.get("facts")
+    if isinstance(facts, list):
+        kept_facts = []
+        for f in facts:
+            if not isinstance(f, dict):
+                kept_facts.append(f)
+                continue
+            fdata = f.get("data") if isinstance(f.get("data"), dict) else {}
+            refs = []
+            for key in ("target", "to", "from", "onto"):
+                if isinstance(fdata.get(key), str):
+                    refs.append(fdata[key])
+            for key in ("objects", "planes"):
+                if isinstance(fdata.get(key), list):
+                    refs.extend([v for v in fdata[key] if isinstance(v, str)])
+            if any(_is_coordinate_plane(r) for r in refs):
+                continue
+            kept_facts.append(f)
+        data["facts"] = kept_facts
+
+    # 4) Bỏ điểm phantom O/X/Y/Z nếu không còn được tham chiếu ở đâu khác
+    pts = entities.get("points")
+    if isinstance(pts, list):
+        referenced: set[str] = set()
+        for key in ("segments", "rays", "vectors", "planes", "solids", "circles", "spheres"):
+            for item in entities.get(key, []) or []:
+                if isinstance(item, str):
+                    referenced.update(re.findall(r"[A-Z][0-9]*'*", item.upper()))
+        for f in data.get("facts", []) or []:
+            if isinstance(f, dict):
+                referenced.update(re.findall(r"[A-Z][0-9]*'*", json.dumps(f.get("data", {})).upper()))
+        for name in (data.get("points") or {}):
+            referenced.add(str(name).upper())
+
+        entities["points"] = [
+            p for p in pts
+            if not (isinstance(p, str) and p.upper() in {"O", "X", "Y", "Z"} and p.upper() not in referenced)
+        ]
+
+    return data
+
+
 @router.post("/extract")
 async def extract_geometry(request: ProblemRequest, api_key: str = Depends(verify_api_key)):
     try:
         raw_json = ai_engine.extract_json(request.problem_text)
         parsed_data = json.loads(raw_json)
         parsed_data = post_process_facts(parsed_data)
+        parsed_data = inject_given_coordinates(parsed_data, request.problem_text)
+        parsed_data = strip_coordinate_plane_artifacts(parsed_data)
         return {"status": "success", "data": parsed_data}
     except ValueError as ve:
         raise HTTPException(status_code=502, detail=build_error_payload("extract", str(ve)))

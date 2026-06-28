@@ -127,3 +127,92 @@ export async function solveProblemText(problemText: string): Promise<any> {
     throw new Error('Chức năng AI hiện đang gặp lỗi. Vui lòng thử lại sau.')
   }
 }
+
+export type SolveProcessStage = 'extracting' | 'compiling' | 'solving' | 'complete' | 'error'
+
+export const SOLVE_STREAM_ENDPOINT_URL = process.env.NEXT_PUBLIC_API_URL
+  ? `${process.env.NEXT_PUBLIC_API_URL}/api/Geometry/process-stream`
+  : 'http://localhost:5000/api/Geometry/process-stream'
+
+const GENERIC_SOLVE_ERROR = 'Chức năng AI hiện đang gặp lỗi. Vui lòng thử lại sau.'
+
+// Gọi endpoint SSE và phát các giai đoạn xử lý (extracting/compiling/solving) cho caller
+// để cập nhật dialog loading, trả về result cuối cùng khi nhận event 'complete'.
+export async function solveProblemTextStream(
+  problemText: string,
+  onStage?: (stage: SolveProcessStage) => void,
+): Promise<any> {
+  let response: Response
+  try {
+    response = await fetch(SOLVE_STREAM_ENDPOINT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(problemText),
+    })
+  } catch (error) {
+    console.error('[solveProblemTextStream] AI service request failed:', error)
+    throw new Error(GENERIC_SOLVE_ERROR)
+  }
+
+  if (!response.ok || !response.body) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(toUserFacingSolveError(errorData))
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let result: any = null
+  let errorMessage: string | null = null
+  let sawError = false
+
+  const handleFrame = (frame: string) => {
+    const jsonText = frame
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .join('')
+    if (!jsonText) return
+
+    let payload: any
+    try {
+      payload = JSON.parse(jsonText)
+    } catch {
+      return
+    }
+
+    const stage = payload?.stage as SolveProcessStage | undefined
+    if (!stage) return
+
+    if (stage === 'complete') {
+      result = payload.result ?? null
+    } else if (stage === 'error') {
+      sawError = true
+      errorMessage = typeof payload.message === 'string' ? payload.message : null
+    } else {
+      onStage?.(stage)
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let idx: number
+    while ((idx = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, idx)
+      buffer = buffer.slice(idx + 2)
+      handleFrame(frame)
+    }
+  }
+
+  buffer += decoder.decode()
+  if (buffer.trim().length > 0) handleFrame(buffer)
+
+  if (sawError) {
+    console.error('[solveProblemTextStream] AI service returned error:', errorMessage)
+    throw new Error(GENERIC_SOLVE_ERROR)
+  }
+
+  return result
+}

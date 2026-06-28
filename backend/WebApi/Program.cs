@@ -74,7 +74,7 @@ builder.Services.AddCors(options =>
 });
 builder.Services.AddHttpClient<IGeometryExtractionService, GeometryExtractionService>(client => 
 {
-    client.Timeout = TimeSpan.FromMinutes(3); // Tăng timeout từ 100s (mặc định) lên 3 phút
+    client.Timeout = TimeSpan.FromMinutes(6); // solve-math có thể cần vài vòng retry LLM + sandbox
 });
 builder.Services.AddScoped<IGeometryCompiler, GeometryCompiler>();
 

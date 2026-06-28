@@ -106,17 +106,40 @@ public class GeometryCompiler : IGeometryCompiler
         if (response.Points != null && response.Points.Count > 0)
         {
             Console.WriteLine($"[COMPILER] Mở khóa sức mạnh AI Fallback! Đang sáp nhập {response.Points.Count} điểm mới vào hệ thống...");
-            
+
+            var fixedPointNames = new HashSet<string>(
+                problem.Points?.Keys ?? Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase
+            );
+
+            // Điểm hợp lệ để vẽ = điểm đã khai báo trong entities.points.
+            // SymPy đôi khi trả thêm điểm phụ (vd gốc O từ "(Oxy)") không khai báo;
+            // không nạp các điểm này để tránh "điểm thừa" làm sai pointIntegrity.
+            var declaredNames = new HashSet<string>(
+                problem.Entities.Points.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()),
+                StringComparer.OrdinalIgnoreCase
+            );
+
             // Ghi đè tọa độ
             foreach (var kvp in response.Points)
             {
+                if (fixedPointNames.Contains(kvp.Key))
+                {
+                    Console.WriteLine($"[COMPILER] Bỏ qua ghi đè điểm cố định {kvp.Key} từ đề bài.");
+                    continue;
+                }
+
                 if (context.Points.ContainsKey(kvp.Key))
                 {
                     context.Points[kvp.Key] = kvp.Value;
                 }
-                else
+                else if (declaredNames.Contains(kvp.Key))
                 {
                     context.Points.Add(kvp.Key, kvp.Value);
+                }
+                else
+                {
+                    Console.WriteLine($"[COMPILER] Bỏ qua điểm phụ '{kvp.Key}' do SymPy sinh thêm (không khai báo trong entities.points).");
                 }
             }
         }

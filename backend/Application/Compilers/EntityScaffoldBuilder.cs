@@ -134,19 +134,87 @@ public static class EntityScaffoldBuilder
 
         var line1 = segments[0];
         var line2 = segments[1];
+        if (TryBuildParallelLines(problem, context, line1, line2)) return true;
+
         double len1 = ResolveSegmentLength(problem, line1[0], line1[1], context.UnitLength * 1.2);
         double len2 = ResolveSegmentLength(problem, line2[0], line2[1], context.UnitLength);
 
-        context.Points[line1[0]] = new Point3D(0, 0, 0);
-        context.Points[line1[1]] = new Point3D(len1, 0, 0);
+        if (!context.Points.ContainsKey(line1[0]))
+            context.Points[line1[0]] = new Point3D(0, 0, 0);
+        if (!context.Points.ContainsKey(line1[1]))
+            context.Points[line1[1]] = new Point3D(len1, 0, 0);
         double midX = len1 / 2.0;
-        context.Points[line2[0]] = new Point3D(midX, len2 / 2.0, 0);
-        context.Points[line2[1]] = new Point3D(midX, -len2 / 2.0, 0);
+        if (!context.Points.ContainsKey(line2[0]))
+            context.Points[line2[0]] = new Point3D(midX, len2 / 2.0, 0);
+        if (!context.Points.ContainsKey(line2[1]))
+            context.Points[line2[1]] = new Point3D(midX, -len2 / 2.0, 0);
 
         context.AddGeneratedSegment(line1[0], line1[1]);
         context.AddGeneratedSegment(line2[0], line2[1]);
         Console.WriteLine($"[SCAFFOLD] Dựng hai đường cắt nhau {line1[0]}{line1[1]} và {line2[0]}{line2[1]}");
         return true;
+    }
+
+    private static bool TryBuildParallelLines(
+        GeometryProblemDto problem,
+        CompilationContext context,
+        List<string> line1,
+        List<string> line2)
+    {
+        bool hasParallelFact = problem.Facts.Any(f =>
+        {
+            if (f.Type != FactType.Parallel || f.GetDataAs<ObjectsData>() is not ObjectsData data || data.Objects.Count < 2)
+                return false;
+            var a = ParseVertices(data.Objects[0]);
+            var b = ParseVertices(data.Objects[1]);
+            return SegmentsMatch(a, line1) && SegmentsMatch(b, line2)
+                || SegmentsMatch(a, line2) && SegmentsMatch(b, line1);
+        });
+        if (!hasParallelFact) return false;
+
+        // Đường tham chiếu phải là đường có nhiều đầu mút đã biết tọa độ nhất
+        // (vd AB cho sẵn A,B) để suy hướng song song chuẩn, không phụ thuộc thứ tự segment.
+        int known1 = (context.Points.ContainsKey(line1[0]) ? 1 : 0) + (context.Points.ContainsKey(line1[1]) ? 1 : 0);
+        int known2 = (context.Points.ContainsKey(line2[0]) ? 1 : 0) + (context.Points.ContainsKey(line2[1]) ? 1 : 0);
+        if (known2 > known1)
+            (line1, line2) = (line2, line1);
+
+        double len = ResolveSegmentLength(problem, line1[0], line1[1], context.UnitLength);
+        if (!context.Points.ContainsKey(line1[0]))
+            context.Points[line1[0]] = new Point3D(0, 0, 0);
+        if (!context.Points.ContainsKey(line1[1]))
+            context.Points[line1[1]] = new Point3D(len, 0, 0);
+
+        var p1 = context.Points[line1[0]];
+        var p2 = context.Points[line1[1]];
+        var dx = p2.X - p1.X;
+        var dy = p2.Y - p1.Y;
+        var dz = p2.Z - p1.Z;
+
+        if (!context.Points.ContainsKey(line2[0]) && !context.Points.ContainsKey(line2[1]))
+            context.Points[line2[0]] = new Point3D(p1.X, p1.Y + context.UnitLength, p1.Z);
+
+        if (context.Points.ContainsKey(line2[0]) && !context.Points.ContainsKey(line2[1]))
+        {
+            var start = context.Points[line2[0]];
+            context.Points[line2[1]] = new Point3D(start.X + dx, start.Y + dy, start.Z + dz);
+        }
+        else if (!context.Points.ContainsKey(line2[0]) && context.Points.ContainsKey(line2[1]))
+        {
+            var end = context.Points[line2[1]];
+            context.Points[line2[0]] = new Point3D(end.X - dx, end.Y - dy, end.Z - dz);
+        }
+
+        context.AddGeneratedSegment(line1[0], line1[1]);
+        context.AddGeneratedSegment(line2[0], line2[1]);
+        Console.WriteLine($"[SCAFFOLD] Dựng hai đường song song {line1[0]}{line1[1]} và {line2[0]}{line2[1]}");
+        return true;
+    }
+
+    private static bool SegmentsMatch(List<string> a, List<string> b)
+    {
+        if (a.Count != 2 || b.Count != 2) return false;
+        return (a[0] == b[0] && a[1] == b[1]) || (a[0] == b[1] && a[1] == b[0]);
     }
 
     private static bool TryBuildTwoPlanes(GeometryProblemDto problem, CompilationContext context)

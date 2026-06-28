@@ -200,6 +200,9 @@ CRITICAL RULES FOR ENTITIES:
 40. ĐOẠN THẲNG: Nếu đề cho đoạn `AB`, phải có `entities.segments` chứa `AB` và `entities.points` chứa `A`, `B`.
 41. TAM GIÁC — THỨ TỰ ƯU TIÊN: thường (`triangle`) → vuông (`right_triangle`) → cân (`isosceles_triangle`) → vuông cân (`isosceles_right_triangle`) → đều (`equilateral_triangle`). Chỉ dùng dạng đặc biệt khi đề nói rõ (vd. "vuông tại B" → `right_triangle`, KHÔNG tự đổi thành `isosceles_right_triangle` trừ khi có thêm điều kiện như `AB = AC` hoặc `AB ⊥ BC` kèm bằng cạnh). Đề chỉ nói "tam giác ABC" → `triangle`.
 42. ĐƯỜNG THẲNG AB (ĐỢT 1): Khi đề chỉ nói "cho đường thẳng AB" / "vẽ đường thẳng AB", KHÔNG sinh fact `shape`. Chỉ khai báo `entities.points: ['A','B']`, `entities.segments: ['AB']`. Nếu có "tia đối" / "tia AB" thì dùng fact `opposite_ray` hoặc `ray` — không dùng `shape` với giá trị `line`.
+43. TỌA ĐỘ CHO SẴN (HÌNH HỌC TỌA ĐỘ): Khi đề CHO SẴN tọa độ một điểm (ví dụ "A(1, 0)", "B(5, 3)", "C(5, 5)", "M(1, 2, 3)"), ĐƯA tọa độ đó vào object top-level `points` theo dạng {{ "A": {{ "x": 1, "y": 0, "z": 0 }} }} (điểm 2D thì z = 0). VẪN liệt kê tên điểm trong `entities.points`.
+   - TUYỆT ĐỐI KHÔNG tạo fact với type `coordinates` (KHÔNG tồn tại trong VALID FACT TYPES) và KHÔNG nhét tọa độ vào `facts`.
+   - `coordinates` chỉ hợp lệ khi là QUERY (câu hỏi "tìm tọa độ điểm..."), không phải fact.
 """.strip()
 
     user_prompt = f"""

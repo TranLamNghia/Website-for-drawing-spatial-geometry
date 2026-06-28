@@ -78,6 +78,15 @@ public class DistanceValidator : IFactValidator
             return ValidationResult.Skip(fact.Id, "Distance", $"Không nhận dạng được loại khoảng cách: {from} -> {to}");
         }
 
+        if (IsNonNumericSymbol(data.Value))
+        {
+            return ValidationResult.Skip(
+                fact.Id,
+                "Distance",
+                $"Khoảng cách {from}->{to} là ký hiệu '{data.Value}', bỏ qua kiểm định số"
+            );
+        }
+
         double expectedDistance = EvaluateExpression(data.Value, unitLength);
 
         double tolerance = expectedDistance * 0.01;
@@ -85,6 +94,17 @@ public class DistanceValidator : IFactValidator
             return ValidationResult.Pass(fact.Id, "Distance", expectedDistance, actualDistance);
 
         return ValidationResult.Fail(fact.Id, "Distance", expectedDistance, actualDistance);
+    }
+
+    private bool IsNonNumericSymbol(string value)
+    {
+        string sanitized = (value ?? string.Empty).ToLower().Replace(" ", "");
+        if (string.IsNullOrWhiteSpace(sanitized)) return true;
+
+        // 'a' là tham số đơn vị mặc định của hệ thống. Các ký hiệu khác như d/h/k
+        // thường là đại lượng cần tính, không phải ràng buộc số để ép tọa độ.
+        sanitized = sanitized.Replace("sqrt", "");
+        return System.Text.RegularExpressions.Regex.IsMatch(sanitized, @"[b-z]");
     }
 
     private double EvaluateExpression(string expr, double a)

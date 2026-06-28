@@ -138,7 +138,9 @@ export function SolverView() {
         className="absolute left-0 top-0 bottom-0 z-30 transition-transform duration-500 ease-in-out border-r border-border bg-card/50 backdrop-blur-md shadow-xl"
         style={{
           width: leftPanelWidth,
-          transform: leftOpen ? 'translateX(0)' : `translateX(-${leftPanelWidth})`,
+          // translateX(-100%) dịch đúng bằng width của panel, hợp lệ cả khi width là clamp()
+          // (tránh CSS lỗi 'translateX(-clamp(...))' khiến panel không thu lại được ở tier ultra).
+          transform: leftOpen ? 'translateX(0)' : 'translateX(-100%)',
         }}
       >
         <div className="h-full w-full min-h-0 overflow-y-auto">
@@ -158,7 +160,7 @@ export function SolverView() {
         className="absolute right-0 top-0 bottom-0 z-30 bg-card/50 backdrop-blur-md shadow-2xl border-l border-border transition-transform duration-500 ease-in-out"
         style={{
           width: rightWidth,
-          transform: rightOpen ? 'translateX(0px)' : `translateX(${rightWidth}px)`,
+          transform: rightOpen ? 'translateX(0px)' : 'translateX(100%)',
         }}
       >
         {rightOpen && (

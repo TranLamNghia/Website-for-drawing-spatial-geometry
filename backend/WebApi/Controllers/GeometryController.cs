@@ -111,6 +111,67 @@ public class GeometryController : ControllerBase
         }
     }
 
+    [HttpPost("process-stream")]
+    public async Task ProcessProblemStream([FromBody] string problemText)
+    {
+        Response.ContentType = "text/event-stream";
+        Response.Headers["Cache-Control"] = "no-cache";
+        Response.Headers["Connection"] = "keep-alive";
+        // Tắt buffering của reverse proxy (nginx) để event tới client ngay lập tức.
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        try
+        {
+            await WriteSseEventAsync(new { stage = "extracting" });
+            var dto = await _aiService.ExtractGeometryAsync(problemText);
+            if (dto == null)
+            {
+                await WriteSseEventAsync(new { stage = "error", message = "Không thể trích xuất dữ liệu từ AI Service." });
+                return;
+            }
+
+            await WriteSseEventAsync(new { stage = "compiling" });
+            var context = _compiler.Compile(dto);
+
+            if (context.ValidationReport != null && !context.ValidationReport.AllPassed)
+            {
+                await WriteSseEventAsync(new { stage = "solving" });
+
+                var solverRequest = new MathSolverRequestDto
+                {
+                    ProblemText = problemText,
+                    FactsJson = dto,
+                    CurrentPoints = context.Points,
+                    ValidationFailures = context.ValidationReport.Failures,
+                    BaseAValue = context.UnitLength
+                };
+
+                var solverResponse = await _aiService.FallbackSolveMathAsync(solverRequest);
+                if (solverResponse != null)
+                {
+                    _compiler.RefineWithNewPoints(context, dto, solverResponse);
+                }
+            }
+
+            var result = BuildFinalResult(dto, context);
+            await WriteSseEventAsync(new { stage = "complete", result });
+        }
+        catch (Exception ex)
+        {
+            await WriteSseEventAsync(new { stage = "error", message = ex.Message });
+        }
+    }
+
+    // Giữ camelCase giống hành vi mặc định của Ok() trong ASP.NET để FE đọc payload y hệt endpoint /process.
+    private static readonly JsonSerializerOptions SseJsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    private async Task WriteSseEventAsync(object payload)
+    {
+        var json = JsonSerializer.Serialize(payload, SseJsonOptions);
+        await Response.WriteAsync($"data: {json}\n\n");
+        await Response.Body.FlushAsync();
+    }
+
     private object BuildFinalResult(GeometryProblemDto dto, CompilationContext context)
     {
         var finalSegments = PointIntegrityHelper.FilterSegments(
