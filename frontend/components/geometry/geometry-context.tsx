@@ -2107,7 +2107,7 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const updatePointT = useCallback((pointId: string, t: number) => {
     commitManualDocument((current) => {
       const point = current.points.find((p) => p.id === pointId)
-      if (!point || (point.pointKind !== 'segment' && point.pointKind !== 'midpoint')) return null
+      if (!point || point.locked || (point.pointKind !== 'segment' && point.pointKind !== 'midpoint')) return null
       
       const newKind = 'segment' // Change to segment in case it was a midpoint so it persists the `t`
       return {
@@ -2187,6 +2187,8 @@ export function GeometryProvider({ children }: { children: React.ReactNode }) {
   const updatePointAngle = useCallback(
     (pointId: string, angle: number) => {
       commitManualDocument((current) => {
+        const point = current.points.find((p) => p.id === pointId)
+        if (!point || point.locked) return null
         return {
           ...current,
           points: current.points.map((p) => {

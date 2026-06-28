@@ -1277,6 +1277,10 @@ public class GeometryCompiler : IGeometryCompiler
         {
             foreach (var pStr in problem.Entities.Planes)
             {
+                // Mặt phẳng tiếp xúc (vd (P) tiếp xúc mặt cầu tại K) — vẽ mp tiếp tuyến, không cắt khối.
+                if (IsTangentPlaneEntity(pStr, problem))
+                    continue;
+
                 // Chỉ thêm nếu không phải là một mặt của khối đa diện (vùng biên)
                 if (!IsFaceOfSolid(pStr, context))
                 {
@@ -1714,6 +1718,23 @@ public class GeometryCompiler : IGeometryCompiler
             }
         }
         return false;
+    }
+
+    private static bool IsTangentPlaneEntity(string planeStr, GeometryProblemDto problem)
+    {
+        var planeLabel = planeStr.Replace("(", "").Replace(")", "").Trim();
+        if (string.IsNullOrWhiteSpace(planeLabel)) return false;
+
+        return problem.Facts.Any(f =>
+        {
+            if (f.Type != FactType.Tangent) return false;
+            var data = f.GetDataAs<TangentData>();
+            if (data?.Objects == null || data.Objects.Count < 2) return false;
+
+            return data.Objects.Any(o =>
+                o.Replace("(", "").Replace(")", "").Trim()
+                    .Equals(planeLabel, StringComparison.OrdinalIgnoreCase));
+        });
     }
 
     private List<string> ParseVertices(string input)

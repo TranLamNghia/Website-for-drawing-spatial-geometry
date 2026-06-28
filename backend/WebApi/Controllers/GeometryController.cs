@@ -224,18 +224,19 @@ public class GeometryController : ControllerBase
         // 3. Chuẩn bị đầu ra
         var pointIntegrity = PointIntegrityHelper.Evaluate(dto.Entities.Points, context.Points);
         var filteredPoints = PointIntegrityHelper.FilterToDeclared(dto.Entities.Points, context.Points);
+        var renderPoints = BuildRenderablePoints(filteredPoints, context);
 
         var result = new Dictionary<string, object>
         {
             ["message"] = pointIntegrity.IsValid
                 ? "Biên dịch tọa độ thành công!"
                 : "Biên dịch xong nhưng số lượng điểm không khớp entities.points.",
-            ["points"] = filteredPoints,
+            ["points"] = renderPoints,
             ["segments"] = finalSegments,
             ["planes"] = dto.Entities.Planes
                 .Select(p => System.Text.RegularExpressions.Regex.Matches(p, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value.Trim().ToUpper()).ToArray())
+                .Where(pts => pts.Length >= 3)
                 .Where(pts => {
-                    if (pts.Length == 0) return false;
                     for(int i=0; i<pts.Length; i++) {
                         if(context.PointAliases.TryGetValue(pts[i], out var newVal)) pts[i] = newVal;
                     }
@@ -253,8 +254,8 @@ public class GeometryController : ControllerBase
                     points = p.Points,
                     color = p.Color ?? "#ffffff",
                     density = p.Density,
-                    opacity = 0.15,
-                    isSolidFace = true
+                    opacity = p.Opacity > 0 ? p.Opacity : 0.15,
+                    isSolidFace = p.IsSolidFace
                 })),
             ["circles"] = context.Circles.Select(c => {
                 var displayCenter = c.Center;
@@ -350,5 +351,25 @@ public class GeometryController : ControllerBase
         }
 
         return result;
+    }
+
+    /// <summary>Điểm khai báo + điểm phụ vẽ mặt (vd _P_1) — không ảnh hưởng pointIntegrity.</summary>
+    private static Dictionary<string, Domains.MathCore.Point3D> BuildRenderablePoints(
+        Dictionary<string, Domains.MathCore.Point3D> filteredPoints,
+        CompilationContext context)
+    {
+        var output = new Dictionary<string, Domains.MathCore.Point3D>(
+            filteredPoints, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var plane in context.GeneratedPlanes)
+        {
+            foreach (var name in plane.Points)
+            {
+                if (context.Points.TryGetValue(name, out var pt) && !output.ContainsKey(name))
+                    output[name] = pt;
+            }
+        }
+
+        return output;
     }
 }

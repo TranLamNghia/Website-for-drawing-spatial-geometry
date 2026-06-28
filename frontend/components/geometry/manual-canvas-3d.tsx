@@ -3111,6 +3111,7 @@ export function ManualCanvas3D() {
         const _segDragPointId = interactionRef.current.creatingPointId
         const _segDragPoint = manualDocument.points.find(p => p.id === _segDragPointId)
         if (_segDragPoint && (_segDragPoint.pointKind === 'segment' || _segDragPoint.pointKind === 'midpoint') && _segDragPoint.segmentId) {
+          if (_segDragPoint.locked) return
           controls.enabled = false
           const _segRay = getCameraRay(event)
           if (_segRay) {
@@ -3604,6 +3605,11 @@ export function ManualCanvas3D() {
       const drawingTools = ['select', 'point', 'segment', 'polygon', 'box', 'sphere', 'cone', 'cylinder', 'pyramid', 'prism', 'regularPyramid', 'rightPyramid']
 
       if (drawingTools.includes(activeTool) && snapTarget?.kind === 'point' && snapTarget.pointId) {
+        const draggedPoint = manualDocument.points.find((p) => p.id === snapTarget.pointId)
+        if (draggedPoint?.locked) {
+          setManualSelection({ kind: 'point', id: snapTarget.pointId })
+          return
+        }
         const pos = snapTarget.position
         interactionRef.current.creatingPointId = snapTarget.pointId
         interactionRef.current.createPointStartY = event.clientY

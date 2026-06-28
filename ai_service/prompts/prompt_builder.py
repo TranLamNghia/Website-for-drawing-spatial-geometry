@@ -203,6 +203,18 @@ CRITICAL RULES FOR ENTITIES:
 43. TỌA ĐỘ CHO SẴN (HÌNH HỌC TỌA ĐỘ): Khi đề CHO SẴN tọa độ một điểm (ví dụ "A(1, 0)", "B(5, 3)", "C(5, 5)", "M(1, 2, 3)"), ĐƯA tọa độ đó vào object top-level `points` theo dạng {{ "A": {{ "x": 1, "y": 0, "z": 0 }} }} (điểm 2D thì z = 0). VẪN liệt kê tên điểm trong `entities.points`.
    - TUYỆT ĐỐI KHÔNG tạo fact với type `coordinates` (KHÔNG tồn tại trong VALID FACT TYPES) và KHÔNG nhét tọa độ vào `facts`.
    - `coordinates` chỉ hợp lệ khi là QUERY (câu hỏi "tìm tọa độ điểm..."), không phải fact.
+44. TỨ GIÁC / ĐA GIÁC (ĐỢT 4): Khi đề chỉ nói "tứ giác ABCD" / "vẽ tứ giác ABCD" mà KHÔNG nói vuông/thoi/hình bình/hình thang, dùng fact `shape` với `shape: "trapezoid"`, `target: "ABCD"`. Khai báo `entities.points: ['A','B','C','D']` và `entities.segments: ['AB','BC','CD','DA']`. Nếu đề chỉ nói đồng phẳng, thêm fact `coplanar` với `points: ['A','B','C','D']`.
+45. MẶT CẦU TIẾP XÚC MẶT PHẲNG: Khi đề nói mặt phẳng `(P)` tiếp xúc mặt cầu tâm `O` bán kính `R` tại điểm `K`, trích xuất:
+   - `entities.points`: ['O', 'K']
+   - `entities.planes`: ['P']
+   - fact `shape` (sphere): {{ target: 'S', shape: 'sphere', center: 'O', radius: 'R' }} hoặc entities.spheres phù hợp
+   - fact `tangent`: {{ objects: ['P', 'O'], point: 'K' }}
+   - KHÔNG tạo query cross_section / section cắt khối. "Trong không gian Oxyz" chỉ là bối cảnh, KHÔNG đưa Oxyz vào entities.planes.
+46. CẠNH KHUNG HÌNH (BẮT BUỘC): Khi có khối dạng `ABCD.A'B'C'D'` / `ABC.A'B'C'` / `S.ABCD`, phải khai báo `entities.solids` chứa đúng tên khối và `entities.segments` gồm **toàn bộ** cạnh khung:
+   - Lăng trụ/hộp `ABCD.A'B'C'D'`: `AB`, `BC`, `CD`, `DA`, `A'B'`, `B'C'`, `C'D'`, `D'A'`, `AA'`, `BB'`, `CC'`, `DD'`
+   - Chóp `S.ABCD`: `SA`, `SB`, `SC`, `SD`, `AB`, `BC`, `CD`, `DA`
+   - Đa giác đáy phẳng `ABCD`: `AB`, `BC`, `CD`, `DA` (tam giác `ABC`: `AB`, `BC`, `CA`)
+   Backend chỉ vẽ cạnh nằm trong `entities.segments` hoặc suy ra từ `entities.solids` — thiếu cạnh đáy sẽ bị mất nét dù tọa độ đúng.
 """.strip()
 
     user_prompt = f"""

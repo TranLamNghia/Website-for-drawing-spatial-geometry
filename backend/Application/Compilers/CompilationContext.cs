@@ -24,6 +24,9 @@ public class CompilationContext
     public List<string> CrossSectionPoints { get; set; } = new();
     public Dictionary<string, PointSide> PointSides { get; set; } = new();
 
+    /// <summary>Mặt phẳng đặt tên (P, Q, α...) không mô tả bằng 3 đỉnh.</summary>
+    public Dictionary<string, Plane3D> NamedPlanes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     public Point3D? GetPoint(string name)
     {
         return Points.TryGetValue(name, out var point) ? point : null;
@@ -55,6 +58,10 @@ public class CompilationContext
 
     public Plane3D? GetPlane(string name)
     {
+        name = name.Replace("(", "").Replace(")", "").Trim();
+        if (NamedPlanes.TryGetValue(name, out var namedPlane))
+            return namedPlane;
+
         var vertices = System.Text.RegularExpressions.Regex.Matches(name, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
         if (vertices.Count < 3) return null;
         var p1 = GetPoint(vertices[0]);
@@ -122,7 +129,7 @@ public class CompilationContext
     }
 }
 
-public class PlaneData { public string[] Points { get; set; } = Array.Empty<string>(); public string Color { get; set; } = "#6671d1"; public int Density { get; set; } = 15; public double Opacity { get; set; } = 0.2; }
+public class PlaneData { public string[] Points { get; set; } = Array.Empty<string>(); public string Color { get; set; } = "#6671d1"; public int Density { get; set; } = 15; public double Opacity { get; set; } = 0.2; public bool IsSolidFace { get; set; } = true; }
 public class CircleData { public string Center { get; set; } = ""; public double Radius { get; set; } public double[] Normal { get; set; } = { 0, 0, 1 }; public string Color { get; set; } = "#22B14C"; }
 public class SphereData { public string Center { get; set; } = ""; public double Radius { get; set; } public string Color { get; set; } = "#6671d1"; public double Opacity { get; set; } = 0.1; }
 public class ConeData { public string Center { get; set; } = ""; public string Apex { get; set; } = ""; public double Radius { get; set; } public string Color { get; set; } = "#FF8C00"; public double Opacity { get; set; } = 0.15; }

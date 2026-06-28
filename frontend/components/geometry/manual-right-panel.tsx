@@ -147,6 +147,7 @@ function PointRow({
 
   const commit = () => {
     setIsFocused(false)
+    if (!isFree || point.locked) return
     const x = Number(draft.x)
     const y = Number(draft.y)
     const z = Number(draft.z)
@@ -277,8 +278,9 @@ function PointRow({
               max="1"
               step="0.01"
               value={tVal ?? 0.5}
-              onChange={(e) => onUpdateT(parseFloat(e.target.value))}
-              className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
+              disabled={point.locked}
+              onChange={(e) => !point.locked && onUpdateT(parseFloat(e.target.value))}
+              className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-60"
             />
           </div>
         </div>
@@ -297,17 +299,20 @@ function PointRow({
               max="180"
               step="1"
               value={(angleVal * 180 / Math.PI).toFixed(0)}
-              onChange={(e) => onUpdateAngle(parseFloat(e.target.value) * Math.PI / 180)}
-              className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
+              disabled={point.locked}
+              onChange={(e) => !point.locked && onUpdateAngle(parseFloat(e.target.value) * Math.PI / 180)}
+              className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-60"
             />
             <input
               type="number"
               value={(angleVal * 180 / Math.PI).toFixed(0)}
+              disabled={point.locked}
               onChange={(e) => {
+                if (point.locked) return
                 const val = parseFloat(e.target.value)
                 if (!isNaN(val)) onUpdateAngle(val * Math.PI / 180)
               }}
-              className="h-8 w-14 rounded border bg-background px-1 text-right text-xs font-mono"
+              className="h-8 w-14 rounded border bg-background px-1 text-right text-xs font-mono disabled:cursor-not-allowed disabled:opacity-60"
             />
           </div>
           {onAddDependentPoint && (

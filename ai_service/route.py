@@ -127,8 +127,127 @@ def post_process_facts(data: dict) -> dict:
                         entities["segments"].append(target_seg)
 
     _strip_invalid_line_shape_facts(data)
+    _ensure_solid_wireframe_segments(data)
 
     return data
+
+
+def _wireframe_segments_for_solid_target(target: str) -> list[str]:
+    """Sinh đủ cạnh khung lăng trụ/chóp từ target dạng ABCD.A'B'C'D' hoặc S.ABCD."""
+    if not isinstance(target, str) or "." not in target:
+        return []
+
+    face1_raw, face2_raw = target.split(".", 1)
+    face1 = _parse_point_labels(face1_raw)
+    face2 = _parse_point_labels(face2_raw)
+    segs: list[str] = []
+
+    if len(face1) == 1 and len(face2) >= 3:
+        apex = face1[0]
+        for v in face2:
+            segs.append(f"{apex}{v}")
+        for i in range(len(face2)):
+            segs.append(f"{face2[i]}{face2[(i + 1) % len(face2)]}")
+    elif len(face1) >= 3 and len(face1) == len(face2):
+        for i in range(len(face1)):
+            segs.append(f"{face1[i]}{face1[(i + 1) % len(face1)]}")
+            segs.append(f"{face2[i]}{face2[(i + 1) % len(face2)]}")
+            segs.append(f"{face1[i]}{face2[i]}")
+    return segs
+
+
+def _wireframe_segments_for_polygon(labels: list[str]) -> list[str]:
+    if len(labels) < 3:
+        return []
+    return [f"{labels[i]}{labels[(i + 1) % len(labels)]}" for i in range(len(labels))]
+
+
+_SOLID_SHAPE_TYPES = {
+    "prism", "regular_prism", "cube", "regular_cube", "rectangular_cuboid",
+    "regular_rectangular_cuboid", "parallelepiped", "regular_parallelepiped",
+    "pentagonal_prism", "hexagonal_prism", "frustum", "cylinder", "regular_cylinder",
+    "pyramid", "regular_pyramid", "right_pyramid", "regular_right_pyramid",
+    "pentagonal_pyramid", "hexagonal_pyramid", "tetrahedron",
+}
+
+_POLYGON_SHAPE_TYPES = {
+    "triangle", "right_triangle", "isosceles_triangle", "isosceles_right_triangle",
+    "equilateral_triangle", "square", "rectangle", "parallelogram", "rhombus",
+    "trapezoid", "pentagon", "hexagon",
+}
+
+
+def _ensure_solid_wireframe_segments(data: dict) -> None:
+    """Bổ sung entities.segments / entities.solids để backend không lọc mất cạnh đáy."""
+    entities = data.get("entities")
+    facts = data.get("facts")
+    if not isinstance(entities, dict) or not isinstance(facts, list):
+        return
+
+    points = entities.setdefault("points", [])
+    segments = entities.setdefault("segments", [])
+    solids = entities.setdefault("solids", [])
+    if not isinstance(points, list):
+        points = []
+        entities["points"] = points
+    if not isinstance(segments, list):
+        segments = []
+        entities["segments"] = segments
+    if not isinstance(solids, list):
+        solids = []
+        entities["solids"] = solids
+
+    point_set = {p.upper() for p in points if isinstance(p, str)}
+    seg_set = {s.upper() for s in segments if isinstance(s, str)}
+    solid_set = {s.upper() for s in solids if isinstance(s, str)}
+
+    def add_point(label: str) -> None:
+        if label and label not in point_set:
+            points.append(label)
+            point_set.add(label)
+
+    def add_segment(seg: str) -> None:
+        if not seg:
+            return
+        key = seg.upper()
+        if key not in seg_set:
+            segments.append(seg)
+            seg_set.add(key)
+        for label in _parse_point_labels(seg):
+            add_point(label)
+
+    def add_solid(name: str) -> None:
+        key = name.upper()
+        if key not in solid_set:
+            solids.append(name)
+            solid_set.add(key)
+
+    for fact in facts:
+        if not isinstance(fact, dict) or fact.get("type") != "shape":
+            continue
+        fact_data = fact.get("data")
+        if not isinstance(fact_data, dict):
+            continue
+
+        shape = str(fact_data.get("shape", "")).lower()
+        target = fact_data.get("target")
+        if not isinstance(target, str) or not target.strip():
+            continue
+
+        target = target.strip()
+
+        if shape in _SOLID_SHAPE_TYPES and "." in target:
+            add_solid(target)
+            for label in _parse_point_labels(target):
+                add_point(label)
+            for seg in _wireframe_segments_for_solid_target(target):
+                add_segment(seg)
+        elif shape in _POLYGON_SHAPE_TYPES:
+            labels = _parse_point_labels(target)
+            for label in labels:
+                add_point(label)
+            for seg in _wireframe_segments_for_polygon(labels):
+                add_segment(seg)
 
 
 def _parse_point_labels(value: str) -> list[str]:
@@ -324,6 +443,13 @@ def strip_coordinate_plane_artifacts(data: dict) -> dict:
         for f in data.get("facts", []) or []:
             if isinstance(f, dict):
                 referenced.update(re.findall(r"[A-Z][0-9]*'*", json.dumps(f.get("data", {})).upper()))
+                fdata = f.get("data") if isinstance(f.get("data"), dict) else {}
+                center = fdata.get("center")
+                if isinstance(center, str):
+                    referenced.add(center.upper())
+                point = fdata.get("point")
+                if isinstance(point, str):
+                    referenced.add(point.upper())
         for name in (data.get("points") or {}):
             referenced.add(str(name).upper())
 
@@ -331,6 +457,41 @@ def strip_coordinate_plane_artifacts(data: dict) -> dict:
             p for p in pts
             if not (isinstance(p, str) and p.upper() in {"O", "X", "Y", "Z"} and p.upper() not in referenced)
         ]
+
+    return data
+
+
+def normalize_sphere_tangent_artifacts(data: dict) -> dict:
+    """Đảm bảo O/K có trong entities.points cho bài mặt cầu tiếp xúc mp (P)."""
+    if not isinstance(data, dict):
+        return data
+
+    entities = data.get("entities")
+    if not isinstance(entities, dict):
+        return data
+
+    points = entities.setdefault("points", [])
+    if not isinstance(points, list):
+        return data
+
+    point_set = {p.upper() for p in points if isinstance(p, str)}
+
+    for fact in data.get("facts", []) or []:
+        if not isinstance(fact, dict):
+            continue
+        fdata = fact.get("data") if isinstance(fact.get("data"), dict) else {}
+
+        if fact.get("type") == "shape" and fdata.get("shape") in ("sphere", "regular_sphere"):
+            center = fdata.get("center")
+            if isinstance(center, str) and center.upper() not in point_set:
+                points.append(center)
+                point_set.add(center.upper())
+
+        if fact.get("type") == "tangent":
+            tangent_pt = fdata.get("point")
+            if isinstance(tangent_pt, str) and tangent_pt.upper() not in point_set:
+                points.append(tangent_pt)
+                point_set.add(tangent_pt.upper())
 
     return data
 
@@ -343,6 +504,7 @@ async def extract_geometry(request: ProblemRequest, api_key: str = Depends(verif
         parsed_data = post_process_facts(parsed_data)
         parsed_data = inject_given_coordinates(parsed_data, request.problem_text)
         parsed_data = strip_coordinate_plane_artifacts(parsed_data)
+        parsed_data = normalize_sphere_tangent_artifacts(parsed_data)
         return {"status": "success", "data": parsed_data}
     except ValueError as ve:
         raise HTTPException(status_code=502, detail=build_error_payload("extract", str(ve)))

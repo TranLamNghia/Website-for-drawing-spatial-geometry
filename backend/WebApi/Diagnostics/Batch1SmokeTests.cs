@@ -567,6 +567,34 @@ public static class Batch1SmokeTests
                 "CD should not appear when only planes ABC and ABD are requested");
         });
 
+        RunCase("Hộp chữ nhật - giữ đủ cạnh khung từ entities.solids", () =>
+        {
+            var problem = CreateProblem(
+                ["A", "B", "C", "D", "A'", "B'", "C'", "D'"],
+                ["AB", "AD", "AA'"],
+                CreateFact("s1", FactType.Shape, new ShapeData
+                {
+                    Target = "ABCD.A'B'C'D'",
+                    Shape = ShapeType.Regular_rectangular_cuboid
+                }),
+                CreateFact("l1", FactType.Length, new LengthData { Target = "AB", Value = "2 * a" }),
+                CreateFact("l2", FactType.Length, new LengthData { Target = "AD", Value = "a" }),
+                CreateFact("l3", FactType.Length, new LengthData { Target = "AA'", Value = "3 * a" })
+            );
+            problem.Entities.Solids = ["ABCD.A'B'C'D'"];
+            var context = CompileProblem(problem);
+
+            var filtered = PointIntegrityHelper.FilterSegments(
+                problem.Entities,
+                problem.Entities.Segments.Concat(context.GeneratedSegments));
+
+            foreach (var expected in new[] { "A-B", "B-C", "C-D", "D-A", "A'-B'", "B'-C'", "C'-D'", "D'-A'", "A-A'", "B-B'", "C-C'", "D-D'" })
+            {
+                AssertTrue(filtered.Contains(expected, StringComparer.OrdinalIgnoreCase),
+                    $"Expected wireframe edge {expected} in filtered segments");
+            }
+        });
+
         if (failures.Count > 0)
         {
             throw new InvalidOperationException(

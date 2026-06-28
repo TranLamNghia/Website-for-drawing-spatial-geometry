@@ -34,10 +34,12 @@ public static class EntityScaffoldBuilder
         // Đã dựng tam giác từ fact shape — không scaffold AB/BC chồng lên tọa độ đáy.
         if (HasTriangleShapeFact(problem)) return;
 
+        // Đa giác khép kín (vd tứ giác ABCD + cạnh AB,BC,CD,DA) phải ưu tiên trước
+        // hai đoạn liên tiếp bị hiểu nhầm thành hai đường cắt nhau.
+        if (TryBuildPolygonFromDeclaredPoints(problem, context, declared)) return;
         if (TryBuildIntersectingLines(problem, context)) return;
         if (TryBuildTwoPlanes(problem, context)) return;
         if (TryBuildSingleSegment(problem, context, declared)) return;
-        if (TryBuildPolygonFromDeclaredPoints(problem, context, declared)) return;
     }
 
     private static bool TryBuildSingleSegment(GeometryProblemDto problem, CompilationContext context, List<string> declared)
@@ -112,23 +114,27 @@ public static class EntityScaffoldBuilder
 
     private static bool TryBuildIntersectingLines(GeometryProblemDto problem, CompilationContext context)
     {
-        var segments = problem.Entities.Segments
+        var declared = problem.Entities.Points
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p.Trim().ToUpper())
+            .Distinct()
+            .ToList();
+
+        var segmentStrings = problem.Entities.Segments
             .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Concat(CollectSegments(problem))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (FormsClosedPolygonChain(declared, segmentStrings))
+            return false;
+
+        var segments = segmentStrings
             .Select(ParseVertices)
             .Where(v => v.Count == 2)
             .Distinct(new SegmentComparer())
             .Take(2)
             .ToList();
-
-        if (segments.Count < 2)
-        {
-            segments = CollectSegments(problem)
-                .Select(ParseVertices)
-                .Where(v => v.Count == 2)
-                .Distinct(new SegmentComparer())
-                .Take(2)
-                .ToList();
-        }
 
         if (segments.Count < 2) return false;
 
@@ -275,7 +281,10 @@ public static class EntityScaffoldBuilder
         if (problem.Entities.Solids.Any(s => !string.IsNullOrWhiteSpace(s)))
             return false;
 
-        if (ResolveHostSegment(problem, declared) != null)
+        // Chỉ tránh scaffold đa giác khi fact ratio/midpoint/belongs_to cần một đoạn làm trục
+        // (vd M trên AB). Đừng chặn tứ giác ABCD chỉ vì có entities.segments.
+        bool needsHostSegment = problem.Facts.Any(f => f.Type is FactType.Ratio or FactType.Midpoint or FactType.belongs_to);
+        if (needsHostSegment && ResolveHostSegment(problem, declared) != null)
             return false;
 
         double edge = context.UnitLength;
@@ -291,6 +300,28 @@ public static class EntityScaffoldBuilder
 
         Console.WriteLine($"[SCAFFOLD] Dựng đa giác từ entities.points: {string.Join("", declared)}");
         return true;
+    }
+
+    private static bool FormsClosedPolygonChain(List<string> declared, IEnumerable<string> segmentStrings)
+    {
+        if (declared.Count < 3) return false;
+
+        var declaredSet = new HashSet<string>(declared, StringComparer.OrdinalIgnoreCase);
+        var degree = declared.ToDictionary(p => p, _ => 0, StringComparer.OrdinalIgnoreCase);
+        int validEdgeCount = 0;
+
+        foreach (var seg in segmentStrings)
+        {
+            var v = ParseVertices(seg);
+            if (v.Count != 2) continue;
+            if (!declaredSet.Contains(v[0]) || !declaredSet.Contains(v[1])) continue;
+            degree[v[0]]++;
+            degree[v[1]]++;
+            validEdgeCount++;
+        }
+
+        if (validEdgeCount < declared.Count) return false;
+        return degree.Values.All(d => d >= 2);
     }
 
     private static IEnumerable<string> CollectSegments(GeometryProblemDto problem)

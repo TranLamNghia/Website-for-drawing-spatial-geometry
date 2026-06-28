@@ -36,7 +36,7 @@ public static class PointIntegrityHelper
         var missing = declared.Where(p => !compiledKeys.Contains(p)).ToList();
         var declaredSet = declared.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var extra = compiledPoints.Keys
-            .Where(k => !declaredSet.Contains(k))
+            .Where(k => !declaredSet.Contains(k) && !IsInternalScaffoldPoint(k))
             .Select(k => k.ToUpper())
             .Distinct()
             .ToList();
@@ -91,15 +91,23 @@ public static class PointIntegrityHelper
         foreach (var solid in entities.Solids)
         {
             var parts = solid.Split('.', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 2)
+            if (parts.Length != 2) continue;
+
+            var face1 = ParseLabels(parts[0]);
+            var face2 = ParseLabels(parts[1]);
+
+            if (face1.Count == 1 && face2.Count >= 3)
             {
-                var top = ParseLabels(parts[0]);
-                var bottom = ParseLabels(parts[1]);
-                if (top.Count == 1)
-                {
-                    foreach (var v in bottom)
-                        allowed.Add(NormalizeSegmentKey($"{top[0]}{v}"));
-                }
+                // Chóp S.ABCD: cạnh bên + toàn bộ cạnh đáy
+                var apex = face1[0];
+                foreach (var v in face2)
+                    allowed.Add(NormalizeSegmentKey($"{apex}{v}"));
+                AllowPolygonEdges(allowed, face2);
+            }
+            else if (face1.Count >= 3 && face2.Count >= 3 && face1.Count == face2.Count)
+            {
+                // Lăng trụ / hộp ABCD.A'B'C'D': cạnh đáy dưới, đáy trên, cạnh bên
+                AllowPrismWireframe(allowed, face1, face2);
             }
         }
 
@@ -108,6 +116,26 @@ public static class PointIntegrityHelper
             .Where(s => allowed.Contains(s))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static void AllowPolygonEdges(HashSet<string> allowed, IReadOnlyList<string> vertices)
+    {
+        if (vertices.Count < 3) return;
+        for (int i = 0; i < vertices.Count; i++)
+        {
+            allowed.Add(NormalizeSegmentKey($"{vertices[i]}{vertices[(i + 1) % vertices.Count]}"));
+        }
+    }
+
+    private static void AllowPrismWireframe(HashSet<string> allowed, IReadOnlyList<string> bottom, IReadOnlyList<string> top)
+    {
+        if (bottom.Count < 3 || top.Count != bottom.Count) return;
+        AllowPolygonEdges(allowed, bottom);
+        AllowPolygonEdges(allowed, top);
+        for (int i = 0; i < bottom.Count; i++)
+        {
+            allowed.Add(NormalizeSegmentKey($"{bottom[i]}{top[i]}"));
+        }
     }
 
     private static List<string> ParseLabels(string value)
@@ -125,4 +153,8 @@ public static class PointIntegrityHelper
         if (verts.Count != 2) return seg.Trim().ToUpper();
         return string.Join("-", verts.OrderBy(v => v, StringComparer.Ordinal));
     }
+
+    /// <summary>Điểm phụ nội bộ do handler sinh (vd _P_1 cho mặt phẳng tiếp tuyến).</summary>
+    private static bool IsInternalScaffoldPoint(string name) =>
+        !string.IsNullOrWhiteSpace(name) && name.StartsWith("_", StringComparison.Ordinal);
 }
