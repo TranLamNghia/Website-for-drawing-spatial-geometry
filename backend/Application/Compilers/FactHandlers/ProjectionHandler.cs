@@ -20,29 +20,26 @@ public class ProjectionHandler : IFactHandler
         string from = data.From;
         string onto = data.Onto;
 
-        if (!context.Points.ContainsKey(target))
+        var pFrom = context.GetPoint(from);
+        if (pFrom == null) return;
+
+        Point3D? result = null;
+
+        if (onto.Length == 2) // Chiếu lên đường thẳng
         {
-            var pFrom = context.GetPoint(from);
-            if (pFrom == null) return;
+            var line = context.GetLine(onto);
+            if (line != null) result = line.GetProjection(pFrom);
+        }
+        else if (onto.Length >= 3) // Chiếu lên mặt phẳng
+        {
+            var plane = context.GetPlane(onto);
+            if (plane != null) result = plane.GetProjection(pFrom);
+        }
 
-            Point3D? result = null;
-
-            if (onto.Length == 2) // Chiếu lên đường thẳng
-            {
-                var line = context.GetLine(onto);
-                if (line != null) result = line.GetProjection(pFrom);
-            }
-            else if (onto.Length >= 3) // Chiếu lên mặt phẳng
-            {
-                var plane = context.GetPlane(onto);
-                if (plane != null) result = plane.GetProjection(pFrom);
-            }
-
-            if (result != null)
-            {
-                context.Points[target] = result;
-                Console.WriteLine($"[HANDLER] Đã dựng hình chiếu {target} từ {from} lên {onto}");
-            }
+        if (result != null)
+        {
+            context.Points[target] = result;
+            Console.WriteLine($"[HANDLER] Đã dựng/cập nhật hình chiếu {target} từ {from} lên {onto}");
         }
     }
 }

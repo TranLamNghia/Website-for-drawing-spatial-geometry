@@ -1,8 +1,10 @@
 import json
 import os
+import re
 import requests
 from pathlib import Path
 from api.llm_provider import llm_provider
+from api.llm_config import SOLVE_MATH_TIMEOUT, SOLVE_MATH_FALLBACK_TIMEOUT
 
 BASE_DIR = Path(__file__).parent.parent
 PROMPT_FILE = BASE_DIR / "prompts" / "sympy_prompt.txt"
@@ -10,6 +12,37 @@ PROMPT_FILE = BASE_DIR / "prompts" / "sympy_prompt.txt"
 class SympyAIEngine:
     def __init__(self):
         self.sandbox_url = os.getenv("SANDBOX_URL", "http://localhost:8002/execute")
+
+    def _clean_generated_code(self, raw_code: str) -> str:
+        clean_code = raw_code.strip()
+
+        fenced = re.search(r"```(?:python|py)?\s*(.*?)```", clean_code, flags=re.IGNORECASE | re.DOTALL)
+        if fenced:
+            clean_code = fenced.group(1).strip()
+
+        # Some model responses prepend prose before the actual script. Keep the code
+        # portion only so sandbox never receives natural-language analysis.
+        import_idx = clean_code.find("import sympy")
+        if import_idx > 0:
+            clean_code = clean_code[import_idx:].strip()
+
+        return clean_code
+
+    def _validate_python_script(self, code: str) -> str | None:
+        if not code:
+            return "Generated response is empty."
+
+        required_markers = ("import sympy", "def solve_from_scratch", "json.dumps")
+        missing = [marker for marker in required_markers if marker not in code]
+        if missing:
+            return f"Generated response is not a complete SymPy script. Missing: {', '.join(missing)}"
+
+        try:
+            compile(code, "<generated_sympy_script>", "exec")
+        except SyntaxError as exc:
+            return f"Generated Python has syntax error at line {exc.lineno}: {exc.msg}"
+
+        return None
 
     def generate_and_solve(self, problem_text: str, facts_json: dict, current_points: dict, validation_failures: list, base_a_value: float, fail_fast: bool = False) -> dict:
         from datetime import datetime
@@ -45,21 +78,39 @@ class SympyAIEngine:
         for attempt in range(1, MAX_RETRIES + 1):
             print(f"\n[SYMPY_ENGINE] --- ATTEMPT {attempt}/{MAX_RETRIES} ---")
             try:
-                raw_code = llm_provider.get_completion(messages, allow_fallback=not fail_fast)
+                raw_code = llm_provider.get_completion(
+                    messages,
+                    timeout=SOLVE_MATH_TIMEOUT,
+                    fallback_timeout=SOLVE_MATH_FALLBACK_TIMEOUT,
+                    allow_fallback=not fail_fast,
+                )
                 print(f"[SYMPY_ENGINE] Received Script from LLM ({len(raw_code)} ký tự).")
             except Exception as e:
                 print(f"[SYMPY_ENGINE] ❌ Error calling LLM API: {str(e)}")
+                if attempt < MAX_RETRIES:
+                    messages.append({
+                        "role": "user",
+                        "content": "The model call timed out or failed before producing code. Try again and output ONLY a complete Python script, no explanation."
+                    })
+                    continue
                 return {"status": "error", "message": f"Error calling LLM API: {str(e)}"}
 
-
-            clean_code = raw_code.strip()
-            if clean_code.startswith("```python"):
-                clean_code = clean_code[9:]
-            elif clean_code.startswith("```"):
-                clean_code = clean_code[3:]
-            if clean_code.endswith("```"):
-                clean_code = clean_code[:-3]
-            clean_code = clean_code.strip()
+            clean_code = self._clean_generated_code(raw_code)
+            validation_error = self._validate_python_script(clean_code)
+            if validation_error:
+                print(f"[SYMPY_ENGINE] 🟠 INVALID SCRIPT BEFORE SANDBOX (Attempt {attempt}): {validation_error}")
+                if attempt < MAX_RETRIES:
+                    messages.append({"role": "assistant", "content": raw_code})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"Your previous response was rejected before execution: {validation_error}\n"
+                            "Rewrite the ENTIRE answer as raw Python code only. "
+                            "Do not include analysis, markdown, comments outside Python syntax, or explanatory text."
+                        )
+                    })
+                    continue
+                return {"status": "error", "message": "Generated script is invalid.", "details": validation_error}
 
             print(f"[SYMPY_ENGINE] Sending script to Math Sandbox (:8002)...")
             try:

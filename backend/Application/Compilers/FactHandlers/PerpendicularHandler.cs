@@ -21,6 +21,22 @@ public class PerpendicularHandler : IFactHandler
         string obj2 = data.Objects[1];
 
         Console.WriteLine($"[HANDLER] Ghi nhận tính chất vuông góc: {obj1} ⊥ {obj2}");
-        // Thường dùng để gán tọa độ hình chiếu hoặc chiều cao, Stage 2 của GeometryCompiler đã xử lý.
+
+        // BD ⊥ AC: D là chân đường cao từ B xuống AC (đề tam giác vuông tại B).
+        if (obj1.Length == 2 && obj2.Length == 2)
+        {
+            string from = obj1[0].ToString();
+            string to = obj1[1].ToString();
+            if (!context.Points.ContainsKey(to))
+            {
+                var fromPt = context.GetPoint(from);
+                var line = context.GetLine(obj2);
+                if (fromPt != null && line != null)
+                {
+                    context.Points[to] = line.GetProjection(fromPt);
+                    Console.WriteLine($"[HANDLER] Dựng chân vuông góc {to} trên {obj2} từ {from}: {context.Points[to]}");
+                }
+            }
+        }
     }
 }

@@ -8,14 +8,37 @@
         "language": "vi"
       },
       "entities": {
-        "points": ["S", "A", "B", "C", "D", "H", "G"],
-        "segments": ["SA", "SB", "SC", "SD", "AB", "BC", "CD", "DA"],
+        "points": [
+          "S",
+          "A",
+          "B",
+          "C",
+          "D",
+          "H",
+          "G"
+        ],
+        "segments": [
+          "SA",
+          "SB",
+          "SC",
+          "SD",
+          "AB",
+          "BC",
+          "CD",
+          "DA"
+        ],
         "rays": [],
         "vectors": [],
-        "planes": ["ABCD", "SAB", "SCD"],
+        "planes": [
+          "ABCD",
+          "SAB",
+          "SCD"
+        ],
         "circles": [],
         "spheres": [],
-        "solids": ["S.ABCD"]
+        "solids": [
+          "S.ABCD"
+        ]
       },
       "facts": [
         {
@@ -58,7 +81,10 @@
           "id": "F5",
           "type": "perpendicular",
           "data": {
-            "objects": ["SAB", "ABCD"]
+            "objects": [
+              "SAB",
+              "ABCD"
+            ]
           },
           "raw_text": "nằm trong mặt phẳng vuông góc với đáy"
         },
@@ -76,7 +102,9 @@
           "type": "centroid",
           "data": {
             "point": "G",
-            "objects": ["SCD"]
+            "objects": [
+              "SCD"
+            ]
           },
           "raw_text": "G là trọng tâm tam giác SCD"
         },
@@ -85,7 +113,10 @@
           "type": "angle",
           "data": {
             "angle_type": "line_plane",
-            "objects": ["SC", "ABCD"],
+            "objects": [
+              "SC",
+              "ABCD"
+            ],
             "value": "60"
           },
           "raw_text": "Góc giữa SC và mặt đáy bằng 60°"
@@ -111,7 +142,7 @@
         }
       ],
       "extraction_meta": {
-        "confidence": 1.0,
+        "confidence": 1,
         "notes": "Minh họa shape, length, perpendicular, midpoint, centroid, angle"
       }
     }
@@ -125,8 +156,25 @@
         "language": "vi"
       },
       "entities": {
-        "points": ["A", "B", "C", "D", "M", "N", "P", "H", "I", "O"],
-        "segments": ["AB", "BC", "CA", "MN", "NP"],
+        "points": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "M",
+          "N",
+          "P",
+          "H",
+          "I",
+          "O"
+        ],
+        "segments": [
+          "AB",
+          "BC",
+          "CA",
+          "MN",
+          "NP"
+        ],
         "rays": [],
         "vectors": [],
         "planes": [],
@@ -175,7 +223,12 @@
           "id": "F5",
           "type": "coplanar",
           "data": {
-            "objects": ["A", "B", "C", "D"]
+            "objects": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ]
           },
           "raw_text": "Các điểm A, B, C, D đồng phẳng"
         },
@@ -183,7 +236,11 @@
           "id": "F6",
           "type": "collinear",
           "data": {
-            "points": ["M", "N", "P"]
+            "points": [
+              "M",
+              "N",
+              "P"
+            ]
           },
           "raw_text": "ba điểm M, N, P thẳng hàng"
         },
@@ -191,7 +248,10 @@
           "id": "F7",
           "type": "ratio",
           "data": {
-            "objects": ["MN", "NP"],
+            "objects": [
+              "MN",
+              "NP"
+            ],
             "value": "1/2"
           },
           "raw_text": "Biết tỷ lệ MN/NP = 1/2"
@@ -208,7 +268,7 @@
         }
       ],
       "extraction_meta": {
-        "confidence": 1.0,
+        "confidence": 1,
         "notes": "Minh họa orthocenter, incenter, circumcenter, coplanar, collinear, ratio"
       }
     }
@@ -222,14 +282,33 @@
         "language": "vi"
       },
       "entities": {
-        "points": ["A", "B", "C", "D", "A'", "B'", "C'", "D'", "K", "H"],
+        "points": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "A'",
+          "B'",
+          "C'",
+          "D'",
+          "K",
+          "H"
+        ],
         "segments": [],
         "rays": [],
         "vectors": [],
-        "planes": ["(P)", "(Q)"],
+        "planes": [
+          "(P)",
+          "(Q)"
+        ],
         "circles": [],
-        "spheres": ["(S)"],
-        "solids": ["ABCD.A'B'C'D'", "(N)"]
+        "spheres": [
+          "(S)"
+        ],
+        "solids": [
+          "ABCD.A'B'C'D'",
+          "(N)"
+        ]
       },
       "facts": [
         {
@@ -254,7 +333,10 @@
           "id": "F3",
           "type": "tangent",
           "data": {
-            "objects": ["(P)", "(S)"],
+            "objects": [
+              "(P)",
+              "(S)"
+            ],
             "point": "K"
           },
           "raw_text": "Mặt phẳng (P) tiếp xúc với (S) tại điểm K"
@@ -282,7 +364,10 @@
           "id": "F6",
           "type": "intersection",
           "data": {
-            "objects": ["(Q)", "(S)"],
+            "objects": [
+              "(Q)",
+              "(S)"
+            ],
             "result": {
               "type": "circle",
               "value": "(C)"
@@ -310,7 +395,7 @@
         }
       ],
       "extraction_meta": {
-        "confidence": 1.0,
+        "confidence": 1,
         "notes": "Minh họa inscribed, tangent, circumscribed, projection, intersection"
       }
     }
@@ -324,8 +409,14 @@
         "language": "vi"
       },
       "entities": {
-        "points": ["M", "N"],
-        "segments": ["d1", "d2"],
+        "points": [
+          "M",
+          "N"
+        ],
+        "segments": [
+          "d1",
+          "d2"
+        ],
         "rays": [],
         "vectors": [],
         "planes": [],
@@ -338,7 +429,10 @@
           "id": "F1",
           "type": "parallel",
           "data": {
-            "objects": ["d1", "d2"]
+            "objects": [
+              "d1",
+              "d2"
+            ]
           },
           "raw_text": "Cho hai đường thẳng d1 và d2 song song với nhau"
         },
@@ -376,13 +470,16 @@
           "id": "Q1",
           "type": "proof_parallel",
           "data": {
-            "objects": ["d1", "d2"]
+            "objects": [
+              "d1",
+              "d2"
+            ]
           },
           "raw_text": "Chứng minh d1 song song d2"
         }
       ],
       "extraction_meta": {
-        "confidence": 1.0,
+        "confidence": 1,
         "notes": "Minh họa parallel, belongs_to, distance"
       }
     }
@@ -396,11 +493,21 @@
         "language": "vi"
       },
       "entities": {
-        "points": ["S", "A", "B", "C", "D", "H"],
+        "points": [
+          "S",
+          "A",
+          "B",
+          "C",
+          "D",
+          "H"
+        ],
         "segments": [],
         "rays": [],
         "vectors": [],
-        "planes": ["ABCD", "BCD"],
+        "planes": [
+          "ABCD",
+          "BCD"
+        ],
         "circles": [],
         "spheres": [],
         "solids": []
@@ -411,7 +518,9 @@
           "type": "centroid",
           "data": {
             "point": "H",
-            "objects": ["BCD"]
+            "objects": [
+              "BCD"
+            ]
           },
           "raw_text": "trọng tâm H của tam giác BCD"
         },
@@ -428,7 +537,7 @@
       ],
       "queries": [],
       "extraction_meta": {
-        "confidence": 1.0,
+        "confidence": 1,
         "notes": "Sử dụng ngay tên điểm H đã được đặt tên trong đề bài cho cả trọng tâm và hình chiếu."
       }
     }
@@ -442,14 +551,33 @@
         "language": "vi"
       },
       "entities": {
-        "points": ["A", "B", "C", "A'", "B'", "C'", "G"],
-        "segments": ["AB", "BC", "CA", "AA'", "BB'", "CC'"],
+        "points": [
+          "A",
+          "B",
+          "C",
+          "A'",
+          "B'",
+          "C'",
+          "G"
+        ],
+        "segments": [
+          "AB",
+          "BC",
+          "CA",
+          "AA'",
+          "BB'",
+          "CC'"
+        ],
         "rays": [],
         "vectors": [],
-        "planes": ["ABC"],
+        "planes": [
+          "ABC"
+        ],
         "circles": [],
         "spheres": [],
-        "solids": ["ABC.A'B'C'"]
+        "solids": [
+          "ABC.A'B'C'"
+        ]
       },
       "facts": [
         {
@@ -457,7 +585,9 @@
           "type": "centroid",
           "data": {
             "point": "G",
-            "objects": ["ABC"]
+            "objects": [
+              "ABC"
+            ]
           },
           "raw_text": "G là trọng tâm tam giác ABC"
         },
@@ -465,7 +595,11 @@
           "id": "F2",
           "type": "equality",
           "data": {
-            "objects": ["A'A", "A'B", "A'C"]
+            "objects": [
+              "A'A",
+              "A'B",
+              "A'C"
+            ]
           },
           "raw_text": "Đỉnh A' cách đều A, B, C"
         },
@@ -481,7 +615,7 @@
       ],
       "queries": [],
       "extraction_meta": {
-        "confidence": 1.0,
+        "confidence": 1,
         "notes": "LUẬT VÀNG: Trích xuất trực tiếp equality và circumcenter, tuyệt đối không tự suy luận fact 'projection' khi đề bài không cho."
       }
     }
@@ -495,49 +629,109 @@
         "language": "vi"
       },
       "entities": {
-        "points": ["A", "B", "C", "A'", "B'", "C'", "M", "N"],
-        "segments": ["AB", "BC", "CA", "AA'", "BB'", "CC'", "A'B'", "B'C'", "C'A'"],
-        "planes": ["ABC", "A'B'C'", "AMN"],
-        "solids": ["ABC.A'B'C'"]
+        "points": [
+          "A",
+          "B",
+          "C",
+          "A'",
+          "B'",
+          "C'",
+          "M",
+          "N"
+        ],
+        "segments": [
+          "AB",
+          "BC",
+          "CA",
+          "AA'",
+          "BB'",
+          "CC'",
+          "A'B'",
+          "B'C'",
+          "C'A'"
+        ],
+        "planes": [
+          "ABC",
+          "A'B'C'",
+          "AMN"
+        ],
+        "solids": [
+          "ABC.A'B'C'"
+        ]
       },
       "facts": [
         {
           "id": "F1",
           "type": "shape",
-          "data": { "target": "ABC.A'B'C'", "shape": "prism" },
+          "data": {
+            "target": "ABC.A'B'C'",
+            "shape": "prism"
+          },
           "raw_text": "lăng trụ đứng ABC.A'B'C'"
         },
         {
           "id": "F2",
           "type": "perpendicular",
-          "data": { "objects": ["AA'", "ABC"] },
+          "data": {
+            "objects": [
+              "AA'",
+              "ABC"
+            ]
+          },
           "raw_text": "lăng trụ đứng (AA' vuông góc đáy)"
         },
         {
           "id": "F3",
           "type": "shape",
-          "data": { "target": "ABC", "shape": "right_triangle" },
+          "data": {
+            "target": "ABC",
+            "shape": "right_triangle"
+          },
           "raw_text": "đáy ABC là tam giác vuông tại A"
         },
         {
-          "id": "F4", "type": "length", "data": { "target": "AB", "value": "a" }, "raw_text": "AB=a"
+          "id": "F4",
+          "type": "length",
+          "data": {
+            "target": "AB",
+            "value": "a"
+          },
+          "raw_text": "AB=a"
         },
         {
-          "id": "F5", "type": "length", "data": { "target": "AC", "value": "a" }, "raw_text": "AC=a"
+          "id": "F5",
+          "type": "length",
+          "data": {
+            "target": "AC",
+            "value": "a"
+          },
+          "raw_text": "AC=a"
         },
         {
-          "id": "F6", "type": "length", "data": { "target": "AA'", "value": "a" }, "raw_text": "AA'=a"
+          "id": "F6",
+          "type": "length",
+          "data": {
+            "target": "AA'",
+            "value": "a"
+          },
+          "raw_text": "AA'=a"
         },
         {
           "id": "F7",
           "type": "midpoint",
-          "data": { "point": "M", "segment": "BC" },
+          "data": {
+            "point": "M",
+            "segment": "BC"
+          },
           "raw_text": "Gọi M là trung điểm BC"
         },
         {
           "id": "F8",
           "type": "midpoint",
-          "data": { "point": "N", "segment": "A'C'" },
+          "data": {
+            "point": "N",
+            "segment": "A'C'"
+          },
           "raw_text": "N là trung điểm A'C'"
         }
       ],
@@ -545,10 +739,647 @@
         {
           "id": "Q1",
           "type": "shape",
-          "data": { "target": "cross_section_ABC.A'B'C'_AMN", "plane": "AMN" },
+          "data": {
+            "target": "cross_section_ABC.A'B'C'_AMN",
+            "plane": "AMN"
+          },
           "raw_text": "Xác định thiết diện tạo thành"
         }
       ]
+    }
+  },
+  {
+    "input": "Cho hai mặt phẳng (IBC) và (JAD). Hãy xác định giao tuyến của hai mặt phẳng đó.",
+    "output": {
+      "metadata": {
+        "problem_id": "shot_08",
+        "topic": "geometry_3D",
+        "language": "vi"
+      },
+      "entities": {
+        "points": [
+          "I",
+          "B",
+          "C",
+          "J",
+          "A",
+          "D"
+        ],
+        "segments": [],
+        "rays": [],
+        "vectors": [],
+        "planes": [
+          "IBC",
+          "JAD"
+        ],
+        "circles": [],
+        "spheres": [],
+        "solids": []
+      },
+      "facts": [
+        {
+          "id": "F1",
+          "type": "intersection",
+          "data": {
+            "objects": [
+              "IBC",
+              "JAD"
+            ],
+            "result": {
+              "type": "line",
+              "value": "d"
+            }
+          },
+          "raw_text": "Xác định giao tuyến của hai mặt phẳng (IBC) và (JAD)"
+        }
+      ],
+      "queries": [],
+      "extraction_meta": {
+        "confidence": 1,
+        "notes": "Dùng intersection với result.type = line cho giao tuyến hai mặt phẳng."
+      }
+    }
+  },
+  {
+    "input": "Cho tam giác ABC. Gọi D là một điểm trên tia AB. Gọi E là một điểm trên tia đối của AB. Gọi F là một điểm trên tia vuông góc với BC tại B. Gọi K là một điểm trên tia phân giác của góc BAC.",
+    "output": {
+      "metadata": {
+        "problem_id": "shot_09",
+        "topic": "geometry_2D",
+        "language": "vi"
+      },
+      "entities": {
+        "points": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E",
+          "F",
+          "K"
+        ],
+        "segments": [
+          "AB",
+          "BC",
+          "CA"
+        ],
+        "rays": [],
+        "vectors": [],
+        "planes": [],
+        "circles": [],
+        "spheres": [],
+        "solids": []
+      },
+      "facts": [
+        {
+          "id": "F1",
+          "type": "shape",
+          "data": {
+            "target": "ABC",
+            "shape": "triangle"
+          },
+          "raw_text": "Cho tam giác ABC"
+        },
+        {
+          "id": "F2",
+          "type": "ray",
+          "data": {
+            "point": "D",
+            "origin": "A",
+            "ray_point": "B"
+          },
+          "raw_text": "Gọi D là một điểm trên tia AB"
+        },
+        {
+          "id": "F3",
+          "type": "opposite_ray",
+          "data": {
+            "point": "E",
+            "origin": "A",
+            "ray_point": "B"
+          },
+          "raw_text": "Gọi E là một điểm trên tia đối của AB"
+        },
+        {
+          "id": "F4",
+          "type": "perpendicular_ray",
+          "data": {
+            "point": "F",
+            "origin": "B",
+            "perpendicular_to": "BC"
+          },
+          "raw_text": "Gọi F là một điểm trên tia vuông góc với BC tại B"
+        },
+        {
+          "id": "F5",
+          "type": "angle_bisector",
+          "data": {
+            "point": "K",
+            "vertex": "A",
+            "ray_1": "B",
+            "ray_2": "C"
+          },
+          "raw_text": "Gọi K là một điểm trên tia phân giác của góc BAC"
+        }
+      ],
+      "queries": [],
+      "extraction_meta": {
+        "confidence": 1,
+        "notes": "Minh họa ray, opposite_ray, perpendicular_ray, angle_bisector (đợt 2)"
+      }
+    }
+  },
+  {
+    "input": "Cho đường thẳng AB vuông góc với CD. Cho đường thẳng EF song song với mặt phẳng (GHI). Hai mặt phẳng (JKL) và (MNO) song song với nhau.",
+    "output": {
+      "metadata": {
+        "problem_id": "shot_10",
+        "topic": "geometry_3D",
+        "language": "vi"
+      },
+      "entities": {
+        "points": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E",
+          "F",
+          "G",
+          "H",
+          "I",
+          "J",
+          "K",
+          "L",
+          "M",
+          "N",
+          "O"
+        ],
+        "segments": [
+          "AB",
+          "CD",
+          "EF"
+        ],
+        "rays": [],
+        "vectors": [],
+        "planes": [
+          "GHI",
+          "JKL",
+          "MNO"
+        ],
+        "circles": [],
+        "spheres": [],
+        "solids": []
+      },
+      "facts": [
+        {
+          "id": "F1",
+          "type": "perpendicular",
+          "data": {
+            "objects": [
+              "AB",
+              "CD"
+            ]
+          },
+          "raw_text": "Cho đường thẳng AB vuông góc với CD"
+        },
+        {
+          "id": "F2",
+          "type": "parallel",
+          "data": {
+            "objects": [
+              "EF",
+              "GHI"
+            ]
+          },
+          "raw_text": "Cho đường thẳng EF song song với mặt phẳng (GHI)"
+        },
+        {
+          "id": "F3",
+          "type": "parallel",
+          "data": {
+            "objects": [
+              "JKL",
+              "MNO"
+            ]
+          },
+          "raw_text": "Hai mặt phẳng (JKL) và (MNO) song song với nhau"
+        }
+      ],
+      "queries": [],
+      "extraction_meta": {
+        "confidence": 1,
+        "notes": "Minh họa perpendicular line-line, parallel line-plane và plane-plane (đợt 2)"
+      }
+    }
+  },
+  {
+    "input": "Cho hình chóp S.ABCD có đáy ABCD là hình vuông cạnh a. Gọi I là tâm mặt cầu nội tiếp khối chóp S.ABCD. Gọi O là tâm mặt cầu ngoại tiếp khối chóp S.ABCD.",
+    "output": {
+      "metadata": {
+        "problem_id": "shot_11",
+        "topic": "geometry_3D",
+        "language": "vi"
+      },
+      "entities": {
+        "points": [
+          "S",
+          "A",
+          "B",
+          "C",
+          "D",
+          "I",
+          "O"
+        ],
+        "segments": [
+          "SA",
+          "SB",
+          "SC",
+          "SD",
+          "AB",
+          "BC",
+          "CD",
+          "DA"
+        ],
+        "rays": [],
+        "vectors": [],
+        "planes": [
+          "ABCD"
+        ],
+        "circles": [],
+        "spheres": [],
+        "solids": [
+          "S.ABCD"
+        ]
+      },
+      "facts": [
+        {
+          "id": "F1",
+          "type": "shape",
+          "data": {
+            "target": "S.ABCD",
+            "shape": "pyramid"
+          },
+          "raw_text": "Cho hình chóp S.ABCD"
+        },
+        {
+          "id": "F2",
+          "type": "shape",
+          "data": {
+            "target": "ABCD",
+            "shape": "square"
+          },
+          "raw_text": "đáy ABCD là hình vuông"
+        },
+        {
+          "id": "F3",
+          "type": "length",
+          "data": {
+            "target": "AB",
+            "value": "a"
+          },
+          "raw_text": "cạnh a"
+        },
+        {
+          "id": "F4",
+          "type": "inscribed",
+          "data": {
+            "inner": "I",
+            "outer": "S.ABCD"
+          },
+          "raw_text": "Gọi I là tâm mặt cầu nội tiếp khối chóp S.ABCD"
+        },
+        {
+          "id": "F5",
+          "type": "circumscribed",
+          "data": {
+            "outer": "O",
+            "inner": "S.ABCD"
+          },
+          "raw_text": "Gọi O là tâm mặt cầu ngoại tiếp khối chóp S.ABCD"
+        }
+      ],
+      "queries": [],
+      "extraction_meta": {
+        "confidence": 1,
+        "notes": "Minh họa inscribed (inner=điểm I, outer=khối) và circumscribed (outer=điểm O, inner=khối) — đợt 3"
+      }
+    }
+  },
+  {
+    "input": "Cho tam giác ABC có diện tích bằng 6, chu vi bằng 12. Thể tích hình chóp S.ABCD bằng 8. Khoảng cách từ A đến BC bằng 2a. Cạnh AB bằng CD. Các điểm A, B, C, D đồng phẳng. Ba điểm M, N, P thẳng hàng. Mặt phẳng P tiếp xúc với mặt cầu tâm O tại điểm K.",
+    "output": {
+      "metadata": {
+        "problem_id": "shot_12",
+        "topic": "geometry_3D",
+        "language": "vi"
+      },
+      "entities": {
+        "points": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "S",
+          "M",
+          "N",
+          "P",
+          "O",
+          "K"
+        ],
+        "segments": [
+          "AB",
+          "BC",
+          "CA",
+          "CD"
+        ],
+        "rays": [],
+        "vectors": [],
+        "planes": [
+          "P"
+        ],
+        "circles": [],
+        "spheres": [
+          "O"
+        ],
+        "solids": [
+          "S.ABCD"
+        ]
+      },
+      "facts": [
+        {
+          "id": "F1",
+          "type": "shape",
+          "data": {
+            "target": "ABC",
+            "shape": "triangle"
+          },
+          "raw_text": "Cho tam giác ABC"
+        },
+        {
+          "id": "F2",
+          "type": "area",
+          "data": {
+            "target": "ABC",
+            "value": "6"
+          },
+          "raw_text": "diện tích bằng 6"
+        },
+        {
+          "id": "F3",
+          "type": "perimeter",
+          "data": {
+            "target": "ABC",
+            "value": "12"
+          },
+          "raw_text": "chu vi bằng 12"
+        },
+        {
+          "id": "F4",
+          "type": "shape",
+          "data": {
+            "target": "S.ABCD",
+            "shape": "pyramid"
+          },
+          "raw_text": "hình chóp S.ABCD"
+        },
+        {
+          "id": "F5",
+          "type": "volume",
+          "data": {
+            "target": "S.ABCD",
+            "value": "8"
+          },
+          "raw_text": "Thể tích hình chóp S.ABCD bằng 8"
+        },
+        {
+          "id": "F6",
+          "type": "distance",
+          "data": {
+            "from": "A",
+            "to": "BC",
+            "value": "2 * a"
+          },
+          "raw_text": "Khoảng cách từ A đến BC bằng 2a"
+        },
+        {
+          "id": "F7",
+          "type": "equality",
+          "data": {
+            "objects": [
+              "AB",
+              "CD"
+            ]
+          },
+          "raw_text": "Cạnh AB bằng CD"
+        },
+        {
+          "id": "F8",
+          "type": "coplanar",
+          "data": {
+            "points": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ]
+          },
+          "raw_text": "Các điểm A, B, C, D đồng phẳng"
+        },
+        {
+          "id": "F9",
+          "type": "collinear",
+          "data": {
+            "points": [
+              "M",
+              "N",
+              "P"
+            ]
+          },
+          "raw_text": "Ba điểm M, N, P thẳng hàng"
+        },
+        {
+          "id": "F10",
+          "type": "tangent",
+          "data": {
+            "objects": [
+              "P",
+              "O"
+            ],
+            "point": "K"
+          },
+          "raw_text": "Mặt phẳng P tiếp xúc với mặt cầu tâm O tại điểm K"
+        }
+      ],
+      "queries": [],
+      "extraction_meta": {
+        "confidence": 1,
+        "notes": "Minh họa area, perimeter, volume, distance, equality, coplanar, collinear, tangent — đợt 4"
+      }
+    }
+  },
+  {
+    "input": "Cho hình chóp S.ABCD. Xác định thiết diện tạo bởi mặt phẳng (AMN). Tìm giao tuyến của (ABC) và (SAD). Viết phương trình mặt phẳng (ABC). Viết phương trình mặt cầu tâm O. Tìm tọa độ điểm S. Chứng minh AB song song CD. Tính cosin góc giữa (ABC) và (SAD). Tính sin góc giữa SC và (ABCD). Tính tỉ lệ thể tích S.ABCD và S'.A'B'C'D'.",
+    "output": {
+      "metadata": {
+        "problem_id": "shot_13",
+        "topic": "geometry_3D",
+        "language": "vi"
+      },
+      "entities": {
+        "points": ["S", "A", "B", "C", "D", "M", "N", "O"],
+        "segments": ["AB", "BC", "CD", "DA", "SA", "SB", "SC", "SD", "SC"],
+        "rays": [],
+        "vectors": [],
+        "planes": ["ABC", "SAD", "ABCD", "AMN"],
+        "circles": [],
+        "spheres": ["O"],
+        "solids": ["S.ABCD", "S'.A'B'C'D'"]
+      },
+      "facts": [
+        {
+          "id": "F1",
+          "type": "shape",
+          "data": { "target": "S.ABCD", "shape": "pyramid" },
+          "raw_text": "Cho hình chóp S.ABCD"
+        }
+      ],
+      "queries": [
+        {
+          "id": "Q1",
+          "type": "shape",
+          "data": { "solid": "S.ABCD", "plane": "AMN" },
+          "raw_text": "Xác định thiết diện tạo bởi mặt phẳng (AMN)"
+        },
+        {
+          "id": "Q2",
+          "type": "intersection_line",
+          "data": { "planes": ["ABC", "SAD"] },
+          "raw_text": "Tìm giao tuyến của (ABC) và (SAD)"
+        },
+        {
+          "id": "Q3",
+          "type": "equation_plane",
+          "data": { "target": "ABC" },
+          "raw_text": "Viết phương trình mặt phẳng (ABC)"
+        },
+        {
+          "id": "Q4",
+          "type": "equation_sphere",
+          "data": { "target": "O" },
+          "raw_text": "Viết phương trình mặt cầu tâm O"
+        },
+        {
+          "id": "Q5",
+          "type": "coordinates",
+          "data": { "target": "S" },
+          "raw_text": "Tìm tọa độ điểm S"
+        },
+        {
+          "id": "Q6",
+          "type": "proof_parallel",
+          "data": { "objects": ["AB", "CD"] },
+          "raw_text": "Chứng minh AB song song CD"
+        },
+        {
+          "id": "Q7",
+          "type": "cosine_between_planes",
+          "data": { "planes": ["ABC", "SAD"] },
+          "raw_text": "Tính cosin góc giữa (ABC) và (SAD)"
+        },
+        {
+          "id": "Q8",
+          "type": "sine_between_line_and_plane",
+          "data": { "objects": ["SC", "ABCD"] },
+          "raw_text": "Tính sin góc giữa SC và (ABCD)"
+        },
+        {
+          "id": "Q9",
+          "type": "ratio_volume",
+          "data": { "solids": ["S.ABCD", "S'.A'B'C'D'"] },
+          "raw_text": "Tính tỉ lệ thể tích S.ABCD và S'.A'B'C'D'"
+        }
+      ],
+      "extraction_meta": {
+        "confidence": 1,
+        "notes": "Minh họa query đợt 5: shape, intersection_line, equation_*, coordinates, proof_*, cosine, sine, ratio_volume"
+      }
+    }
+  },
+  {
+    "input": "Cho hình chóp S.ABCDE có đáy là ngũ giác đều cạnh a. Cho mặt cầu (S) tâm O bán kính R.",
+    "output": {
+      "metadata": {
+        "problem_id": "shot_14",
+        "topic": "geometry_3D",
+        "language": "vi"
+      },
+      "entities": {
+        "points": ["S", "A", "B", "C", "D", "E", "O"],
+        "segments": [],
+        "rays": [],
+        "vectors": [],
+        "planes": [],
+        "circles": [],
+        "spheres": ["O"],
+        "solids": ["S.ABCDE"]
+      },
+      "facts": [
+        {
+          "id": "F1",
+          "type": "shape",
+          "data": { "target": "S.ABCDE", "shape": "pentagonal_pyramid" },
+          "raw_text": "Cho hình chóp S.ABCDE có đáy là ngũ giác đều cạnh a"
+        },
+        {
+          "id": "F2",
+          "type": "shape",
+          "data": { "center": "O", "radius": "R", "shape": "regular_sphere" },
+          "raw_text": "Cho mặt cầu (S) tâm O bán kính R"
+        }
+      ],
+      "queries": [],
+      "extraction_meta": {
+        "confidence": 1,
+        "notes": "Minh họa shape đợt 6: pentagonal_pyramid, regular_sphere"
+      }
+    }
+  },
+  {
+    "input": "Cho đường thẳng AB. Gọi C là một điểm trên tia đối của AB. Vẽ đường thẳng AB và điểm C.",
+    "output": {
+      "metadata": {
+        "problem_id": "p_de11_line",
+        "topic": "geometry_2D",
+        "language": "vi"
+      },
+      "entities": {
+        "points": ["A", "B", "C"],
+        "segments": ["AB"],
+        "rays": [],
+        "vectors": [],
+        "planes": [],
+        "circles": [],
+        "spheres": [],
+        "solids": []
+      },
+      "facts": [
+        {
+          "id": "F1",
+          "type": "opposite_ray",
+          "data": {
+            "point": "C",
+            "origin": "A",
+            "ray_point": "B"
+          },
+          "raw_text": "Gọi C là một điểm trên tia đối của AB"
+        }
+      ],
+      "queries": [],
+      "extraction_meta": {
+        "confidence": 1,
+        "notes": "Đường thẳng AB: không dùng fact shape line — chỉ entities + opposite_ray"
+      }
     }
   }
 ]

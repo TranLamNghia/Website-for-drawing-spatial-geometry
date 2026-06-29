@@ -111,9 +111,72 @@ public class GeometryController : ControllerBase
         }
     }
 
+    [HttpPost("process-stream")]
+    public async Task ProcessProblemStream([FromBody] string problemText)
+    {
+        Response.ContentType = "text/event-stream";
+        Response.Headers["Cache-Control"] = "no-cache";
+        Response.Headers["Connection"] = "keep-alive";
+        // Tắt buffering của reverse proxy (nginx) để event tới client ngay lập tức.
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        try
+        {
+            await WriteSseEventAsync(new { stage = "extracting" });
+            var dto = await _aiService.ExtractGeometryAsync(problemText);
+            if (dto == null)
+            {
+                await WriteSseEventAsync(new { stage = "error", message = "Không thể trích xuất dữ liệu từ AI Service." });
+                return;
+            }
+
+            await WriteSseEventAsync(new { stage = "compiling" });
+            var context = _compiler.Compile(dto);
+
+            if (context.ValidationReport != null && !context.ValidationReport.AllPassed)
+            {
+                await WriteSseEventAsync(new { stage = "solving" });
+
+                var solverRequest = new MathSolverRequestDto
+                {
+                    ProblemText = problemText,
+                    FactsJson = dto,
+                    CurrentPoints = context.Points,
+                    ValidationFailures = context.ValidationReport.Failures,
+                    BaseAValue = context.UnitLength
+                };
+
+                var solverResponse = await _aiService.FallbackSolveMathAsync(solverRequest);
+                if (solverResponse != null)
+                {
+                    _compiler.RefineWithNewPoints(context, dto, solverResponse);
+                }
+            }
+
+            var result = BuildFinalResult(dto, context);
+            await WriteSseEventAsync(new { stage = "complete", result });
+        }
+        catch (Exception ex)
+        {
+            await WriteSseEventAsync(new { stage = "error", message = ex.Message });
+        }
+    }
+
+    // Giữ camelCase giống hành vi mặc định của Ok() trong ASP.NET để FE đọc payload y hệt endpoint /process.
+    private static readonly JsonSerializerOptions SseJsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    private async Task WriteSseEventAsync(object payload)
+    {
+        var json = JsonSerializer.Serialize(payload, SseJsonOptions);
+        await Response.WriteAsync($"data: {json}\n\n");
+        await Response.Body.FlushAsync();
+    }
+
     private object BuildFinalResult(GeometryProblemDto dto, CompilationContext context)
     {
-        var finalSegments = dto.Entities.Segments.Concat(context.GeneratedSegments).ToList();
+        var finalSegments = PointIntegrityHelper.FilterSegments(
+            dto.Entities,
+            dto.Entities.Segments.Concat(context.GeneratedSegments));
         var finalQueries = dto.Queries.ToList();
 
         // 1. Dọn dẹp Segments theo Aliases
@@ -159,15 +222,21 @@ public class GeometryController : ControllerBase
         }
 
         // 3. Chuẩn bị đầu ra
+        var pointIntegrity = PointIntegrityHelper.Evaluate(dto.Entities.Points, context.Points);
+        var filteredPoints = PointIntegrityHelper.FilterToDeclared(dto.Entities.Points, context.Points);
+        var renderPoints = BuildRenderablePoints(filteredPoints, context);
+
         var result = new Dictionary<string, object>
         {
-            ["message"] = "Biên dịch tọa độ thành công!",
-            ["points"] = context.Points,
+            ["message"] = pointIntegrity.IsValid
+                ? "Biên dịch tọa độ thành công!"
+                : "Biên dịch xong nhưng số lượng điểm không khớp entities.points.",
+            ["points"] = renderPoints,
             ["segments"] = finalSegments,
             ["planes"] = dto.Entities.Planes
                 .Select(p => System.Text.RegularExpressions.Regex.Matches(p, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value.Trim().ToUpper()).ToArray())
+                .Where(pts => pts.Length >= 3)
                 .Where(pts => {
-                    if (pts.Length == 0) return false;
                     for(int i=0; i<pts.Length; i++) {
                         if(context.PointAliases.TryGetValue(pts[i], out var newVal)) pts[i] = newVal;
                     }
@@ -185,8 +254,8 @@ public class GeometryController : ControllerBase
                     points = p.Points,
                     color = p.Color ?? "#ffffff",
                     density = p.Density,
-                    opacity = 0.15,
-                    isSolidFace = true
+                    opacity = p.Opacity > 0 ? p.Opacity : 0.15,
+                    isSolidFace = p.IsSolidFace
                 })),
             ["circles"] = context.Circles.Select(c => {
                 var displayCenter = c.Center;
@@ -236,17 +305,26 @@ public class GeometryController : ControllerBase
                 facts = dto.Facts,
                 queries = dto.Queries,
                 aliases = context.PointAliases,
-                points = context.Points,
+                points = filteredPoints,
                 sections = context.Sections,
             },
             ["validation"] = new 
             {
-                allPassed = context.ValidationReport?.AllPassed ?? true,
+                allPassed = (context.ValidationReport?.AllPassed ?? true) && pointIntegrity.IsValid,
                 totalChecked = context.ValidationReport?.TotalChecked ?? 0,
                 totalPassed = context.ValidationReport?.TotalPassed ?? 0,
                 totalFailed = context.ValidationReport?.TotalFailed ?? 0,
                 totalSkipped = context.ValidationReport?.TotalSkipped ?? 0,
-                failures = context.ValidationReport?.Failures.Select(f => new { f.FactId, f.FactType, f.ExpectedValue, f.ActualValue, f.Deviation, f.Message }) ?? Enumerable.Empty<object>()
+                failures = context.ValidationReport?.Failures.Select(f => new { f.FactId, f.FactType, f.ExpectedValue, f.ActualValue, f.Deviation, f.Message }) ?? Enumerable.Empty<object>(),
+                pointIntegrity = new
+                {
+                    expectedCount = pointIntegrity.ExpectedCount,
+                    actualCount = pointIntegrity.ActualCount,
+                    allDeclaredPresent = pointIntegrity.AllDeclaredPresent,
+                    isValid = pointIntegrity.IsValid,
+                    missingPoints = pointIntegrity.MissingPoints,
+                    extraPoints = pointIntegrity.ExtraPoints
+                }
             },
             ["sections"] = context.Sections
         };
@@ -273,5 +351,25 @@ public class GeometryController : ControllerBase
         }
 
         return result;
+    }
+
+    /// <summary>Điểm khai báo + điểm phụ vẽ mặt (vd _P_1) — không ảnh hưởng pointIntegrity.</summary>
+    private static Dictionary<string, Domains.MathCore.Point3D> BuildRenderablePoints(
+        Dictionary<string, Domains.MathCore.Point3D> filteredPoints,
+        CompilationContext context)
+    {
+        var output = new Dictionary<string, Domains.MathCore.Point3D>(
+            filteredPoints, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var plane in context.GeneratedPlanes)
+        {
+            foreach (var name in plane.Points)
+            {
+                if (context.Points.TryGetValue(name, out var pt) && !output.ContainsKey(name))
+                    output[name] = pt;
+            }
+        }
+
+        return output;
     }
 }

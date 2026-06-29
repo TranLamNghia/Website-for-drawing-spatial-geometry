@@ -40,6 +40,12 @@ public class IntersectionHandler : IFactHandler
             return;
         }
 
+        if (obj1IsPlane && obj2IsPlane)
+        {
+            HandlePlanePlaneIntersection(obj1, obj2, target, context);
+            return;
+        }
+
         // ===== Các case thông thường (Line-Line, Line-Plane) =====
         if (string.IsNullOrEmpty(target)) return;
         if (context.Points.ContainsKey(target)) return;
@@ -263,6 +269,75 @@ public class IntersectionHandler : IFactHandler
     /// <summary>
     /// Sắp xếp các điểm thiết diện theo thứ tự vòng quanh trọng tâm trên mặt phẳng cắt.
     /// </summary>
+
+    /// <summary>
+    /// X? l? giao tuy?n c?a 2 m?t ph?ng.
+    /// N?u 2 m?t ph?ng c? s?n 2 ?i?m chung th? d?ng lu?n c?c ?i?m ??.
+    /// N?u kh?ng, sinh 2 ?i?m ph? tr? tr?n ch?nh giao tuy?n ?? render ???c.
+    /// </summary>
+    private void HandlePlanePlaneIntersection(string plane1Str, string plane2Str, string resultTarget, CompilationContext context)
+    {
+        var plane1 = context.GetPlane(plane1Str);
+        var plane2 = context.GetPlane(plane2Str);
+        if (plane1 == null || plane2 == null) return;
+
+        var line = plane1.IntersectWith(plane2);
+        if (line == null) return;
+
+        var sharedPointNames = context.Points
+            .Where(kvp => plane1.DistanceToPoint(kvp.Value) < 1e-6 && plane2.DistanceToPoint(kvp.Value) < 1e-6)
+            .Select(kvp => kvp.Key)
+            .Distinct()
+            .ToList();
+
+        string startName;
+        string endName;
+
+        if (sharedPointNames.Count >= 2)
+        {
+            startName = sharedPointNames[0];
+            endName = sharedPointNames[1];
+        }
+        else
+        {
+            var baseLabel = string.IsNullOrWhiteSpace(resultTarget) ? "X" : resultTarget.Trim();
+            startName = CreateUniquePointName(context, $"{baseLabel}_1");
+            endName = CreateUniquePointName(context, $"{baseLabel}_2");
+
+            var dir = line.Direction;
+            var dirLen = dir.Magnitude();
+            if (dirLen < 1e-9) return;
+
+            var dirNorm = new Vector3D(dir.X / dirLen, dir.Y / dirLen, dir.Z / dirLen);
+            const double scale = 5.0;
+
+            context.Points[startName] = new Point3D(
+                line.Point.X - dirNorm.X * scale,
+                line.Point.Y - dirNorm.Y * scale,
+                line.Point.Z - dirNorm.Z * scale
+            );
+            context.Points[endName] = new Point3D(
+                line.Point.X + dirNorm.X * scale,
+                line.Point.Y + dirNorm.Y * scale,
+                line.Point.Z + dirNorm.Z * scale
+            );
+        }
+
+        context.AddGeneratedSegment(startName, endName);
+        Console.WriteLine($"[HANDLER] Plane-Plane intersection: {plane1Str} ? {plane2Str} -> {startName}-{endName}");
+    }
+
+    private string CreateUniquePointName(CompilationContext context, string baseName)
+    {
+        var candidate = baseName;
+        var index = 1;
+        while (context.Points.ContainsKey(candidate))
+        {
+            candidate = $"{baseName}_{index++}";
+        }
+        return candidate;
+    }
+
     private List<string> OrderCrossSectionPoints(List<string> pointNames, CompilationContext context, Plane3D plane)
     {
         if (pointNames.Count <= 3) return pointNames;

@@ -147,6 +147,7 @@ function PointRow({
 
   const commit = () => {
     setIsFocused(false)
+    if (!isFree || point.locked) return
     const x = Number(draft.x)
     const y = Number(draft.y)
     const z = Number(draft.z)
@@ -277,8 +278,9 @@ function PointRow({
               max="1"
               step="0.01"
               value={tVal ?? 0.5}
-              onChange={(e) => onUpdateT(parseFloat(e.target.value))}
-              className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
+              disabled={point.locked}
+              onChange={(e) => !point.locked && onUpdateT(parseFloat(e.target.value))}
+              className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-60"
             />
           </div>
         </div>
@@ -297,17 +299,20 @@ function PointRow({
               max="180"
               step="1"
               value={(angleVal * 180 / Math.PI).toFixed(0)}
-              onChange={(e) => onUpdateAngle(parseFloat(e.target.value) * Math.PI / 180)}
-              className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
+              disabled={point.locked}
+              onChange={(e) => !point.locked && onUpdateAngle(parseFloat(e.target.value) * Math.PI / 180)}
+              className="flex-1 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-60"
             />
             <input
               type="number"
               value={(angleVal * 180 / Math.PI).toFixed(0)}
+              disabled={point.locked}
               onChange={(e) => {
+                if (point.locked) return
                 const val = parseFloat(e.target.value)
                 if (!isNaN(val)) onUpdateAngle(val * Math.PI / 180)
               }}
-              className="h-8 w-14 rounded border bg-background px-1 text-right text-xs font-mono"
+              className="h-8 w-14 rounded border bg-background px-1 text-right text-xs font-mono disabled:cursor-not-allowed disabled:opacity-60"
             />
           </div>
           {onAddDependentPoint && (
@@ -342,6 +347,7 @@ function ObjectRow({
   onUpdateHeight,
   heightVal,
   solid,
+  sphereRadius,
   onAddRing,
   onUpdateRing,
   onRemoveRing,
@@ -361,6 +367,7 @@ function ObjectRow({
   onUpdateHeight?: (newHeight: number) => void
   heightVal?: number
   solid?: any
+  sphereRadius?: number
   onAddRing?: () => void
   onUpdateRing?: (ringId: string, phi: number, theta: number) => void
   onRemoveRing?: (ringId: string) => void
@@ -505,6 +512,12 @@ function ObjectRow({
 
       {selected && solid?.solidType === 'sphere' && (
         <div className="col-span-full mt-2 border-t border-border/50 bg-muted/20 p-2">
+          {sphereRadius !== undefined && (
+            <div className="mb-2 flex items-center justify-between rounded bg-background/60 px-2 py-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground">Bán kính</span>
+              <span className="text-[11px] font-semibold tracking-tight text-foreground">R = {formatCoord(sphereRadius)}</span>
+            </div>
+          )}
           <div className="flex justify-between items-center mb-2">
             <span className="text-[11px] text-muted-foreground uppercase font-semibold">Các đường tròn</span>
             <Button
@@ -1534,6 +1547,7 @@ export function ManualRightPanel() {
                       onUpdateHeight={solid.height !== undefined ? (newH) => updateSolidHeight(solid.id, newH) : undefined}
                       heightVal={solid.height}
                       solid={solid}
+                      sphereRadius={solid.solidType === 'sphere' ? manualDerived.solidInfo[solid.id]?.radius : undefined}
                       onAddRing={() => addSphereRing(solid.id)}
                       onUpdateRing={(ringId, phi, theta) => updateSphereRingOrientation(solid.id, ringId, phi, theta)}
                       onRemoveRing={(ringId) => removeSphereRing(solid.id, ringId)}

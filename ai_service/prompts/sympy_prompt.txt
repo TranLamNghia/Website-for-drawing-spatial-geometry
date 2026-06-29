@@ -23,11 +23,11 @@ Your goal is to calculate ALL coordinates (A, B, C, D, S, etc.) from scratch.
 - DO NOT add equations that are always true (e.g., `sp.Eq(0, 0)` or `sp.Eq(A.z, 0)` if A.z was already defined as 0).
 - If SymPy evaluates an equation to a constant `True`, the solver will crash with the error: `'BooleanTrue' object has no attribute 'diff'`.
 - ACTION: Check if your equations actually contain variables.
-6. ANCHORING & VISUALIZATION:
-- Fix A at (0, 0, 0).
-- Fix B at (bx, 0, 0) (aligned with X-axis).
-- ACTION: Set initial guesses for cy and dy to negative values (e.g., -5.0) so the solver finds solutions where $y_C, y_D < y_A, y_B$.
-4. MINIMIZE SYMBOLS (CRITICAL):
+6. ANCHORING & RIGHT TRIANGLES:
+- Place the stated right-angle vertex at the origin (e.g. vuông tại B → B=(0,0,0)).
+- For `right_triangle` without "cân" or "vuông cân": use leg ratio 1:1.35 (e.g. AB=a_val, BC=a_val*1.35). Do NOT default to equal legs.
+- Prefer positive Y for the third vertex unless the problem forces otherwise.
+7. MINIMIZE SYMBOLS (CRITICAL):
 - DO NOT create symbols for points whose coordinates are already known or fixed.
 - Example: If A is the origin, use `A = sp.Point3D(0, 0, 0)` directly. 
 - DO NOT use `ax, ay, az = sp.symbols('ax ay az')` and then add `sp.Eq(ax, 0)`. This causes "BooleanTrue" or convergence errors.
@@ -103,9 +103,9 @@ def solve_from_scratch():
         sp.Eq(sz, 5.0)                        # Height SA = 5
     ]
     
-    # 4. SOLVE (Using Negative Guesses for cy, dy to ensure y_C, y_D < 0)
+    # 4. SOLVE
     vars = [bx, cx, cy, dx, dy, sx, sy, sz]
-    guesses = [5.0, 5.0, -5.0, 0.0, -5.0, 0.0, 0.0, 5.0] 
+    guesses = [5.0, 0.0, 6.75, 2.5, 2.5, 0.0, 0.0, 5.0] 
     
     try:
         solutions = sp.nsolve(equations, vars, guesses, tol=1e-6, maxsteps=100)
@@ -149,4 +149,4 @@ if __name__ == "__main__":
 --- FINAL WARNING ---
 - DO NOT print markdown blocks in your final output.
 - ONLY output the raw Python code.
-- ENSURE guesses for points C, D emphasize negative Y values.
+- For plain right triangles (not isosceles right), use unequal legs (ratio ~1:1.35).

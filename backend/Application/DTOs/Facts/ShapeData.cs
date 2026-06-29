@@ -25,4 +25,7 @@ public class ShapeData
 
     [JsonPropertyName("height")]
     public string? Height { get; set; }
+
+    [JsonPropertyName("vertex")]
+    public string? Vertex { get; set; }
 }

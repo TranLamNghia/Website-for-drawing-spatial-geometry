@@ -163,6 +163,28 @@
                 "$ref": "#/definitions/query"
             }
         },
+        "points": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                    "x",
+                    "y"
+                ],
+                "properties": {
+                    "x": {
+                        "type": "number"
+                    },
+                    "y": {
+                        "type": "number"
+                    },
+                    "z": {
+                        "type": "number"
+                    }
+                }
+            }
+        },
         "extraction_meta": {
             "type": "object",
             "additionalProperties": false,
@@ -365,7 +387,6 @@
                                     "rectangular_cuboid",
                                     "cylinder",
                                     "cone",
-                                    "torus",
                                     "regular_pyramid",
                                     "regular_prism",
                                     "regular_tetrahedron",
@@ -375,8 +396,6 @@
                                     "regular_cylinder",
                                     "regular_cone",
                                     "regular_sphere",
-                                    "regular_sphere",
-                                    "regular_torus",
                                     "frustum",
                                     "pentagon",
                                     "hexagon",
@@ -403,6 +422,10 @@
                                 "items": {
                                     "type": "string"
                                 }
+                            },
+                            "vertex": {
+                                "type": "string",
+                                "description": "Đỉnh vuông của tam giác vuông (vd: B trong vuông tại B)"
                             }
                         }
                     }
@@ -1034,9 +1057,9 @@
                         "equation_plane",
                         "equation_sphere",
                         "coordinates",
-                        "proof_existence",
                         "length",
-                        "shape"
+                        "shape",
+                        "intersection_line"
                     ]
                 },
                 "data": {
@@ -1099,13 +1122,13 @@
                     "$ref": "#/definitions/query_proof_equal"
                 },
                 {
-                    "$ref": "#/definitions/query_proof_existence"
-                },
-                {
                     "$ref": "#/definitions/query_length"
                 },
                 {
                     "$ref": "#/definitions/query_shape"
+                },
+                {
+                    "$ref": "#/definitions/query_intersection_line"
                 }
             ]
         },
@@ -1114,6 +1137,23 @@
                 "properties": {
                     "type": {
                         "const": "shape"
+                    }
+                }
+            },
+            "then": {
+                "properties": {
+                    "data": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                }
+            }
+        },
+        "query_intersection_line": {
+            "if": {
+                "properties": {
+                    "type": {
+                        "const": "intersection_line"
                     }
                 }
             },
@@ -1578,36 +1618,6 @@
                                     "type": "string"
                                 },
                                 "minItems": 2
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "query_proof_existence": {
-            "if": {
-                "properties": {
-                    "type": {
-                        "const": "proof_existence"
-                    }
-                }
-            },
-            "then": {
-                "properties": {
-                    "data": {
-                        "additionalProperties": false,
-                        "properties": {
-                            "points": {
-                                "type": "array",
-                                "items": {
-                                    "type": "string"
-                                }
-                            },
-                            "shape": {
-                                "type": "string"
-                            },
-                            "target": {
-                                "type": "string"
                             }
                         }
                     }

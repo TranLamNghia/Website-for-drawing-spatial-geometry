@@ -23,5 +23,6 @@ public enum QueryType
     coordinates,
     proof_equal,
     length,
-    shape
+    shape,
+    intersection_line
 }

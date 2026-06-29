@@ -233,6 +233,7 @@ export interface ManualSolidInfo {
   formula: string
   vertexCount: number
   faceCount: number
+  radius?: number
 }
 
 export interface ManualDisplayPoint {
@@ -2705,6 +2706,7 @@ export function buildManualDerived(document: ManualDocument): ManualDerived {
         formula: `V = 4/3·π·R³ = 4/3·π·${round(r)}³`,
         vertexCount: 1,
         faceCount: 1,
+        radius: round(r),
       }
       return
     }

@@ -16,7 +16,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { AlertCircle, CheckCircle2, Play, Sparkles, Home } from 'lucide-react'
 import { useGeometry } from '@/components/geometry/geometry-context'
-import { applyBackendResultToState, applyRawJsonToGeometry, solveProblemText } from './solve-logic'
+import { applyBackendResultToState, applyRawJsonToGeometry, solveProblemTextStream } from './solve-logic'
+import { SolveProcessingOverlay } from './solve-processing-overlay'
 
 const SAMPLE_PROBLEM =
   `Cho hình chóp S.ABCD có đáy ABCD là hình vuông cạnh a. SA vuông góc với mặt phẳng (ABCD) và SA = a.`
@@ -61,16 +62,20 @@ export function SolveLeftPanel() {
   const [problem, setProblem] = useState(SAMPLE_PROBLEM)
   const [activeTab, setActiveTab] = useState<'input' | 'json'>('input')
   const [jsonInput, setJsonInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const [processingStage, setProcessingStage] = useState<null | 'waiting' | 'solving'>(null)
   const [lastResultRaw, setLastResultRaw] = useState<any>(null)
   const [errorDialogOpen, setErrorDialogOpen] = useState(false)
 
+  const isLoading = processingStage !== null
+
   const handleSolveNow = async () => {
-    setIsLoading(true)
+    setProcessingStage('waiting')
     setErrorMessage('')
     setErrorDialogOpen(false)
     try {
-      const result = await solveProblemText(problem)
+      const result = await solveProblemTextStream(problem, (stage) => {
+        if (stage === 'solving') setProcessingStage('solving')
+      })
       if (result && typeof result === 'object') {
         ;(result as any).problemText = problem
       }
@@ -84,7 +89,7 @@ export function SolveLeftPanel() {
       setValidation({ isConsistent: false, issues: [message] })
       setErrorDialogOpen(true)
     } finally {
-      setIsLoading(false)
+      setProcessingStage(null)
     }
   }
 
@@ -117,6 +122,7 @@ export function SolveLeftPanel() {
           variant="outline"
           size="sm"
           onClick={() => router.push('/')}
+          disabled={isLoading}
           className="w-full flex items-center justify-center gap-1.5 rounded-xl text-xs py-1.5 h-8 font-semibold bg-background hover:bg-accent/40"
         >
           <Home size={14} />
@@ -146,6 +152,7 @@ export function SolveLeftPanel() {
             <Textarea
               value={problem}
               onChange={e => setProblem(e.target.value)}
+              disabled={isLoading}
               placeholder="Nhập đề bài hình học tại đây..."
               className="h-[240px] w-full resize-none rounded-2xl border-border bg-background p-4 text-[13px] leading-relaxed shadow-inner transition-all focus:ring-primary/20 lg:h-[320px]"
             />
@@ -226,6 +233,7 @@ export function SolveLeftPanel() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+    <SolveProcessingOverlay open={isLoading} variant={processingStage === 'solving' ? 'solving' : 'waiting'} />
     </>
   )
 }
