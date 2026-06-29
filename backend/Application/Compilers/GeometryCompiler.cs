@@ -1381,14 +1381,25 @@ public class GeometryCompiler : IGeometryCompiler
 
     private void BuildDependentEntities(GeometryProblemDto problem, CompilationContext context)
     {
+        var equalityFacts = new List<FactDto>();
+
         foreach (var fact in problem.Facts)
         {
-            var handler = _handlers.FirstOrDefault(h => h.TargetFactType == fact.Type);
-            
-            if (handler != null)
+            if (fact.Type == FactType.Equality)
             {
-                handler.Handle(fact, context); 
+                equalityFacts.Add(fact);
+                continue;
             }
+
+            var handler = _handlers.FirstOrDefault(h => h.TargetFactType == fact.Type);
+            handler?.Handle(fact, context);
+        }
+
+        // Equality constraints (e.g. BN = DN) must run after belongs_to/midpoint defaults.
+        foreach (var fact in equalityFacts)
+        {
+            var handler = _handlers.FirstOrDefault(h => h.TargetFactType == FactType.Equality);
+            handler?.Handle(fact, context);
         }
     }
 

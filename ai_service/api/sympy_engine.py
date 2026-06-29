@@ -4,7 +4,12 @@ import re
 import requests
 from pathlib import Path
 from api.llm_provider import llm_provider
-from api.llm_config import SOLVE_MATH_TIMEOUT, SOLVE_MATH_FALLBACK_TIMEOUT
+from api.llm_config import (
+    SOLVE_MATH_TIMEOUT,
+    SOLVE_MATH_FALLBACK_TIMEOUT,
+    SOLVE_MATH_THINKING_BUDGET,
+    SOLVE_MATH_MAX_OUTPUT_TOKENS,
+)
 
 BASE_DIR = Path(__file__).parent.parent
 PROMPT_FILE = BASE_DIR / "prompts" / "sympy_prompt.txt"
@@ -83,6 +88,8 @@ class SympyAIEngine:
                     timeout=SOLVE_MATH_TIMEOUT,
                     fallback_timeout=SOLVE_MATH_FALLBACK_TIMEOUT,
                     allow_fallback=not fail_fast,
+                    thinking_budget=SOLVE_MATH_THINKING_BUDGET,
+                    max_output_tokens=SOLVE_MATH_MAX_OUTPUT_TOKENS,
                 )
                 print(f"[SYMPY_ENGINE] Received Script from LLM ({len(raw_code)} ký tự).")
             except Exception as e:
