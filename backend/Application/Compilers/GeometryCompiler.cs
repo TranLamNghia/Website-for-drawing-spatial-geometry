@@ -59,6 +59,8 @@ public class GeometryCompiler : IGeometryCompiler
         BuildApex(problem, context);
         // Dựng đáy trên cho khối lăng trụ (nếu có)
         BuildPrismTopBase(problem, context);
+        // Dựng thêm các khối 3D khai báo sau fact shape đầu (vd hai chóp đồng dạng S.ABCD và S'.A'B'C'D')
+        BuildAdditionalSolids(problem, context);
 
         // Giai đoạn 2.5: Dựng vùng không gian (Volume) cho các khối đặc đã nhận diện
         BuildVolumePlanes(problem, context);
@@ -618,6 +620,7 @@ public class GeometryCompiler : IGeometryCompiler
             // 2. Tự động thêm dấu nhân '*' vào các cụm như '2a', '3a' (Regex thông minh)
             // Tìm các trường hợp [Số][Chữ a] và thay bằng [Số]*[Chữ a]
             sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, @"(\d)a", "$1*a");
+            sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, @"(\d)h", "$1*h");
 
             // 3. Xử lý sqrt(...) thủ công trước khi đưa vào DataTable
             while (sanitized.Contains("sqrt("))
@@ -631,8 +634,10 @@ public class GeometryCompiler : IGeometryCompiler
                 sanitized = sanitized.Substring(0, start) + Math.Sqrt(insideVal).ToString(System.Globalization.CultureInfo.InvariantCulture) + sanitized.Substring(end + 1);
             }
 
-            // 4. Thay 'a' bằng giá trị thực (Sử dụng Culture Invariant để luôn dùng dấu '.')
-            sanitized = sanitized.Replace("a", a.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            // 4. Thay tham số a/h bằng giá trị cạnh đơn vị
+            var unitStr = a.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            sanitized = sanitized.Replace("h", unitStr);
+            sanitized = sanitized.Replace("a", unitStr);
             
             // 5. Tính toán bằng DataTable
             var dt = new System.Data.DataTable();
@@ -924,6 +929,178 @@ public class GeometryCompiler : IGeometryCompiler
 
             Console.WriteLine($"[COMPILER] --- GĐ2: Đã dựng đỉnh {apexName} tại {context.Points[apexName]} ---");
         }
+    }
+
+    /// <summary>
+    /// Dựng các khối pyramid bổ sung khi đề khai báo nhiều fact shape 3D (vd hai chóp đồng dạng).
+    /// </summary>
+    private void BuildAdditionalSolids(GeometryProblemDto problem, CompilationContext context)
+    {
+        var pyramidShapes = new[]
+        {
+            ShapeType.Pyramid, ShapeType.Regular_pyramid,
+            ShapeType.Pentagonal_pyramid, ShapeType.Hexagonal_pyramid,
+        };
+
+        var solidFacts = problem.Facts
+            .Where(f => f.Type == FactType.Shape)
+            .Select(f => f.GetDataAs<ShapeData>())
+            .Where(d => d != null && pyramidShapes.Contains(d.Shape) && !string.IsNullOrWhiteSpace(d.Target))
+            .Cast<ShapeData>()
+            .ToList();
+
+        if (solidFacts.Count <= 1) return;
+
+        var reference = solidFacts[0];
+        for (int i = 1; i < solidFacts.Count; i++)
+            BuildAdditionalPyramid(problem, context, solidFacts[i], reference);
+    }
+
+    private void BuildAdditionalPyramid(
+        GeometryProblemDto problem,
+        CompilationContext context,
+        ShapeData solidData,
+        ShapeData referenceSolid)
+    {
+        string rawTarget = solidData.Target ?? "";
+        if (!rawTarget.Contains('.')) return;
+
+        var parts = rawTarget.Split('.', 2);
+        var apexName = ParseVertices(parts[0]).FirstOrDefault();
+        var baseVertices = ParseVertices(parts[1]);
+        if (apexName == null || baseVertices.Count < 3) return;
+
+        if (baseVertices.All(v => context.Points.ContainsKey(v)) && context.Points.ContainsKey(apexName))
+            return;
+
+        double aValue = context.UnitLength;
+        double width = GetDynamicEdgeLength(problem, baseVertices, 0, 1, -1, aValue);
+        if (width <= 0) width = aValue * 2;
+
+        double depth = baseVertices.Count >= 4
+            ? GetDynamicEdgeLength(problem, baseVertices, 0, 3, -1, aValue)
+            : GetDynamicEdgeLength(problem, baseVertices, 1, 2, -1, aValue);
+        if (depth <= 0) depth = width;
+
+        double offsetX = context.Points.Count > 0
+            ? context.Points.Values.Max(p => p.X) + aValue * 1.2
+            : 0;
+
+        if (baseVertices.Count >= 4)
+        {
+            context.Points[baseVertices[0]] = new Point3D(offsetX, 0, 0);
+            context.Points[baseVertices[1]] = new Point3D(offsetX + width, 0, 0);
+            context.Points[baseVertices[2]] = new Point3D(offsetX + width, depth, 0);
+            context.Points[baseVertices[3]] = new Point3D(offsetX, depth, 0);
+        }
+        else if (baseVertices.Count == 3)
+        {
+            context.Points[baseVertices[0]] = new Point3D(offsetX, 0, 0);
+            context.Points[baseVertices[1]] = new Point3D(offsetX + width, 0, 0);
+            context.Points[baseVertices[2]] = new Point3D(offsetX + width * 0.5, depth, 0);
+        }
+
+        for (int j = 0; j < baseVertices.Count; j++)
+            context.AddGeneratedSegment(baseVertices[j], baseVertices[(j + 1) % baseVertices.Count]);
+        context.GeneratedPlanes.Add(new PlaneData { Points = baseVertices.ToArray() });
+
+        var builtBase = baseVertices
+            .Where(v => context.Points.ContainsKey(v))
+            .Select(v => context.Points[v])
+            .ToArray();
+        if (builtBase.Length == 0) return;
+
+        var projection = Point3D.GetCentroid(builtBase);
+        double height = ResolvePyramidHeight(problem, context, apexName, baseVertices, projection);
+        if (height <= 0)
+            height = InferSimilarPyramidHeight(problem, context, apexName, baseVertices, referenceSolid);
+
+        context.Points[apexName] = new Point3D(projection.X, projection.Y, projection.Z + height);
+        foreach (var v in baseVertices)
+            context.AddGeneratedSegment(apexName, v);
+
+        Console.WriteLine($"[COMPILER] --- GĐ2+: Đã dựng khối bổ sung {rawTarget}, đỉnh {apexName} tại {context.Points[apexName]} ---");
+    }
+
+    private double ResolvePyramidHeight(
+        GeometryProblemDto problem,
+        CompilationContext context,
+        string apexName,
+        List<string> baseVertices,
+        Point3D projectionPoint)
+    {
+        string projName = "";
+        foreach (var kvp in context.Points)
+        {
+            if (Math.Abs(kvp.Value.X - projectionPoint.X) < 1e-6 &&
+                Math.Abs(kvp.Value.Y - projectionPoint.Y) < 1e-6 &&
+                Math.Abs(kvp.Value.Z - projectionPoint.Z) < 1e-6)
+            {
+                projName = kvp.Key;
+                break;
+            }
+        }
+
+        string expectedEdge1 = $"{apexName}{projName}";
+        string expectedEdge2 = $"{projName}{apexName}";
+        var heightFact = problem.Facts.FirstOrDefault(f =>
+        {
+            if (f.Type != FactType.Length) return false;
+            var ld = f.GetDataAs<LengthData>();
+            if (ld == null || string.IsNullOrEmpty(ld.Target)) return false;
+            string t = ld.Target.ToLower();
+            return t == expectedEdge1.ToLower() || t == expectedEdge2.ToLower()
+                || t == "height" || t == "chiều cao" || t == "h";
+        });
+
+        if (heightFact?.GetDataAs<LengthData>() is LengthData hd && hd.Value != null)
+            return EvaluateExpression(hd.Value, context.UnitLength);
+
+        foreach (string baseNode in baseVertices)
+        {
+            string lateralEdge = $"{apexName}{baseNode}";
+            double lateralLength = GetImplicitLength(problem, context, lateralEdge);
+            if (lateralLength <= 0 || !context.Points.TryGetValue(baseNode, out var baseNodePoint)) continue;
+
+            double rSquared = Math.Pow(baseNodePoint.X - projectionPoint.X, 2)
+                + Math.Pow(baseNodePoint.Y - projectionPoint.Y, 2)
+                + Math.Pow(baseNodePoint.Z - projectionPoint.Z, 2);
+            double lSquared = lateralLength * lateralLength;
+            if (lSquared > rSquared)
+                return Math.Sqrt(lSquared - rSquared);
+        }
+
+        return -1;
+    }
+
+    private double InferSimilarPyramidHeight(
+        GeometryProblemDto problem,
+        CompilationContext context,
+        string apexName,
+        List<string> baseVertices,
+        ShapeData referenceSolid)
+    {
+        string refTarget = referenceSolid.Target ?? "";
+        if (!refTarget.Contains('.')) return context.UnitLength * Math.Sqrt(2);
+
+        var refApex = ParseVertices(refTarget.Split('.')[0]).FirstOrDefault();
+        var refBase = ParseVertices(refTarget.Split('.')[1]);
+        if (refApex == null || !context.Points.ContainsKey(refApex) || refBase.Count < 3)
+            return context.UnitLength * Math.Sqrt(2);
+
+        double refBaseZ = refBase.Where(context.Points.ContainsKey).Max(v => context.Points[v].Z);
+        double refHeight = context.Points[refApex].Z - refBaseZ;
+        if (refHeight <= 0) refHeight = context.UnitLength * Math.Sqrt(2);
+
+        double refWidth = GetDynamicEdgeLength(problem, refBase, 0, 1, -1, context.UnitLength);
+        double newWidth = GetDynamicEdgeLength(problem, baseVertices, 0, 1, -1, context.UnitLength);
+        if (refWidth > 0 && newWidth > 0)
+            return refHeight * (newWidth / refWidth);
+
+        if (apexName.Contains("'"))
+            return refHeight * 2;
+
+        return refHeight;
     }
 
 

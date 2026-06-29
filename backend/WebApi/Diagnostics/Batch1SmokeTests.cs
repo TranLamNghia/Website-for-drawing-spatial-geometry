@@ -595,6 +595,24 @@ public static class Batch1SmokeTests
             }
         });
 
+        RunCase("Hai chóp đồng dạng - dựng đủ điểm S'.A'B'C'D'", () =>
+        {
+            var problem = CreateProblem(
+                ["S", "A", "B", "C", "D", "S'", "A'", "B'", "C'", "D'"],
+                [],
+                CreateFact("s1", FactType.Shape, new ShapeData { Target = "S.ABCD", Shape = ShapeType.Pyramid }),
+                CreateFact("s2", FactType.Shape, new ShapeData { Target = "S'.A'B'C'D'", Shape = ShapeType.Pyramid }),
+                CreateFact("l1", FactType.Length, new LengthData { Target = "AB", Value = "a" }),
+                CreateFact("l2", FactType.Length, new LengthData { Target = "A'B'", Value = "2 * a" })
+            );
+            problem.Entities.Solids = ["S.ABCD", "S'.A'B'C'D'"];
+            var context = CompileProblem(problem);
+            var integrity = PointIntegrityHelper.Evaluate(problem.Entities.Points, context.Points);
+            AssertTrue(integrity.IsValid, $"All declared points should be built (missing: {string.Join(",", integrity.MissingPoints)})");
+            AssertTrue(context.Points.ContainsKey("S'"), "Second apex S' should exist");
+            AssertTrue(context.Points.ContainsKey("A'"), "Second base vertex A' should exist");
+        });
+
         if (failures.Count > 0)
         {
             throw new InvalidOperationException(
