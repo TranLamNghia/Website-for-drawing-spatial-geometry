@@ -215,6 +215,12 @@ CRITICAL RULES FOR ENTITIES:
    - Chóp `S.ABCD`: `SA`, `SB`, `SC`, `SD`, `AB`, `BC`, `CD`, `DA`
    - Đa giác đáy phẳng `ABCD`: `AB`, `BC`, `CD`, `DA` (tam giác `ABC`: `AB`, `BC`, `CA`)
    Backend chỉ vẽ cạnh nằm trong `entities.segments` hoặc suy ra từ `entities.solids` — thiếu cạnh đáy sẽ bị mất nét dù tọa độ đúng.
+47. ĐỀ NHIỀU CÂU (a/b/c): Khi đề có các mệnh đề a), b), c) hoặc "Câu a/b/c":
+   - Phần MỞ ĐẦU (trước câu a): trích xuất các ràng buộc chung (hình dạng, điểm thuộc đoạn, điều kiện BN=DN...).
+   - Các điều kiện chỉ xuất hiện sau "Khi...", "Giả sử...", "Trong trường hợp..." thuộc câu b/c: KHÔNG đưa vào `facts` mặc định.
+   - Ví dụ: "Khi M, N là trung điểm AB và CD" → KHÔNG sinh fact `midpoint` trong `facts` (chỉ ghi trong `queries`/`raw_text` của câu b).
+   - Ví dụ: "(P) chứa BN và song song MC" chỉ thuộc câu b → KHÔNG sinh `belongs_to`/`parallel` liên quan mặt phẳng P trừ khi đó là giả thiết chung.
+   - Vẫn liệt kê mọi điểm (`M`, `N`, `I`...) trong `entities.points`; chỉ giữ `facts` cần để dựng hình tổng quát.
 """.strip()
 
     user_prompt = f"""

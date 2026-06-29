@@ -24,5 +24,7 @@ FALLBACK_TIMEOUT = 60.0
 
 # solve-math generates SymPy scripts. Keep this below the backend timeout so
 # invalid/slow generations can retry instead of leaving the UI waiting forever.
-SOLVE_MATH_TIMEOUT = 75.0
-SOLVE_MATH_FALLBACK_TIMEOUT = 45.0
+SOLVE_MATH_TIMEOUT = 90.0
+SOLVE_MATH_FALLBACK_TIMEOUT = 90.0
+SOLVE_MATH_THINKING_BUDGET = 4096
+SOLVE_MATH_MAX_OUTPUT_TOKENS = 8192

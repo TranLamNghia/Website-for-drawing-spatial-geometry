@@ -15,7 +15,12 @@ from .llm_config import (
 )
 
 
-def _openai_messages_to_vertex_payload(messages: list, temperature: float) -> dict:
+def _openai_messages_to_vertex_payload(
+    messages: list,
+    temperature: float,
+    thinking_budget: int | None = None,
+    max_output_tokens: int | None = None,
+) -> dict:
     """Map OpenAI-style chat messages to Vertex generateContent JSON body."""
     system_chunks: list[str] = []
     contents: list[dict] = []
@@ -39,9 +44,15 @@ def _openai_messages_to_vertex_payload(messages: list, temperature: float) -> di
             gemini_role = "user"
         contents.append({"role": gemini_role, "parts": [{"text": text}]})
 
+    generation_config: dict = {"temperature": temperature}
+    if max_output_tokens is not None:
+        generation_config["maxOutputTokens"] = max_output_tokens
+    if thinking_budget is not None:
+        generation_config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
+
     body: dict = {
         "contents": contents,
-        "generationConfig": {"temperature": temperature},
+        "generationConfig": generation_config,
     }
     if system_chunks:
         body["systemInstruction"] = {
@@ -55,8 +66,27 @@ def _vertex_response_text(data: dict) -> str:
     if not candidates:
         raise ValueError(f"Vertex response has no candidates: {json.dumps(data)[:500]}")
     parts = (candidates[0].get("content") or {}).get("parts") or []
-    texts = [p.get("text", "") for p in parts if isinstance(p, dict)]
+    texts = [
+        p.get("text", "")
+        for p in parts
+        if isinstance(p, dict) and p.get("text") and not p.get("thought")
+    ]
     return "".join(texts).strip()
+
+
+def _accumulate_stream_chunk(text_parts: list[str], chunk: dict) -> None:
+    candidates = chunk.get("candidates") or []
+    if not candidates:
+        return
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        if part.get("thought"):
+            continue
+        text = part.get("text")
+        if text:
+            text_parts.append(text)
 
 
 _VERTEX_SCOPES = ("https://www.googleapis.com/auth/cloud-platform",)
@@ -80,25 +110,39 @@ class LLMProvider:
             )
         return creds.token
 
-    def _vertex_generate_url(self, model: str) -> str:
+    def _vertex_api_host(self) -> str:
         if VERTEX_LOCATION.lower() == "global":
-            host = "aiplatform.googleapis.com"
-        else:
-            host = f"{VERTEX_LOCATION}-aiplatform.googleapis.com"
-            
+            return "aiplatform.googleapis.com"
+        return f"{VERTEX_LOCATION}-aiplatform.googleapis.com"
+
+    def _vertex_stream_generate_url(self, model: str) -> str:
+        host = self._vertex_api_host()
         return (
             f"https://{host}/v1/projects/{VERTEX_PROJECT_ID}/locations/{VERTEX_LOCATION}"
-            f"/publishers/google/models/{model}:generateContent"
+            f"/publishers/google/models/{model}:streamGenerateContent?alt=sse"
         )
 
-    def _vertex_generate(self, model: str, messages: list, temperature: float, timeout: float) -> str:
+    def _vertex_generate(
+        self,
+        model: str,
+        messages: list,
+        temperature: float,
+        timeout: float,
+        thinking_budget: int | None = None,
+        max_output_tokens: int | None = None,
+    ) -> str:
         if not VERTEX_PROJECT_ID:
             raise ValueError(
                 "Set VERTEX_PROJECT_ID to your GCP project id (Vertex does not accept ?key= on this API)."
             )
-        url = self._vertex_generate_url(model)
+        url = self._vertex_stream_generate_url(model)
         token = self._vertex_bearer_token()
-        payload = _openai_messages_to_vertex_payload(messages, temperature)
+        payload = _openai_messages_to_vertex_payload(
+            messages,
+            temperature,
+            thinking_budget=thinking_budget,
+            max_output_tokens=max_output_tokens,
+        )
         resp = requests.post(
             url,
             json=payload,
@@ -106,14 +150,34 @@ class LLMProvider:
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}",
             },
+            stream=True,
             timeout=(10.0, timeout),
         )
         if resp.status_code != 200:
             raise RuntimeError(
                 f"Vertex HTTP {resp.status_code}: {resp.text[:800]}"
             )
-        data = resp.json()
-        return _vertex_response_text(data)
+
+        text_parts: list[str] = []
+        for raw_line in resp.iter_lines(decode_unicode=True):
+            if not raw_line:
+                continue
+            line = raw_line.strip()
+            if not line.startswith("data:"):
+                continue
+            data_str = line[len("data:"):].strip()
+            if not data_str or data_str == "[DONE]":
+                continue
+            try:
+                chunk = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+            _accumulate_stream_chunk(text_parts, chunk)
+
+        result = "".join(text_parts).strip()
+        if not result:
+            raise ValueError("Vertex streaming response had no text output.")
+        return result
 
     def get_completion(
         self,
@@ -123,20 +187,28 @@ class LLMProvider:
         timeout=None,
         fallback_timeout=None,
         allow_fallback=True,
+        thinking_budget: int | None = None,
+        max_output_tokens: int | None = None,
     ):
         target_model = model or PRIMARY_MODEL
         actual_timeout = timeout or DEFAULT_TIMEOUT
         actual_fallback_timeout = fallback_timeout or FALLBACK_TIMEOUT
 
+        budget_note = f", thinkingBudget={thinking_budget}" if thinking_budget is not None else ""
         print(
             f"[LLM_PROVIDER] [{time.strftime('%H:%M:%S')}] Sending request to {target_model} "
-            f"(Vertex OAuth, read timeout={actual_timeout}s)..."
+            f"(Vertex OAuth, stream, read timeout={actual_timeout}s{budget_note})..."
         )
         start_time = time.time()
 
         try:
             text = self._vertex_generate(
-                target_model, messages, temperature, actual_timeout
+                target_model,
+                messages,
+                temperature,
+                actual_timeout,
+                thinking_budget=thinking_budget,
+                max_output_tokens=max_output_tokens,
             )
             duration = time.time() - start_time
             print(
@@ -154,17 +226,35 @@ class LLMProvider:
             if allow_fallback and target_model == PRIMARY_MODEL:
                 print(
                     f"[LLM_PROVIDER] [FALLBACK] Switching to {FALLBACK_MODEL} "
-                    f"(read timeout={actual_fallback_timeout}s)..."
+                    f"(read timeout={actual_fallback_timeout}s{budget_note})..."
                 )
-                return self._call_fallback(messages, temperature, actual_fallback_timeout)
+                return self._call_fallback(
+                    messages,
+                    temperature,
+                    actual_fallback_timeout,
+                    thinking_budget=thinking_budget,
+                    max_output_tokens=max_output_tokens,
+                )
             raise e
 
-    def _call_fallback(self, messages, temperature=0.1, fallback_timeout=None):
+    def _call_fallback(
+        self,
+        messages,
+        temperature=0.1,
+        fallback_timeout=None,
+        thinking_budget: int | None = None,
+        max_output_tokens: int | None = None,
+    ):
         actual_fallback_timeout = fallback_timeout or FALLBACK_TIMEOUT
         start_time = time.time()
         try:
             text = self._vertex_generate(
-                FALLBACK_MODEL, messages, temperature, actual_fallback_timeout
+                FALLBACK_MODEL,
+                messages,
+                temperature,
+                actual_fallback_timeout,
+                thinking_budget=thinking_budget,
+                max_output_tokens=max_output_tokens,
             )
             duration = time.time() - start_time
             print(

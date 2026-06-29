@@ -461,6 +461,71 @@ def strip_coordinate_plane_artifacts(data: dict) -> dict:
     return data
 
 
+def _has_multipart_markers(problem_text: str) -> bool:
+    if not isinstance(problem_text, str):
+        return False
+    return bool(re.search(r"(?i)(?:\ba\)|\bb\)|\bc\)|câu\s*[abc]\))", problem_text))
+
+
+def _fact_targets_plane_p(fact: dict) -> bool:
+    if not isinstance(fact, dict):
+        return False
+    ftype = str(fact.get("type", "")).lower()
+    fdata = fact.get("data") if isinstance(fact.get("data"), dict) else {}
+    if ftype == "midpoint":
+        return True
+    if ftype == "belongs_to":
+        target = str(fdata.get("target", "")).upper()
+        return target == "P"
+    if ftype == "parallel":
+        objects = fdata.get("objects") or []
+        return any("P" == str(o).upper() or "MC" in str(o).upper() for o in objects)
+    return False
+
+
+def strip_subpart_conditional_facts(data: dict, problem_text: str) -> dict:
+    """Loại facts chỉ thuộc câu b/c khỏi bộ dựng hình mặc định."""
+    if not isinstance(data, dict) or not _has_multipart_markers(problem_text):
+        return data
+
+    facts = data.get("facts")
+    if not isinstance(facts, list):
+        return data
+
+    part_b_hint = re.compile(
+        r"(?i)(trung\s*điểm|trung\s*diem|mặt\s*phẳng\s*\(?P\)?|mat\s*phang\s*\(?P\)?|"
+        r"song\s*song\s*với\s*MC|song\s*song\s*voi\s*MC|thiết\s*diện|thiet\s*dien|"
+        r"khi\s+M.*N|khi\s+m.*n)"
+    )
+
+    kept: list = []
+    removed = 0
+    for fact in facts:
+        if not isinstance(fact, dict):
+            kept.append(fact)
+            continue
+        raw = str(fact.get("raw_text", ""))
+        if _fact_targets_plane_p(fact) or part_b_hint.search(raw):
+            removed += 1
+            continue
+        kept.append(fact)
+
+    if removed:
+        data["facts"] = kept
+        print(f"[EXTRACT] Stripped {removed} sub-part (b/c) facts from default compile set.")
+
+        entities = data.get("entities")
+        if isinstance(entities, dict):
+            planes = entities.get("planes")
+            if isinstance(planes, list):
+                entities["planes"] = [
+                    p for p in planes
+                    if str(p).strip().upper().strip("()") != "P"
+                ]
+
+    return data
+
+
 def normalize_sphere_tangent_artifacts(data: dict) -> dict:
     """Đảm bảo O/K có trong entities.points cho bài mặt cầu tiếp xúc mp (P)."""
     if not isinstance(data, dict):
@@ -504,6 +569,7 @@ async def extract_geometry(request: ProblemRequest, api_key: str = Depends(verif
         parsed_data = post_process_facts(parsed_data)
         parsed_data = inject_given_coordinates(parsed_data, request.problem_text)
         parsed_data = strip_coordinate_plane_artifacts(parsed_data)
+        parsed_data = strip_subpart_conditional_facts(parsed_data, request.problem_text)
         parsed_data = normalize_sphere_tangent_artifacts(parsed_data)
         return {"status": "success", "data": parsed_data}
     except ValueError as ve:
