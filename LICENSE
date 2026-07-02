@@ -1,0 +1,84 @@
+SpatialGeometry — Source Available License
+Copyright (c) 2026 Trần Lâm Nghĩa (https://vehinhkhongkho.com)
+All rights reserved.
+
+This license applies to the source code in this repository. By accessing,
+viewing, or downloading this code, you agree to the terms below.
+
+1. Definitions
+
+   "Software" means the source code, documentation, and related materials
+   in this repository.
+
+   "We", "Us", "Licensor" means Trần Lâm Nghĩa, the copyright holder of
+   SpatialGeometry.
+
+   "You" means any individual or entity accessing the Software.
+
+   "Commercial Use" means any use intended for or directed toward commercial
+   advantage or monetary compensation, including operating a competing
+   product or service.
+
+2. Permitted use
+
+   You may:
+
+   (a) View and read the Software for personal learning, research, security
+       review, or transparency;
+
+   (b) Use the official hosted service at https://vehinhkhongkho.com as an
+       end user, subject to that service's terms;
+
+   (c) Report issues or suggest improvements without copying or
+       redistributing the Software.
+
+3. Restrictions
+
+   Unless We give you prior written permission, You must NOT:
+
+   (a) Fork, mirror, clone for redistribution, publish, or otherwise
+       redistribute the Software or any substantial portion of it;
+
+   (b) Create derivative works based on the Software;
+
+   (c) Use the Software for Commercial Use, including selling, sublicensing,
+       hosting a competing service, or incorporating it into a commercial
+       product;
+
+   (d) Remove or alter copyright, license, or attribution notices;
+
+   (e) Use the Software in any way that infringes applicable law or third-
+       party rights.
+
+4. Reservation of rights
+
+   We retain all rights not expressly granted. Exclusive commercial
+   exploitation of the Software and the vehinhkhongkho.com service remains
+   with the Licensor.
+
+5. Third-party components
+
+   The Software may include third-party libraries under their own licenses.
+   Those components remain governed by their respective licenses.
+
+6. No warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+7. Limitation of liability
+
+   TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSOR SHALL NOT BE LIABLE
+   FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM USE OF THE
+   SOFTWARE.
+
+8. Termination
+
+   Your permission to view the Software ends automatically if You violate
+   this license. Sections 4–7 survive termination.
+
+9. Contact
+
+   For licensing inquiries or written permission requests:
+   https://vehinhkhongkho.com
