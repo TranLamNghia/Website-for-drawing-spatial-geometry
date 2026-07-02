@@ -483,6 +483,49 @@ def _fact_targets_plane_p(fact: dict) -> bool:
     return False
 
 
+def _strip_part_bc_entities(data: dict) -> int:
+    """Gỡ plane P và query thiết diện câu b/c khỏi entities mặc định."""
+    removed = 0
+    entities = data.get("entities")
+    if isinstance(entities, dict):
+        planes = entities.get("planes")
+        if isinstance(planes, list):
+            kept = [
+                p for p in planes
+                if str(p).strip().upper().strip("()") != "P"
+            ]
+            if len(kept) != len(planes):
+                entities["planes"] = kept
+                removed += len(planes) - len(kept)
+
+        sections = entities.get("sections")
+        if isinstance(sections, list):
+            kept_sections = [
+                s for s in sections
+                if not (isinstance(s, dict) and str(s.get("cuttingPlane", "")).upper().strip("()") == "P")
+            ]
+            if len(kept_sections) != len(sections):
+                entities["sections"] = kept_sections
+                removed += len(sections) - len(kept_sections)
+
+    queries = data.get("queries")
+    if isinstance(queries, list):
+        kept_queries = []
+        for q in queries:
+            if not isinstance(q, dict):
+                kept_queries.append(q)
+                continue
+            target = str(q.get("target", q.get("object", ""))).upper()
+            if "CROSS_SECTION" in target and ("_P" in target or target.endswith("_P")):
+                removed += 1
+                continue
+            kept_queries.append(q)
+        if len(kept_queries) != len(queries):
+            data["queries"] = kept_queries
+
+    return removed
+
+
 def strip_subpart_conditional_facts(data: dict, problem_text: str) -> dict:
     """Loại facts chỉ thuộc câu b/c khỏi bộ dựng hình mặc định."""
     if not isinstance(data, dict) or not _has_multipart_markers(problem_text):
@@ -490,7 +533,7 @@ def strip_subpart_conditional_facts(data: dict, problem_text: str) -> dict:
 
     facts = data.get("facts")
     if not isinstance(facts, list):
-        return data
+        facts = []
 
     part_b_hint = re.compile(
         r"(?i)(trung\s*điểm|trung\s*diem|mặt\s*phẳng\s*\(?P\)?|mat\s*phang\s*\(?P\)?|"
@@ -514,14 +557,9 @@ def strip_subpart_conditional_facts(data: dict, problem_text: str) -> dict:
         data["facts"] = kept
         print(f"[EXTRACT] Stripped {removed} sub-part (b/c) facts from default compile set.")
 
-        entities = data.get("entities")
-        if isinstance(entities, dict):
-            planes = entities.get("planes")
-            if isinstance(planes, list):
-                entities["planes"] = [
-                    p for p in planes
-                    if str(p).strip().upper().strip("()") != "P"
-                ]
+    entity_removed = _strip_part_bc_entities(data)
+    if entity_removed:
+        print(f"[EXTRACT] Stripped {entity_removed} sub-part (b/c) entity artifacts (plane P / cross-section).")
 
     return data
 

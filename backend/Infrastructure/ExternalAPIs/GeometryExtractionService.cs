@@ -99,23 +99,23 @@ public class GeometryExtractionService : IGeometryExtractionService
                 // If result contains "sections", it's likely a MathSolverResponseDto
                 if (dataElement.TryGetProperty("sections", out _) || dataElement.TryGetProperty("points", out _))
                 {
-                     return JsonSerializer.Deserialize<MathSolverResponseDto>(dataElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                     return ParseSolverResponse(dataElement);
                 }
 
                 // Fallback for legacy format (just a dictionary of points)
-                var pointsOnly = JsonSerializer.Deserialize<Dictionary<string, Point3D>>(dataElement.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                return new MathSolverResponseDto { Points = pointsOnly };
+                return new MathSolverResponseDto { Points = ParseSolverPoints(dataElement) };
             }
             
             // Final fallback check for root level format
             if (responseBodyString.Contains("\"sections\"") || responseBodyString.Contains("\"points\""))
             {
-                 return JsonSerializer.Deserialize<MathSolverResponseDto>(responseBodyString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                 using var rootDoc = JsonDocument.Parse(responseBodyString);
+                 return ParseSolverResponse(rootDoc.RootElement);
             }
 
             try {
-                var pointsOnly = JsonSerializer.Deserialize<Dictionary<string, Point3D>>(responseBodyString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                return new MathSolverResponseDto { Points = pointsOnly };
+                using var rootDoc = JsonDocument.Parse(responseBodyString);
+                return new MathSolverResponseDto { Points = ParseSolverPoints(rootDoc.RootElement) };
             } catch {
                 return null;
             }
@@ -125,6 +125,71 @@ public class GeometryExtractionService : IGeometryExtractionService
             Console.WriteLine($"[AI_FALLBACK] Error calling solve-math: {ex.Message}");
             throw;
         }
+    }
+
+    private static MathSolverResponseDto ParseSolverResponse(JsonElement dataElement)
+    {
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        List<SectionDataDto>? sections = null;
+
+        if (dataElement.TryGetProperty("sections", out var sectionsElement)
+            && sectionsElement.ValueKind == JsonValueKind.Array)
+        {
+            sections = sectionsElement.Deserialize<List<SectionDataDto>>(options);
+        }
+
+        return new MathSolverResponseDto
+        {
+            Points = ParseSolverPoints(dataElement),
+            Sections = sections
+        };
+    }
+
+    /// <summary>
+    /// SymPy đôi khi trả thêm khóa phụ (vd _perimeter_P) trong points — lọc trước khi deserialize Point3D.
+    /// </summary>
+    private static Dictionary<string, Point3D>? ParseSolverPoints(JsonElement dataElement)
+    {
+        if (!dataElement.TryGetProperty("points", out var pointsElement)
+            || pointsElement.ValueKind != JsonValueKind.Object)
+        {
+            if (dataElement.ValueKind == JsonValueKind.Object)
+            {
+                pointsElement = dataElement;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var filtered = new Dictionary<string, Point3D>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var prop in pointsElement.EnumerateObject())
+        {
+            if (prop.Name.StartsWith("_", StringComparison.Ordinal))
+                continue;
+
+            if (prop.Value.ValueKind != JsonValueKind.Object)
+                continue;
+
+            if (!prop.Value.TryGetProperty("x", out _) && !prop.Value.TryGetProperty("X", out _))
+                continue;
+
+            try
+            {
+                var point = prop.Value.Deserialize<Point3D>(options);
+                if (point != null)
+                    filtered[prop.Name] = point;
+            }
+            catch
+            {
+                // Bỏ qua khóa không phải Point3D
+            }
+        }
+
+        return filtered.Count > 0 ? filtered : null;
     }
 
     private static string ExtractAiErrorMessage(string responseString, string fallbackMessage)
