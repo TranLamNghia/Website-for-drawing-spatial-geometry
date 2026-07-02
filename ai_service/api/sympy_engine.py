@@ -14,6 +14,17 @@ from api.llm_config import (
 BASE_DIR = Path(__file__).parent.parent
 PROMPT_FILE = BASE_DIR / "prompts" / "sympy_prompt.txt"
 
+_SANDBOX_RUNTIME_HEADER = """\
+import json
+import math
+import sympy as sp
+from math import sqrt
+"""
+
+_BARE_SQRT_PATTERN = re.compile(r"(?<![.\w])sqrt\s*\(")
+_NORMALIZE_CALL_PATTERN = re.compile(r"\.normalize\s*\(")
+
+
 class SympyAIEngine:
     def __init__(self):
         self.sandbox_url = os.getenv("SANDBOX_URL", "http://localhost:8002/execute")
@@ -33,21 +44,107 @@ class SympyAIEngine:
 
         return clean_code
 
+    def _has_bare_sqrt(self, code: str) -> bool:
+        for match in _BARE_SQRT_PATTERN.finditer(code):
+            start = match.start()
+            prefix = code[max(0, start - 8):start]
+            if prefix.endswith("sp.") or prefix.endswith("math."):
+                continue
+            return True
+        return False
+
     def _validate_python_script(self, code: str) -> str | None:
         if not code:
-            return "Generated response is empty."
+            return "PREFLIGHT_EMPTY: Generated response is empty."
 
-        required_markers = ("import sympy", "def solve_from_scratch", "json.dumps")
-        missing = [marker for marker in required_markers if marker not in code]
-        if missing:
-            return f"Generated response is not a complete SymPy script. Missing: {', '.join(missing)}"
+        structural = {
+            "import sympy": "PREFLIGHT_MISSING_SYMPY",
+            "import json": "PREFLIGHT_MISSING_JSON_IMPORT",
+            "def solve_from_scratch": "PREFLIGHT_MISSING_SOLVE_FN",
+            "print(json.dumps": "PREFLIGHT_MISSING_JSON_OUTPUT",
+        }
+        missing_codes = [code_id for marker, code_id in structural.items() if marker not in code]
+        if missing_codes:
+            return (
+                f"{missing_codes[0]}: Generated response is not a complete SymPy script. "
+                f"Missing: {', '.join(missing_codes)}"
+            )
+
+        if self._has_bare_sqrt(code):
+            return (
+                "PREFLIGHT_BARE_SQRT: Never use bare sqrt(). "
+                "Use sp.sqrt(...) or math.sqrt(...)."
+            )
+
+        if _NORMALIZE_CALL_PATTERN.search(code):
+            return (
+                "PREFLIGHT_BAD_NORMALIZE: Matrix vectors use .normalized(), NOT .normalize()."
+            )
 
         try:
             compile(code, "<generated_sympy_script>", "exec")
         except SyntaxError as exc:
-            return f"Generated Python has syntax error at line {exc.lineno}: {exc.msg}"
+            return f"PREFLIGHT_SYNTAX: Generated Python has syntax error at line {exc.lineno}: {exc.msg}"
 
         return None
+
+    def _prepare_sandbox_code(self, code: str) -> str:
+        return _SANDBOX_RUNTIME_HEADER + "\n" + code.lstrip()
+
+    def _build_retry_message(self, stage: str, error_detail: str) -> str:
+        detail = error_detail or ""
+
+        if stage == "preflight":
+            if "PREFLIGHT_MISSING_JSON_IMPORT" in detail or "PREFLIGHT_MISSING_JSON_OUTPUT" in detail:
+                return (
+                    f"Your previous response was rejected before execution: {detail}\n"
+                    "Script MUST include `import json` and end solve_from_scratch with "
+                    "`print(json.dumps({...}))`. No other output format.\n"
+                    "Rewrite the ENTIRE answer as raw Python code only."
+                )
+            if "PREFLIGHT_BARE_SQRT" in detail:
+                return (
+                    f"Your previous response was rejected before execution: {detail}\n"
+                    "Never use bare sqrt(). Use sp.sqrt(...) or math.sqrt(...) only.\n"
+                    "Rewrite the ENTIRE answer as raw Python code only."
+                )
+            if "PREFLIGHT_BAD_NORMALIZE" in detail:
+                return (
+                    f"Your previous response was rejected before execution: {detail}\n"
+                    "Matrix vectors use .normalized(), NOT .normalize().\n"
+                    "Rewrite the ENTIRE answer as raw Python code only."
+                )
+            if "PREFLIGHT_SYNTAX" in detail:
+                return (
+                    f"Your previous response was rejected before execution: {detail}\n"
+                    "Fix the syntax error and rewrite the ENTIRE script as raw Python only."
+                )
+            return (
+                f"Your previous response was rejected before execution: {detail}\n"
+                "Rewrite the ENTIRE answer as raw Python code only. "
+                "Do not include analysis, markdown, comments outside Python syntax, or explanatory text."
+            )
+
+        advice = ""
+        if "name 'sqrt' is not defined" in detail.lower():
+            advice = "\nFIX: import math or use sp.sqrt(...). Never call bare sqrt()."
+        elif "normalize" in detail.lower() and "attributeerror" in detail.lower():
+            advice = "\nFIX: SymPy Matrix uses .normalized(), NOT .normalize()."
+        elif "Could not find root" in detail:
+            advice = (
+                "\nPRO TIP: This usually means your system is OVER-CONSTRAINED "
+                "(Equations > Variables). Ensure you have EXACTLY as many variables as equations."
+            )
+        elif "positive-definite" in detail:
+            advice = (
+                "\nPRO TIP: This usually means your system is INCONSISTENT or equations are "
+                "redundant/singular. Try to simplify the geometric constraints."
+            )
+
+        return (
+            f"The Python script failed with this exception Traceback:\n{detail}{advice}\n\n"
+            "Please fix the bug and rewrite the ENTIRE script. Output ONLY Python code without markdown."
+        )
 
     def generate_and_solve(self, problem_text: str, facts_json: dict, current_points: dict, validation_failures: list, base_a_value: float, fail_fast: bool = False) -> dict:
         from datetime import datetime
@@ -110,15 +207,12 @@ class SympyAIEngine:
                     messages.append({"role": "assistant", "content": raw_code})
                     messages.append({
                         "role": "user",
-                        "content": (
-                            f"Your previous response was rejected before execution: {validation_error}\n"
-                            "Rewrite the ENTIRE answer as raw Python code only. "
-                            "Do not include analysis, markdown, comments outside Python syntax, or explanatory text."
-                        )
+                        "content": self._build_retry_message("preflight", validation_error),
                     })
                     continue
                 return {"status": "error", "message": "Generated script is invalid.", "details": validation_error}
 
+            sandbox_code = self._prepare_sandbox_code(clean_code)
             print(f"[SYMPY_ENGINE] Sending script to Math Sandbox (:8002)...")
             try:
                 headers = {}
@@ -126,7 +220,7 @@ class SympyAIEngine:
                     headers["x-api-key"] = os.getenv("INTERNAL_API_KEY")
                 sandbox_resp = requests.post(
                     self.sandbox_url,
-                    json={"code": clean_code},
+                    json={"code": sandbox_code},
                     headers=headers,
                     timeout=20
                 )
@@ -144,7 +238,8 @@ class SympyAIEngine:
                 
                 with open(debug_log_path, "w", encoding="utf-8") as f:
                     f.write(f"PROBLEM:\n{problem_text}\n\n")
-                    f.write(f"CODE:\n{clean_code}\n\n")
+                    f.write(f"CLEAN CODE:\n{clean_code}\n\n")
+                    f.write(f"SANDBOX CODE:\n{sandbox_code}\n\n")
                     if is_failed:
                         f.write(f"ERROR RESULT:\n{json.dumps(data, indent=2)}")
                     else:
@@ -159,16 +254,10 @@ class SympyAIEngine:
                 print(f"[SYMPY_ENGINE] 🔴 SANDBOX ERROR (Attempt {attempt}):\n{error_detail}")
                 
                 if attempt < MAX_RETRIES:
-                    advice = ""
-                    if "Could not find root" in error_detail:
-                        advice = "\nPRO TIP: This usually means your system is OVER-CONSTRAINED (Equations > Variables). Ensure you have EXACTLY as many variables as equations."
-                    if "positive-definite" in error_detail:
-                        advice = "\nPRO TIP: This usually means your system is INCONSISTENT or equations are redundant/singular. Try to simplify the geometric constraints."
-                    
                     messages.append({"role": "assistant", "content": raw_code})
                     messages.append({
-                        "role": "user", 
-                        "content": f"The Python script failed with this exception Traceback:\n{error_detail}\n{advice}\n\nPlease fix the bug and rewrite the ENTIRE script. Output ONLY Python code without markdown."
+                        "role": "user",
+                        "content": self._build_retry_message("sandbox", str(error_detail)),
                     })
                 else:
                     print(f"[SYMPY_ENGINE] 💣 FAILED! Tried {MAX_RETRIES} times but still failed. Return error to BE.")

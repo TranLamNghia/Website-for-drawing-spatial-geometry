@@ -19,9 +19,19 @@ public class CircumcenterHandler : IFactHandler
         string oPoint = data.Point;
         string triangle = data.Shape;
 
+        var shapeName = triangle.Replace("(", "").Replace(")", "");
+        var vertexNames = System.Text.RegularExpressions.Regex.Matches(shapeName, @"[A-Z][0-9]*'*")
+            .Cast<System.Text.RegularExpressions.Match>()
+            .Select(m => m.Value)
+            .ToList();
+
         var points = context.GetPointsFromPlane(triangle);
         if (points.Count >= 3)
         {
+            // Khối 3D (vd ABCD): đợi đủ đỉnh rồi mới dựng tâm mặt cầu ngoại tiếp.
+            if (vertexNames.Count >= 4 && points.Count < vertexNames.Count)
+                return;
+
             var center = Point3D.GetCircumcenter(points.ToArray());
             if (center == null) return;
 
@@ -33,11 +43,15 @@ public class CircumcenterHandler : IFactHandler
                 // Nếu đã có điểm tại vị trí này (VD: G), dùng luôn tên đó thay vì tạo O
                 Console.WriteLine($"[HANDLER] Tâm ngoại tiếp {oPoint} trùng với điểm {existingPoint} đã có. Tái sử dụng...");
                 context.ReplacePointReference(oPoint, existingPoint); // Đăng ký Alias để cleanup
-                oPoint = existingPoint; 
+                oPoint = existingPoint;
             }
-            else if (!context.Points.ContainsKey(oPoint))
+            else if (context.Points.ContainsKey(oPoint))
             {
-                // Nếu chưa có và tên oPoint mới, mới tạo
+                // Cập nhật tọa độ nếu pass trước dựng tạm (vd chỉ có 3 đỉnh đáy)
+                context.Points[oPoint] = center;
+            }
+            else
+            {
                 context.Points[oPoint] = center;
             }
 

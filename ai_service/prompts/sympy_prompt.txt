@@ -67,11 +67,17 @@ Your goal is to calculate ALL coordinates (A, B, C, D, S, etc.) from scratch.
 - Output: The final JSON MUST include a `"sections": [...]` array.
   + Section schema: `{"id": "SEC_1", "cuttingPlane": ["D","M","N"], "polygon": ["D","M","_P1","N"], "generatedPoints": {"_P1": {"x":...,"y":...,"z":...}}}`.
   + Use IDs starting with underscore (e.g. `_P1`) for implicit intersection points.
+--- MANDATORY RUNTIME RULES ---
+- Every script MUST start with: `import json`, `import math`, `import sympy as sp`
+- Inside `solve_from_scratch`, success path MUST end with `print(json.dumps({...}))` — never return a dict, never print prose
+- NEVER use bare `sqrt(...)` — only `sp.sqrt(...)` or `math.sqrt(...)`
+- NEVER call `.normalize()` on SymPy Matrix objects — use `.normalized()` instead
+- On failure inside solve_from_scratch, use `print(json.dumps({"STATUS": "ERROR", "ERROR_MESSAGE": str(e)}))`
 --- REQUIRED CODE STRUCTURE ---
 ```
 import sympy as sp
 import json
-import sys
+import math
 
 def solve_from_scratch():
     # 1. PARAMETERS
@@ -149,4 +155,6 @@ if __name__ == "__main__":
 --- FINAL WARNING ---
 - DO NOT print markdown blocks in your final output.
 - ONLY output the raw Python code.
+- MUST include import json, import math, import sympy as sp, and print(json.dumps(...)) on success.
+- NEVER use bare sqrt() or Matrix.normalize() — use sp.sqrt/math.sqrt and .normalized() only.
 - For plain right triangles (not isosceles right), use unequal legs (ratio ~1:1.35).
