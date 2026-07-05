@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { auth } from '@/auth'
+import { sendFeedbackConfirmation } from '@/lib/gmail'
+import { checkFeedbackRateLimit } from '@/lib/feedback-rate-limit'
 
 function loadRootEnv() {
   const envPath = path.resolve(process.cwd(), '..', '.env')
@@ -35,6 +38,24 @@ const CLOUDINARY_FOLDER = 'SpatialGeometry/feedback'
 
 export async function POST(request: Request) {
   try {
+    const session = await auth()
+    const email = session?.user?.email?.trim()
+    const googleId = session?.user?.googleId?.trim()
+    const userName = session?.user?.name?.trim()
+
+    if (!email) {
+      return NextResponse.json({ message: 'Bạn cần đăng nhập để gửi góp ý.' }, { status: 401 })
+    }
+
+    const rateKey = googleId || email
+    const rate = checkFeedbackRateLimit(rateKey)
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { message: `Bạn gửi góp ý quá nhanh. Vui lòng thử lại sau ${rate.retryAfterSec} giây.` },
+        { status: 429 },
+      )
+    }
+
     if (!AIRTABLE_TOKEN) {
       return NextResponse.json({ message: 'Cấu hình cơ sở dữ liệu không hợp lệ (1).' }, { status: 500 })
     }
@@ -48,7 +69,6 @@ export async function POST(request: Request) {
     }
 
     const formData = await request.formData()
-    const email = String(formData.get('email') || '').trim()
     const content = String(formData.get('content') || '').trim()
     const typeLabel = String(formData.get('type') || '').trim()
     const rating = Number(formData.get('rating') || 0)
@@ -58,15 +78,15 @@ export async function POST(request: Request) {
       .filter(file => file.size > 0)
 
     const ReportType: Record<string, string> = {
-      "Báo lỗi hệ thống": "SystemBug",
-      "Đề xuất tính năng mới": "NewFeatureRequest",
-      "Góp ý giao diện/trải nghiệm": "UIUXSuggestion",
-      "Ý kiến khác": "Other"
+      'Báo lỗi hệ thống': 'SystemBug',
+      'Đề xuất tính năng mới': 'NewFeatureRequest',
+      'Góp ý giao diện/trải nghiệm': 'UIUXSuggestion',
+      'Ý kiến khác': 'Other',
     }
 
     const type = ReportType[typeLabel]
 
-    if (!email || !content || !type || !Number.isFinite(rating) || rating <= 0) {
+    if (!content || !type || !Number.isFinite(rating) || rating <= 0) {
       return NextResponse.json({ message: 'Dữ liệu góp ý không hợp lệ.' }, { status: 400 })
     }
 
@@ -76,16 +96,16 @@ export async function POST(request: Request) {
         const timestamp = Math.floor(Date.now() / 1000).toString()
         const signaturePayload = `folder=${CLOUDINARY_FOLDER}&timestamp=${timestamp}${CLOUDINARY_SECRET_KEY}`
         const signature = crypto.createHash('sha1').update(signaturePayload).digest('hex')
-        const formData = new FormData()
-        formData.append('file', new Blob([bytes], { type: file.type || 'image/png' }), file.name)
-        formData.append('api_key', CLOUDINARY_API_KEY)
-        formData.append('timestamp', timestamp)
-        formData.append('folder', CLOUDINARY_FOLDER)
-        formData.append('signature', signature)
+        const uploadForm = new FormData()
+        uploadForm.append('file', new Blob([bytes], { type: file.type || 'image/png' }), file.name)
+        uploadForm.append('api_key', CLOUDINARY_API_KEY)
+        uploadForm.append('timestamp', timestamp)
+        uploadForm.append('folder', CLOUDINARY_FOLDER)
+        uploadForm.append('signature', signature)
 
         const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_NAME}/image/upload`, {
           method: 'POST',
-          body: formData,
+          body: uploadForm,
         })
 
         const uploadResult = await uploadResponse.json().catch(() => null)
@@ -133,7 +153,26 @@ export async function POST(request: Request) {
       )
     }
 
-    return NextResponse.json({ ok: true, data: responseText ? JSON.parse(responseText) : null })
+    const airtableData = responseText ? JSON.parse(responseText) : null
+    const ticketId =
+      airtableData?.records?.[0]?.id && typeof airtableData.records[0].id === 'string'
+        ? airtableData.records[0].id
+        : null
+
+    const emailSent = await sendFeedbackConfirmation({
+      to: email,
+      userName,
+      typeLabel,
+      rating,
+      contentPreview: content,
+      ticketId,
+    })
+
+    return NextResponse.json({
+      ok: true,
+      emailSent,
+      data: airtableData,
+    })
   } catch (error: any) {
     return NextResponse.json(
       { message: 'Không thể gửi góp ý lúc này.', detail: error?.message || String(error) },

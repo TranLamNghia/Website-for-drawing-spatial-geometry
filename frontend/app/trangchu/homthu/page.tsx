@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Star, Send, CheckCircle2, X, UploadCloud, AlertCircle } from 'lucide-react'
@@ -22,13 +22,16 @@ const FEEDBACK_TYPES = [
 ]
 
 export default function FeedbackPage() {
-  const [email, setEmail] = useState('')
+  const { data: session } = useSession()
+  const email = session?.user?.email ?? ''
+
   const [type, setType] = useState('')
   const [rating, setRating] = useState<number>(0)
   const [hoverRating, setHoverRating] = useState<number | null>(null)
   const [content, setContent] = useState('')
   const [images, setImages] = useState<FeedbackImage[]>([])
   const [submitted, setSubmitted] = useState(false)
+  const [emailSent, setEmailSent] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -67,14 +70,13 @@ export default function FeedbackPage() {
     setErrorMessage('')
 
     if (!email || !type || !content || rating === 0) {
-      setErrorMessage('Vui lòng điền đầy đủ email, loại góp ý, số sao và nội dung.')
+      setErrorMessage('Vui lòng điền đầy đủ loại góp ý, số sao và nội dung.')
       return
     }
 
     setIsSubmitting(true)
     try {
       const formData = new FormData()
-      formData.set('email', email)
       formData.set('rating', String(rating))
       formData.set('type', type)
       formData.set('content', content)
@@ -95,6 +97,7 @@ export default function FeedbackPage() {
         throw new Error(result.message || 'Không thể gửi góp ý.')
       }
 
+      setEmailSent(Boolean(result.emailSent))
       setSubmitted(true)
     } catch (error: any) {
       setErrorMessage(error?.message || 'Không thể gửi góp ý.')
@@ -114,13 +117,13 @@ export default function FeedbackPage() {
   }
 
   const handleReset = () => {
-    setEmail('')
     setType('')
     setRating(0)
     setHoverRating(null)
     setContent('')
     setImages([])
     setSubmitted(false)
+    setEmailSent(false)
     setErrorMessage('')
   }
 
@@ -142,6 +145,15 @@ export default function FeedbackPage() {
               <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
                 Phản hồi của bạn đã được ghi nhận. Cảm ơn bạn đã dành thời gian đóng góp.
               </p>
+              {emailSent && email ? (
+                <p className="text-sm text-emerald-700 dark:text-emerald-400 max-w-md leading-relaxed">
+                  Chúng tôi đã gửi email xác nhận tới <strong>{email}</strong>.
+                </p>
+              ) : email ? (
+                <p className="text-sm text-amber-700 dark:text-amber-400 max-w-md leading-relaxed">
+                  Góp ý đã được lưu. Email xác nhận tới <strong>{email}</strong> có thể chưa gửi được lúc này.
+                </p>
+              ) : null}
               <Button onClick={handleReset} variant="outline" className="mt-4 rounded-xl border border-border/80 bg-background hover:bg-muted">
                 Gửi thêm góp ý khác
               </Button>
@@ -156,15 +168,10 @@ export default function FeedbackPage() {
               <CardContent className="mt-1">
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold text-foreground">Địa chỉ email của bạn</label>
-                    <Input
-                      type="email"
-                      required
-                      placeholder="example@gmail.com"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      className="rounded-xl border-border/80 focus-visible:ring-primary/45"
-                    />
+                    <label className="text-xs font-semibold text-foreground">Email đã xác minh</label>
+                    <div className="rounded-xl border border-border/80 bg-muted/30 px-3 py-2.5 text-sm text-foreground">
+                      {email || 'Đang tải thông tin đăng nhập...'}
+                    </div>
                   </div>
 
                   <div className="space-y-2">

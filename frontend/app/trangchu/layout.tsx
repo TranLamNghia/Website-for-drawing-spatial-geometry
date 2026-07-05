@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useMemo } from 'react'
+import { useSession } from 'next-auth/react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +30,7 @@ import {
   BookOpen,
   ChevronRight,
   Menu,
+  LogIn,
 } from 'lucide-react'
 
 type NavId = 'drawings' | 'docs' | 'feedback' | 'settings' | 'profile' | 'upgrade'
@@ -105,12 +107,67 @@ function BrandHeader() {
   )
 }
 
+function UserAccountBlock({ onLogin }: { onLogin: () => void }) {
+  const { data: session, status } = useSession()
+  const user = session?.user
+
+  if (status === 'loading') {
+    return (
+      <div className="mx-3 mb-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-2.5">
+        <p className="text-xs text-muted-foreground">Đang tải tài khoản...</p>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <button
+        type="button"
+        onClick={onLogin}
+        className="mx-3 mb-3 flex w-[calc(100%-1.5rem)] items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+      >
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <LogIn size={16} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[13px] font-semibold text-foreground">Đăng nhập</p>
+          <p className="truncate text-[11px] text-muted-foreground">Google để dùng AI & góp ý</p>
+        </div>
+      </button>
+    )
+  }
+
+  return (
+    <div className="mx-3 mb-3 flex items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-2.5">
+      {user.image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={user.image}
+          alt={user.name || user.email || 'Avatar'}
+          className="size-9 shrink-0 rounded-full object-cover ring-1 ring-border"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+          <User size={16} />
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-semibold text-foreground">{user.name || 'Người dùng'}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>
+      </div>
+    </div>
+  )
+}
+
 function SidebarNav({
   activeNav,
   onNavigate,
+  onLogin,
 }: {
   activeNav: NavId
   onNavigate: (id: NavId) => void
+  onLogin: () => void
 }) {
   return (
     <>
@@ -131,6 +188,8 @@ function SidebarNav({
       <div className="flex-1" />
 
       <div className="mx-4 my-3 border-t border-border/60" />
+
+      <UserAccountBlock onLogin={onLogin} />
 
       <div className="px-3 flex flex-col gap-0.5">
         {NAV_BOTTOM.map(item => (
@@ -155,6 +214,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
+  const handleLogin = () => {
+    router.push('/dang-nhap?callbackUrl=/trangchu')
+    setMobileNavOpen(false)
+  }
+
   const handleNav = (id: NavId) => {
     if (id === 'drawings') router.push('/trangchu')
     else if (id === 'docs') router.push('/trangchu/huongdan')
@@ -169,7 +233,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="h-svh min-h-dvh bg-background text-foreground flex overflow-hidden">
       <aside className="hidden md:flex w-[240px] flex-shrink-0 bg-card border-r border-border flex-col py-5 z-10">
-        <SidebarNav activeNav={activeNav} onNavigate={handleNav} />
+        <SidebarNav activeNav={activeNav} onNavigate={handleNav} onLogin={handleLogin} />
       </aside>
 
       <div className="flex-1 overflow-hidden min-w-0 flex flex-col">
@@ -196,7 +260,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <SheetDescription>Chọn trang trong khu vực trang chủ.</SheetDescription>
               </SheetHeader>
               <div className="flex h-full flex-col py-5">
-                <SidebarNav activeNav={activeNav} onNavigate={handleNav} />
+                <SidebarNav activeNav={activeNav} onNavigate={handleNav} onLogin={handleLogin} />
               </div>
             </SheetContent>
           </Sheet>

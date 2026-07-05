@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions;
 using MongoDB.Driver;
 using Domains.Entities;
 

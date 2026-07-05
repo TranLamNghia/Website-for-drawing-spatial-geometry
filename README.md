@@ -45,12 +45,25 @@ Create a `.env` file at the repository root (see `docker-compose.yml`):
 | `VERTEX_LOCATION` | ai_service | GCP region |
 | `PROD_MONGODB_CONNECTION_STRING` | backend | MongoDB connection string |
 | `NEXT_PUBLIC_API_URL` | frontend | Public backend URL (e.g. `http://localhost:5000`) |
+| `AUTH_SECRET` | frontend | Auth.js session secret (`openssl rand -base64 32`) |
+| `AUTH_URL` | frontend | Public frontend URL (e.g. `http://localhost:3000` or `https://vehinhkhongkho.com`) |
+| `GOOGLE_CLIENT_ID` | frontend | Google OAuth Web client ID (Sign-In) |
+| `GOOGLE_CLIENT_SECRET` | frontend | Google OAuth Web client secret |
+| `GMAIL_SENDER_EMAIL` | frontend | Gmail address used to send feedback confirmations |
+| `GMAIL_REFRESH_TOKEN` | frontend | OAuth refresh token with `gmail.send` scope |
 | `AIRTABLE_TOKEN_ID` | frontend | Feedback form (Airtable) |
 | `AIRTABLE_BASE_ID` | frontend | Airtable base |
 | `AIRTABLE_TABLE_NAME` | frontend | Airtable table |
 | `CLOUDINARY_NAME` | frontend | Image upload (feedback) |
 | `CLOUDINARY_API_KEY` | frontend | Cloudinary API key |
 | `CLOUDINARY_SECRET_KEY` | frontend | Cloudinary secret |
+
+Google Sign-In is required for **Smart draw** (`/chedovethongminh`) and **Feedback mailbox** (`/trangchu/homthu`). Other pages stay public. OAuth redirect URIs:
+
+- `http://localhost:3000/api/auth/callback/google`
+- `https://vehinhkhongkho.com/api/auth/callback/google`
+
+See `.env.example` for the full list.
 
 ## Quick Start (Docker)
 
@@ -113,12 +126,13 @@ uvicorn main:app --reload --port 8080
 | Path | Description |
 |------|-------------|
 | `/trangchu` | Dashboard — project list |
-| `/chedotuve` | Manual drawing mode |
-| `/chedovethongminh` | AI smart solver mode |
-| `/trangchu/homthu` | Feedback mailbox |
-| `/trangchu/caidat` | Settings (theme) |
+| `/chedotuve` | Manual drawing mode (public) |
+| `/chedovethongminh` | AI smart solver mode (**requires Google login**) |
+| `/trangchu/homthu` | Feedback mailbox (**requires Google login**) |
+| `/trangchu/caidat` | Settings (theme + logout) |
 | `/trangchu/huongdan` | User guide |
 | `/trangchu/thongtin` | About / profile |
+| `/dang-nhap` | Google Sign-In page |
 
 ## Backend API (high level)
 
@@ -126,6 +140,7 @@ uvicorn main:app --reload --port 8080
 |----------|-------------|
 | `POST /api/Geometry/process1` | Compile geometry JSON → 3D points |
 | `POST /api/Geometry/solve` | Full pipeline: text → extract → compile → optional SymPy retry |
+| `POST /api/Auth/sync-user` | Upsert Google user into MongoDB (`x-api-key`) |
 
 ## Source Tree
 
@@ -134,6 +149,7 @@ Excludes build artifacts (`node_modules`, `.next`, `venv`, `__pycache__`, `bin`,
 ```
 SpatialGeometry/
 ├── .env                          # Local secrets (gitignored)
+├── .env.example                  # Documented env vars (auth, Gmail, services)
 ├── .gitignore
 ├── docker-compose.yml
 ├── LICENSE
@@ -145,12 +161,16 @@ SpatialGeometry/
 │   └── tasks.json
 │
 ├── frontend/                       # Next.js web app
+│   ├── auth.ts                             # Auth.js (Google OAuth)
+│   ├── middleware.ts                       # Protect smart draw + feedback
 │   ├── app/
+│   │   ├── api/auth/[...nextauth]/route.ts
 │   │   ├── api/feedback/route.ts
+│   │   ├── dang-nhap/page.tsx              # Google Sign-In
 │   │   ├── chedotuve/page.tsx              # Manual drawing mode
 │   │   ├── chedovethongminh/page.tsx       # AI solver mode
 │   │   ├── trangchu/
-│   │   │   ├── caidat/page.tsx             # Settings
+│   │   │   ├── caidat/page.tsx             # Settings + logout
 │   │   │   ├── homthu/page.tsx             # Feedback
 │   │   │   ├── huongdan/page.tsx           # Guide
 │   │   │   ├── thongtin/page.tsx           # About

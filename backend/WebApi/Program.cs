@@ -1,5 +1,7 @@
 using Application.Interfaces;
+using Infrastructure.Data;
 using Infrastructure.ExternalAPIs;
+using Infrastructure.Repositories;
 using Application.Compilers;
 using Application.Compilers.FactHandlers;
 using Application.Compilers.FactValidators;
@@ -76,6 +78,8 @@ builder.Services.AddHttpClient<IGeometryExtractionService, GeometryExtractionSer
 {
     client.Timeout = TimeSpan.FromMinutes(6); // solve-math có thể cần vài vòng retry LLM + sandbox
 });
+builder.Services.AddSingleton<MongoDbContext>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IGeometryCompiler, GeometryCompiler>();
 
 builder.Services.AddScoped<IFactHandler, MidpointHandler>();

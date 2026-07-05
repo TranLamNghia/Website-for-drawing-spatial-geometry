@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
 
-const ROUTES = [
+const PUBLIC_ROUTES = [
   { path: '/trangchu', name: 'dashboard' },
-  { path: '/trangchu/homthu', name: 'feedback' },
   { path: '/trangchu/huongdan', name: 'guide' },
   { path: '/trangchu/thongtin', name: 'profile' },
+  { path: '/trangchu/caidat', name: 'settings' },
 ] as const
 
 const VIEWPORTS = [
@@ -18,7 +18,7 @@ for (const vp of VIEWPORTS) {
   test.describe(`${vp.name} (${vp.width}x${vp.height})`, () => {
     test.use({ viewport: { width: vp.width, height: vp.height } })
 
-    for (const route of ROUTES) {
+    for (const route of PUBLIC_ROUTES) {
       test(`${route.name} loads without horizontal overflow`, async ({ page }) => {
         await page.goto(route.path, { waitUntil: 'networkidle' })
 
@@ -35,3 +35,30 @@ for (const vp of VIEWPORTS) {
     }
   })
 }
+
+test.describe('auth redirects (guest)', () => {
+  test('feedback mailbox redirects to login', async ({ page }) => {
+    await page.goto('/trangchu/homthu', { waitUntil: 'networkidle' })
+    await expect(page).toHaveURL(/\/dang-nhap/)
+    expect(page.url()).toContain('callbackUrl=')
+    await expect(page.getByRole('button', { name: /Đăng nhập bằng Google/i })).toBeVisible()
+  })
+
+  test('smart draw redirects to login', async ({ page }) => {
+    await page.goto('/chedovethongminh', { waitUntil: 'networkidle' })
+    await expect(page).toHaveURL(/\/dang-nhap/)
+    expect(page.url()).toContain('callbackUrl=')
+    await expect(page.getByRole('button', { name: /Đăng nhập bằng Google/i })).toBeVisible()
+  })
+
+  test('login page loads without horizontal overflow', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 })
+    await page.goto('/dang-nhap', { waitUntil: 'networkidle' })
+    await expect(page.getByRole('button', { name: /Đăng nhập bằng Google/i })).toBeVisible()
+    const overflow = await page.evaluate(() => {
+      const el = document.documentElement
+      return el.scrollWidth - el.clientWidth
+    })
+    expect(overflow).toBeLessThanOrEqual(1)
+  })
+})

@@ -1,17 +1,24 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { DashboardView } from '@/components/geometry/dashboard-view'
 import type { SavedProject } from '@/components/geometry/dashboard-view'
 
 export default function DashboardPage() {
   const router = useRouter()
+  const { data: session, status } = useSession()
 
   const handleNewProject = () => {
     router.push('/chedotuve')
   }
 
   const handleNewAIProject = () => {
+    if (status === 'loading') return
+    if (!session?.user) {
+      router.push('/dang-nhap?callbackUrl=/chedovethongminh')
+      return
+    }
     router.push('/chedovethongminh')
   }
 
@@ -27,4 +34,3 @@ export default function DashboardPage() {
     />
   )
 }
-
