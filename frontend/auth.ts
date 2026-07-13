@@ -1,5 +1,9 @@
 import NextAuth from 'next-auth'
 import Google from 'next-auth/providers/google'
+import { loadRootEnv } from '@/lib/load-root-env.mjs'
+
+// Ensure repo-root `.env` is available when Next is started from `/frontend`.
+loadRootEnv()
 
 async function syncUserToBackend(payload: {
   googleId: string
@@ -7,7 +11,11 @@ async function syncUserToBackend(payload: {
   fullName?: string | null
   avatar?: string | null
 }) {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '')
+  loadRootEnv()
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ||
+    (process.env.NODE_ENV !== 'production' ? 'http://localhost:5000' : undefined)
   if (!baseUrl) {
     console.warn('[auth] NEXT_PUBLIC_API_URL is not set; skip user sync.')
     return
@@ -28,6 +36,7 @@ async function syncUserToBackend(payload: {
     if (!response.ok) {
       const detail = await response.text().catch(() => '')
       console.error(`[auth] User sync failed (${response.status}): ${detail}`)
+      return
     }
   } catch (error) {
     console.error('[auth] User sync error:', error)
