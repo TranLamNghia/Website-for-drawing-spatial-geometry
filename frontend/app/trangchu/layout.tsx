@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
+import { storeAuthCallbackUrl } from '@/lib/auth-callback'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -131,7 +132,6 @@ function UserAccountBlock({ onLogin }: { onLogin: () => void }) {
         </div>
         <div className="min-w-0">
           <p className="text-[13px] font-semibold text-foreground">Đăng nhập</p>
-          <p className="truncate text-[11px] text-muted-foreground">Google để dùng AI & góp ý</p>
         </div>
       </button>
     )
@@ -215,7 +215,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   const handleLogin = () => {
-    router.push('/dang-nhap?callbackUrl=/trangchu')
+    storeAuthCallbackUrl('/trangchu')
+    router.push('/dangnhap')
     setMobileNavOpen(false)
   }
 

@@ -45,12 +45,14 @@ Tạo file `.env` tại thư mục gốc repo (tham chiếu `docker-compose.yml`
 | `VERTEX_LOCATION` | ai_service | Vùng GCP |
 | `PROD_MONGODB_CONNECTION_STRING` | backend | Chuỗi kết nối MongoDB |
 | `NEXT_PUBLIC_API_URL` | frontend | URL backend public (vd. `http://localhost:5000`) |
+| `JWT_SECRET` | backend | Secret HMAC cho access token backend |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | backend | Issuer/audience JWT (mặc định `SpatialGeometry`) |
 | `AUTH_SECRET` | frontend | Secret session Auth.js (`openssl rand -base64 32`) |
 | `AUTH_URL` | frontend | URL frontend công khai (vd `http://localhost:3000` hoặc `https://vehinhkhongkho.com`) |
 | `GOOGLE_CLIENT_ID` | frontend | Google OAuth Web client ID (đăng nhập) |
 | `GOOGLE_CLIENT_SECRET` | frontend | Google OAuth Web client secret |
-| `GMAIL_SENDER_EMAIL` | frontend | Gmail gửi email xác nhận góp ý |
-| `GMAIL_REFRESH_TOKEN` | frontend | Refresh token OAuth scope `gmail.send` |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | backend + frontend | SMTP gửi OTP đăng ký và email góp ý |
+| `MAIL_FROM` / `MAIL_FROM_NAME` | backend + frontend | Địa chỉ From cho mail hệ thống |
 | `AIRTABLE_TOKEN_ID` | frontend | Form phản hồi (Airtable) |
 | `AIRTABLE_BASE_ID` | frontend | Airtable base |
 | `AIRTABLE_TABLE_NAME` | frontend | Bảng Airtable |
@@ -58,7 +60,7 @@ Tạo file `.env` tại thư mục gốc repo (tham chiếu `docker-compose.yml`
 | `CLOUDINARY_API_KEY` | frontend | Cloudinary API key |
 | `CLOUDINARY_SECRET_KEY` | frontend | Cloudinary secret |
 
-Đăng nhập Google bắt buộc cho **Vẽ thông minh** (`/chedovethongminh`) và **Hòm thư góp ý** (`/trangchu/homthu`). Các trang khác vẫn dùng được khi chưa đăng nhập. Redirect URI OAuth:
+Đăng nhập Google **hoặc email/mật khẩu (đã xác minh OTP)** bắt buộc cho **Vẽ thông minh** (`/chedovethongminh`) và **Hòm thư góp ý** (`/trangchu/homthu`). Các trang khác vẫn dùng được khi chưa đăng nhập. Redirect URI OAuth:
 
 - `http://localhost:3000/api/auth/callback/google`
 - `https://vehinhkhongkho.com/api/auth/callback/google`
@@ -132,7 +134,8 @@ uvicorn main:app --reload --port 8080
 | `/trangchu/caidat` | Cài đặt (giao diện + đăng xuất) |
 | `/trangchu/huongdan` | Hướng dẫn sử dụng |
 | `/trangchu/thongtin` | Thông tin / giới thiệu |
-| `/dang-nhap` | Trang đăng nhập Google |
+| `/dangnhap` | Trang đăng nhập (email/mật khẩu + Google) |
+| `/dang-ky` | Đăng ký email + xác minh OTP |
 
 ## API Backend (tóm tắt)
 
@@ -140,7 +143,11 @@ uvicorn main:app --reload --port 8080
 |----------|-------|
 | `POST /api/Geometry/process1` | Biên dịch JSON hình học → tọa độ 3D |
 | `POST /api/Geometry/solve` | Pipeline đầy đủ: text → trích xuất → biên dịch → SymPy retry (nếu cần) |
-| `POST /api/Auth/sync-user` | Upsert user Google vào MongoDB (`x-api-key`) |
+| `POST /api/Auth/register` | Bắt đầu đăng ký email; gửi OTP |
+| `POST /api/Auth/verify-otp` | Xác minh OTP; cấp JWT backend |
+| `POST /api/Auth/login` | Đăng nhập email/mật khẩu; cấp JWT |
+| `POST /api/Auth/google-exchange` | Upsert/link user Google + JWT (`x-api-key`) |
+| `POST /api/Auth/sync-user` | Alias cũ của google-exchange |
 
 ## Source Tree
 
@@ -166,7 +173,7 @@ SpatialGeometry/
 │   ├── app/
 │   │   ├── api/auth/[...nextauth]/route.ts
 │   │   ├── api/feedback/route.ts
-│   │   ├── dang-nhap/page.tsx              # Đăng nhập Google
+│   │   ├── dangnhap/page.tsx              # Đăng nhập Google
 │   │   ├── chedotuve/page.tsx              # Chế độ vẽ tay
 │   │   ├── chedovethongminh/page.tsx       # Chế độ giải thông minh
 │   │   ├── trangchu/

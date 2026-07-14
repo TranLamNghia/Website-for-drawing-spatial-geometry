@@ -32,3 +32,13 @@ export async function signOutCompletely(callbackUrl = '/trangchu') {
   clearAuthCookies()
   window.location.href = callbackUrl
 }
+
+/** Attach backend JWT for authenticated API calls. */
+export function withBackendAuth(
+  headers: HeadersInit | undefined,
+  accessToken: string | undefined,
+): HeadersInit {
+  const next = new Headers(headers)
+  if (accessToken) next.set('Authorization', `Bearer ${accessToken}`)
+  return next
+}

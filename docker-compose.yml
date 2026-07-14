@@ -46,6 +46,16 @@ services:
       - AiServiceSettings__BaseUrl=http://ai_service:8000/api/
       - AiServiceSettings__ApiKey=${INTERNAL_API_KEY}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ISSUER=${JWT_ISSUER:-SpatialGeometry}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:-SpatialGeometry}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_SECURE=${SMTP_SECURE}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - MAIL_FROM=${MAIL_FROM}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME}
 
   frontend:
     build:
@@ -63,8 +73,13 @@ services:
       - AUTH_URL=${AUTH_URL}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - GMAIL_SENDER_EMAIL=${GMAIL_SENDER_EMAIL}
-      - GMAIL_REFRESH_TOKEN=${GMAIL_REFRESH_TOKEN}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_SECURE=${SMTP_SECURE}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - MAIL_FROM=${MAIL_FROM}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME}
       - AIRTABLE_TOKEN_ID=${AIRTABLE_TOKEN_ID}
       - AIRTABLE_BASE_ID=${AIRTABLE_BASE_ID}
       - AIRTABLE_TABLE_NAME=${AIRTABLE_TABLE_NAME}

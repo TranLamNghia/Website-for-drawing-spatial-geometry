@@ -39,21 +39,19 @@ for (const vp of VIEWPORTS) {
 test.describe('auth redirects (guest)', () => {
   test('feedback mailbox redirects to login', async ({ page }) => {
     await page.goto('/trangchu/homthu', { waitUntil: 'networkidle' })
-    await expect(page).toHaveURL(/\/dang-nhap/)
-    expect(page.url()).toContain('callbackUrl=')
+    await expect(page).toHaveURL(/\/dangnhap$/)
     await expect(page.getByRole('button', { name: /Đăng nhập bằng Google/i })).toBeVisible()
   })
 
   test('smart draw redirects to login', async ({ page }) => {
     await page.goto('/chedovethongminh', { waitUntil: 'networkidle' })
-    await expect(page).toHaveURL(/\/dang-nhap/)
-    expect(page.url()).toContain('callbackUrl=')
+    await expect(page).toHaveURL(/\/dangnhap$/)
     await expect(page.getByRole('button', { name: /Đăng nhập bằng Google/i })).toBeVisible()
   })
 
   test('login page loads without horizontal overflow', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 })
-    await page.goto('/dang-nhap', { waitUntil: 'networkidle' })
+    await page.goto('/dangnhap', { waitUntil: 'networkidle' })
     await expect(page.getByRole('button', { name: /Đăng nhập bằng Google/i })).toBeVisible()
     const overflow = await page.evaluate(() => {
       const el = document.documentElement

@@ -45,12 +45,14 @@ Create a `.env` file at the repository root (see `docker-compose.yml`):
 | `VERTEX_LOCATION` | ai_service | GCP region |
 | `PROD_MONGODB_CONNECTION_STRING` | backend | MongoDB connection string |
 | `NEXT_PUBLIC_API_URL` | frontend | Public backend URL (e.g. `http://localhost:5000`) |
+| `JWT_SECRET` | backend | HMAC secret for backend access tokens |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | backend | JWT issuer/audience (default `SpatialGeometry`) |
 | `AUTH_SECRET` | frontend | Auth.js session secret (`openssl rand -base64 32`) |
 | `AUTH_URL` | frontend | Public frontend URL (e.g. `http://localhost:3000` or `https://vehinhkhongkho.com`) |
 | `GOOGLE_CLIENT_ID` | frontend | Google OAuth Web client ID (Sign-In) |
 | `GOOGLE_CLIENT_SECRET` | frontend | Google OAuth Web client secret |
-| `GMAIL_SENDER_EMAIL` | frontend | Gmail address used to send feedback confirmations |
-| `GMAIL_REFRESH_TOKEN` | frontend | OAuth refresh token with `gmail.send` scope |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | backend + frontend | SMTP for OTP registration and feedback email |
+| `MAIL_FROM` / `MAIL_FROM_NAME` | backend + frontend | From address for transactional mail |
 | `AIRTABLE_TOKEN_ID` | frontend | Feedback form (Airtable) |
 | `AIRTABLE_BASE_ID` | frontend | Airtable base |
 | `AIRTABLE_TABLE_NAME` | frontend | Airtable table |
@@ -58,7 +60,7 @@ Create a `.env` file at the repository root (see `docker-compose.yml`):
 | `CLOUDINARY_API_KEY` | frontend | Cloudinary API key |
 | `CLOUDINARY_SECRET_KEY` | frontend | Cloudinary secret |
 
-Google Sign-In is required for **Smart draw** (`/chedovethongminh`) and **Feedback mailbox** (`/trangchu/homthu`). Other pages stay public. OAuth redirect URIs:
+Google Sign-In **or email/password (OTP-verified)** is required for **Smart draw** (`/chedovethongminh`) and **Feedback mailbox** (`/trangchu/homthu`). Other pages stay public. OAuth redirect URIs:
 
 - `http://localhost:3000/api/auth/callback/google`
 - `https://vehinhkhongkho.com/api/auth/callback/google`
@@ -132,7 +134,8 @@ uvicorn main:app --reload --port 8080
 | `/trangchu/caidat` | Settings (theme + logout) |
 | `/trangchu/huongdan` | User guide |
 | `/trangchu/thongtin` | About / profile |
-| `/dang-nhap` | Google Sign-In page |
+| `/dangnhap` | Sign-In (email/password + Google) |
+| `/dang-ky` | Register with email + OTP verification |
 
 ## Backend API (high level)
 
@@ -140,7 +143,11 @@ uvicorn main:app --reload --port 8080
 |----------|-------------|
 | `POST /api/Geometry/process1` | Compile geometry JSON → 3D points |
 | `POST /api/Geometry/solve` | Full pipeline: text → extract → compile → optional SymPy retry |
-| `POST /api/Auth/sync-user` | Upsert Google user into MongoDB (`x-api-key`) |
+| `POST /api/Auth/register` | Start email registration; sends OTP |
+| `POST /api/Auth/verify-otp` | Verify OTP; issues backend JWT |
+| `POST /api/Auth/login` | Email/password login; issues backend JWT |
+| `POST /api/Auth/google-exchange` | Upsert/link Google user + JWT (`x-api-key`) |
+| `POST /api/Auth/sync-user` | Legacy alias of google-exchange |
 
 ## Source Tree
 
@@ -166,7 +173,7 @@ SpatialGeometry/
 │   ├── app/
 │   │   ├── api/auth/[...nextauth]/route.ts
 │   │   ├── api/feedback/route.ts
-│   │   ├── dang-nhap/page.tsx              # Google Sign-In
+│   │   ├── dangnhap/page.tsx              # Google Sign-In
 │   │   ├── chedotuve/page.tsx              # Manual drawing mode
 │   │   ├── chedovethongminh/page.tsx       # AI solver mode
 │   │   ├── trangchu/

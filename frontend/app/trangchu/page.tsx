@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { DashboardView } from '@/components/geometry/dashboard-view'
 import type { SavedProject } from '@/components/geometry/dashboard-view'
+import { storeAuthCallbackUrl } from '@/lib/auth-callback'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -16,7 +17,8 @@ export default function DashboardPage() {
   const handleNewAIProject = () => {
     if (status === 'loading') return
     if (!session?.user) {
-      router.push('/dang-nhap?callbackUrl=/chedovethongminh')
+      storeAuthCallbackUrl('/chedovethongminh')
+      router.push('/dangnhap')
       return
     }
     router.push('/chedovethongminh')

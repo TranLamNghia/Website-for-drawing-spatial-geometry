@@ -1,4 +1,6 @@
+using System.Text;
 using Application.Interfaces;
+using Infrastructure.Auth;
 using Infrastructure.Data;
 using Infrastructure.ExternalAPIs;
 using Infrastructure.Repositories;
@@ -7,6 +9,8 @@ using Application.Compilers.FactHandlers;
 using Application.Compilers.FactValidators;
 using Application.Compilers.QueryHandlers;
 using Application.Compilers.QueryValidators;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using WebApi.Diagnostics;
 
 if (string.Equals(Environment.GetEnvironmentVariable("RUN_BATCH2_SMOKETESTS"), "1", StringComparison.OrdinalIgnoreCase))
@@ -59,10 +63,52 @@ if (rootDir != null)
     builder.Configuration.AddEnvironmentVariables();
 }
 
+var mongoConnectionString = builder.Configuration["PROD_MONGODB_CONNECTION_STRING"];
+if (!string.IsNullOrWhiteSpace(mongoConnectionString))
+{
+    builder.Configuration["MongoDbSettings:ConnectionString"] = mongoConnectionString;
+}
+
+var mongoDatabaseName = builder.Configuration["PROD_MONGODB_DATABASE_NAME"];
+if (!string.IsNullOrWhiteSpace(mongoDatabaseName))
+{
+    builder.Configuration["MongoDbSettings:DatabaseName"] = mongoDatabaseName;
+}
+
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+var jwtSecret = builder.Configuration["JWT_SECRET"]
+    ?? Environment.GetEnvironmentVariable("JWT_SECRET")
+    ?? "dev-only-change-me-spatialgeometry-jwt-secret-key";
+var jwtIssuer = builder.Configuration["JWT_ISSUER"]
+    ?? Environment.GetEnvironmentVariable("JWT_ISSUER")
+    ?? "SpatialGeometry";
+var jwtAudience = builder.Configuration["JWT_AUDIENCE"]
+    ?? Environment.GetEnvironmentVariable("JWT_AUDIENCE")
+    ?? "SpatialGeometry";
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            ClockSkew = TimeSpan.FromMinutes(1),
+            NameClaimType = System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub,
+        };
+        options.MapInboundClaims = false;
+    });
+builder.Services.AddAuthorization();
 
 builder.Services.AddCors(options =>
 {
@@ -76,10 +122,13 @@ builder.Services.AddCors(options =>
 });
 builder.Services.AddHttpClient<IGeometryExtractionService, GeometryExtractionService>(client => 
 {
-    client.Timeout = TimeSpan.FromMinutes(6); // solve-math có thể cần vài vòng retry LLM + sandbox
+    client.Timeout = TimeSpan.FromMinutes(6); // solve-math may require several LLM + sandbox retry rounds
 });
 builder.Services.AddSingleton<MongoDbContext>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IEmailOtpRepository, EmailOtpRepository>();
+builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
+builder.Services.AddSingleton<IAuthEmailService, AuthEmailService>();
 builder.Services.AddScoped<IGeometryCompiler, GeometryCompiler>();
 
 builder.Services.AddScoped<IFactHandler, MidpointHandler>();
@@ -111,7 +160,7 @@ builder.Services.AddScoped<IFactHandler, CoplanarHandler>();
 builder.Services.AddScoped<IFactHandler, CollinearHandler>();
 builder.Services.AddScoped<IFactHandler, TangentHandler>();
 
-// Đăng ký FactValidators (Kiểm định ngược tọa độ)
+// Register FactValidators (reverse coordinate validation)
 builder.Services.AddScoped<IFactValidator, LengthValidator>();
 builder.Services.AddScoped<IFactValidator, AreaValidator>();
 builder.Services.AddScoped<IFactValidator, DistanceValidator>();
@@ -174,6 +223,7 @@ app.UseSwaggerUI();
 app.UseCors("AllowAll");
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 

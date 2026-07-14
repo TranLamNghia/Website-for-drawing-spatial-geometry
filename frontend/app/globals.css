@@ -136,4 +136,12 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Hide browser built-in password reveal (Edge/IE) — we use a custom toggle. */
+  input[type='password']::-ms-reveal,
+  input[type='password']::-ms-clear {
+    display: none;
+    width: 0;
+    height: 0;
+  }
 }

@@ -21,7 +21,7 @@ jsonBin/
 sympyBin/
 **/sympyBin/
 **/jsonBin/
-
+backend/_smoketest_out/
 
 # ==============================
 # 02. CODE EDITORS (VSCode, PyCharm)
@@ -33,6 +33,7 @@ sympyBin/
 *~
 .spyderproject
 .spyproject
+.cursor/
 
 # ==============================
 # 03. BACKEND (PYTHON / FASTAPI / AI)

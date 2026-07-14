@@ -1,6 +1,8 @@
 import { auth } from '@/auth'
 import { NextResponse } from 'next/server'
 
+const AUTH_CALLBACK_COOKIE = 'auth_callback_url'
+
 export default auth(req => {
   const isLoggedIn = !!req.auth
   const { pathname } = req.nextUrl
@@ -15,9 +17,13 @@ export default auth(req => {
       return NextResponse.json({ message: 'Bạn cần đăng nhập để gửi góp ý.' }, { status: 401 })
     }
 
-    const loginUrl = new URL('/dang-nhap', req.nextUrl.origin)
-    loginUrl.searchParams.set('callbackUrl', `${pathname}${req.nextUrl.search}`)
-    return NextResponse.redirect(loginUrl)
+    const response = NextResponse.redirect(new URL('/dangnhap', req.nextUrl.origin))
+    response.cookies.set(AUTH_CALLBACK_COOKIE, `${pathname}${req.nextUrl.search}`, {
+      path: '/',
+      maxAge: 600,
+      sameSite: 'lax',
+    })
+    return response
   }
 
   return NextResponse.next()

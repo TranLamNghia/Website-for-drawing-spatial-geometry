@@ -1,4 +1,5 @@
 using Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Application.Compilers;
 using System.Text.Json;
@@ -8,6 +9,7 @@ using Application.DTOs;
 namespace WebApi.Controllers;
 
 [ApiController]
+[AllowAnonymous]
 [Route("api/[controller]")]
 public class GeometryController : ControllerBase
 {
@@ -117,7 +119,7 @@ public class GeometryController : ControllerBase
         Response.ContentType = "text/event-stream";
         Response.Headers["Cache-Control"] = "no-cache";
         Response.Headers["Connection"] = "keep-alive";
-        // Tắt buffering của reverse proxy (nginx) để event tới client ngay lập tức.
+        // Disable reverse proxy (nginx) buffering so events reach the client immediately.
         Response.Headers["X-Accel-Buffering"] = "no";
 
         try
@@ -162,7 +164,7 @@ public class GeometryController : ControllerBase
         }
     }
 
-    // Giữ camelCase giống hành vi mặc định của Ok() trong ASP.NET để FE đọc payload y hệt endpoint /process.
+    // Keep camelCase like ASP.NET Ok() default so the frontend reads the same payload as the /process endpoint.
     private static readonly JsonSerializerOptions SseJsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     private async Task WriteSseEventAsync(object payload)
@@ -179,7 +181,7 @@ public class GeometryController : ControllerBase
             dto.Entities.Segments.Concat(context.GeneratedSegments));
         var finalQueries = dto.Queries.ToList();
 
-        // 1. Dọn dẹp Segments theo Aliases
+        // 1. Clean up Segments using Aliases
         if (context.PointAliases.Any())
         {
             for (int i = 0; i < finalSegments.Count; i++)
@@ -197,7 +199,7 @@ public class GeometryController : ControllerBase
             finalSegments = finalSegments.Distinct().ToList();
         }
 
-        // 2. Dọn dẹp Queries
+        // 2. Clean up Queries
         var cleanedQueries = new System.Collections.Generic.List<object>();
         foreach (var q in finalQueries)
         {
@@ -221,7 +223,7 @@ public class GeometryController : ControllerBase
             cleanedQueries.Add(q);
         }
 
-        // 3. Chuẩn bị đầu ra
+        // 3. Prepare output
         var pointIntegrity = PointIntegrityHelper.Evaluate(dto.Entities.Points, context.Points);
         var filteredPoints = PointIntegrityHelper.FilterToDeclared(dto.Entities.Points, context.Points);
         var renderPoints = BuildRenderablePoints(filteredPoints, context);
@@ -329,7 +331,7 @@ public class GeometryController : ControllerBase
             ["sections"] = context.Sections
         };
 
-        // Cross-section data (nếu có)
+        // Cross-section data (if present)
         if (context.ClippingPlane != null)
         {
             result["clippingPlane"] = new
@@ -353,7 +355,7 @@ public class GeometryController : ControllerBase
         return result;
     }
 
-    /// <summary>Điểm khai báo + điểm phụ vẽ mặt (vd _P_1) — không ảnh hưởng pointIntegrity.</summary>
+    /// <summary>Declared points plus auxiliary face-rendering points (e.g. _P_1) — does not affect pointIntegrity.</summary>
     private static Dictionary<string, Domains.MathCore.Point3D> BuildRenderablePoints(
         Dictionary<string, Domains.MathCore.Point3D> filteredPoints,
         CompilationContext context)
