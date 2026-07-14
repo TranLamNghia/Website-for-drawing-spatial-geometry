@@ -16,13 +16,13 @@ public class PerpendicularHandler : IFactHandler
         var data = fact.GetDataAs<ObjectsData>(); 
         if (data == null || data.Objects == null || data.Objects.Count < 2) return;
 
-        // VD: "SA vuông góc đáy (ABC)". 
+        // e.g. "SA perpendicular to base (ABC)". 
         string obj1 = data.Objects[0];
         string obj2 = data.Objects[1];
 
         Console.WriteLine($"[HANDLER] Ghi nhận tính chất vuông góc: {obj1} ⊥ {obj2}");
 
-        // BD ⊥ AC: D là chân đường cao từ B xuống AC (đề tam giác vuông tại B).
+        // BD ⊥ AC: D is the foot of the altitude from B to AC (right triangle at B).
         if (obj1.Length == 2 && obj2.Length == 2)
         {
             string from = obj1[0].ToString();

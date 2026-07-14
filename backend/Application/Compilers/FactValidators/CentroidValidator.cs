@@ -8,8 +8,8 @@ using Domains.MathCore;
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Kiểm định Thực thể: Trọng tâm
-/// VD: Fact "O là trọng tâm tam giác ABC" → Check O == (A+B+C)/3
+/// Validates entity: centroid.
+/// e.g. Fact "O is the centroid of triangle ABC" → Check O == (A+B+C)/3
 /// </summary>
 public class CentroidValidator : IFactValidator
 {

@@ -28,26 +28,26 @@ public class CircumcenterHandler : IFactHandler
         var points = context.GetPointsFromPlane(triangle);
         if (points.Count >= 3)
         {
-            // Khối 3D (vd ABCD): đợi đủ đỉnh rồi mới dựng tâm mặt cầu ngoại tiếp.
+            // 3D solid (e.g. ABCD): wait until all vertices exist before building the circumscribed sphere center.
             if (vertexNames.Count >= 4 && points.Count < vertexNames.Count)
                 return;
 
             var center = Point3D.GetCircumcenter(points.ToArray());
             if (center == null) return;
 
-            // Kiểm tra xem tại tọa độ này đã có điểm nào tồn tại chưa (VD: Điểm G đã có)
+            // Check whether any existing point already occupies this coordinate (e.g. point G already exists)
             string existingPoint = context.Points.FirstOrDefault(kvp => kvp.Value.DistanceToPoint(center) < 1e-4).Key;
 
             if (!string.IsNullOrEmpty(existingPoint))
             {
-                // Nếu đã có điểm tại vị trí này (VD: G), dùng luôn tên đó thay vì tạo O
+                // If a point already exists at this location (e.g. G), reuse that name instead of creating O
                 Console.WriteLine($"[HANDLER] Tâm ngoại tiếp {oPoint} trùng với điểm {existingPoint} đã có. Tái sử dụng...");
-                context.ReplacePointReference(oPoint, existingPoint); // Đăng ký Alias để cleanup
+                context.ReplacePointReference(oPoint, existingPoint); // Register alias for cleanup
                 oPoint = existingPoint;
             }
             else if (context.Points.ContainsKey(oPoint))
             {
-                // Cập nhật tọa độ nếu pass trước dựng tạm (vd chỉ có 3 đỉnh đáy)
+                // Update coordinates if a prior pass created a temporary placeholder (e.g. only 3 base vertices available)
                 context.Points[oPoint] = center;
             }
             else
@@ -60,7 +60,7 @@ public class CircumcenterHandler : IFactHandler
             if (points.Count == 3)
             {
                 var plane = new Plane3D(points[0], points[1], points[2]);
-                // Luôn đảm bảo có CircleData trong context để FE vẽ
+                // Always ensure CircleData exists in context for frontend rendering
                 context.Circles.Add(new CircleData { 
                     Center = oPoint, 
                     Radius = radius, 

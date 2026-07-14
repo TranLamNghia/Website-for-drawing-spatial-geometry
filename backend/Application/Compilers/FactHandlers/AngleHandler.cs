@@ -20,6 +20,6 @@ public class AngleHandler : IFactHandler
         if (double.TryParse(data.Value, out double ang)) val = ang;
 
         Console.WriteLine($"[HANDLER] Ghi nhận góc {data.AngleType}: {string.Join(", ", data.Objects)} = {val}°");
-        // Một số bài toán (VD "SBA = 60°") được dùng để tính chiều cao.
+        // Some problems (e.g. "SBA = 60°") use angle facts to derive height.
     }
 }

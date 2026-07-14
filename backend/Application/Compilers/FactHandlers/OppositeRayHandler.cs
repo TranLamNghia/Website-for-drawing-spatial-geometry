@@ -19,25 +19,25 @@ public class OppositeRayHandler : IFactHandler
         string origin = data.Origin;
         string rayPt = data.RayPoint;
 
-        // Nếu điểm đã được sinh ra bởi một handler khác (như Length, Ratio), bỏ qua
+        // Skip if the point was already created by another handler (e.g. Length, Ratio)
         if (context.Points.ContainsKey(pt)) return;
 
-        // Cần đảm bảo Gốc tia và Điểm trên tia đã tồn tại
+        // Ensure the ray origin and a point on the ray already exist
         if (!context.Points.ContainsKey(origin) || !context.Points.ContainsKey(rayPt)) return;
 
         var pOrigin = context.Points[origin];
         var pRay = context.Points[rayPt];
 
-        // Tia gốc: Vecto = pRay - pOrigin
-        // Tia đối: Vecto đối = pOrigin - pRay (hay - (pRay - pOrigin))
+        // Original ray: vector = pRay - pOrigin
+        // Opposite ray: opposite vector = pOrigin - pRay (i.e. -(pRay - pOrigin))
         var oppositeVector = new Point3D(
             pOrigin.X - pRay.X,
             pOrigin.Y - pRay.Y,
             pOrigin.Z - pRay.Z
         );
 
-        // Mặc định (như gợi ý của user), nếu không có độ dài cụ thể, ta gán AM = AB (với A là gốc, B là rayPt, M là pt mới)
-        // Khi đó A là trung điểm của BM
+        // By default (per user suggestion), if no explicit length is given, set AM = AB (A = origin, B = rayPt, M = new point)
+        // Then A is the midpoint of BM
         context.Points[pt] = new Point3D(
             pOrigin.X + oppositeVector.X,
             pOrigin.Y + oppositeVector.Y,

@@ -43,17 +43,17 @@ public class Plane3D
         D = -(A * p1.X + B * p1.Y + C * p1.Z);
     }
 
-    // Tính khoảng cách từ mặt phẳng đến điểm
+    // Distance from the plane to a point
     public double DistanceToPoint(Point3D point)
     {
         return Math.Abs(A * point.X + B * point.Y + C * point.Z + D) / Normal.Magnitude();
     }
 
-    // Tính khoảng cách từ mặt phẳng đến đường thẳng
+    // Distance from the plane to a line
     public double DistanceToLine(Line3D line)
     {
-        // 1. Kiểm tra góc giữa chỉ phương đường thẳng và pháp tuyến mặt phẳng
-        // Nếu tích vô hướng == 0 => Đường thẳng song song hoặc nằm trong mặt phẳng
+        // Check angle between line direction and plane normal
+        // Dot product ≈ 0: line is parallel to or lies in the plane
         double dot = Normal.DotProduct(line.Direction);
         
         if (Math.Abs(dot) < 1e-9) 
@@ -61,18 +61,18 @@ public class Plane3D
             return DistanceToPoint(line.Point);
         }
         
-        return 0; // Đường thẳng cắt mặt phẳng (khoảng cách = 0)
+        return 0; // Line intersects the plane (distance = 0)
     }
 
-    // Tính khoảng cách từ mặt phẳng đến mặt phẳng khác
+    // Distance between two planes
     public double DistanceToPlane(Plane3D other)
     {
-        // 1. Kiểm tra 2 pháp tuyến có cùng phương (song song) không
+        // Check whether the normals are parallel
         var cross = this.Normal.CrossProduct(other.Normal);
         
         if (cross.Magnitude() < 1e-9)
         {
-            // Tìm 1 điểm P bất kỳ nằm trên mặt phẳng 'other'
+            // Pick any point P on the other plane
             Point3D p;
             if (Math.Abs(other.A) > 1e-9) p = new Point3D(-other.D / other.A, 0, 0);
             else if (Math.Abs(other.B) > 1e-9) p = new Point3D(0, -other.D / other.B, 0);
@@ -81,21 +81,21 @@ public class Plane3D
             return this.DistanceToPoint(p);
         }
 
-        return 0; // Hai mặt phẳng cắt nhau (khoảng cách = 0)
+        return 0; // Planes intersect (distance = 0)
     }
 
-    // Tìm giao tuyến của 2 mặt phẳng (Trả về 1 đường thẳng Line3D)
+    // Line of intersection of two planes (returns a Line3D)
     public Line3D? IntersectWith(Plane3D other)
     {
-        // 1. Vectơ chỉ phương của giao tuyến là tích có hướng của 2 pháp tuyến
+        // Direction of intersection = cross product of the two normals
         var direction = this.Normal.CrossProduct(other.Normal);
 
-        // Nếu tích có hướng ≈ 0 => 2 mặt phẳng song song hoặc trùng nhau
+        // Cross product ≈ 0: planes are parallel or coincident
         if (direction.Magnitude() < 1e-9)
             return null;
 
-        // 2. Tìm một điểm chung P(x, y, z) bằng cách giải hệ phương trình
-        // Ta sẽ thử lần lượt đặt 1 trong 3 biến x, y, z bằng 0
+        // Find a point on the intersection by solving the system
+        // Try setting one of x, y, or z to zero in turn
         double x = 0, y = 0, z = 0;
         double detXY = this.A * other.B - this.B * other.A;
         double detYZ = this.B * other.C - this.C * other.B;
@@ -123,7 +123,7 @@ public class Plane3D
         return new Line3D(new Point3D(x, y, z), direction);
     }
 
-    // Tìm giao điểm của mặt phẳng và đường thẳng
+    // Intersection of the plane and a line
     public Point3D? IntersectWith(Line3D line)
     {
         double denominator = A * line.Direction.X + B * line.Direction.Y + C * line.Direction.Z;
@@ -141,14 +141,14 @@ public class Plane3D
         );
     }
     
-    // Tìm hình chiếu của một điểm lên mặt phẳng (Fact: projection)
+    // Projection of a point onto the plane
     public Point3D GetProjection(Point3D point)
     {
         double t = -(A * point.X + B * point.Y + C * point.Z + D) / (A * A + B * B + C * C);
         return new Point3D(point.X + A * t, point.Y + B * t, point.Z + C * t);
     }
 
-    // Góc giữa 2 Mặt phẳng (AngleType: plane_plane)
+    // Angle between two planes
     public double AngleWithPlane(Plane3D other)
     {
         double dot = Math.Abs(this.Normal.DotProduct(other.Normal));
@@ -157,16 +157,16 @@ public class Plane3D
         return Math.Acos(dot / mags) * (180.0 / Math.PI);
     }
 
-    // Góc giữa Mặt phẳng và Đường thẳng (AngleType: line_plane)
+    // Angle between a plane and a line
     public double AngleWithLine(Line3D line)
     {
         double dot = Math.Abs(this.Normal.DotProduct(line.Direction));
         double mags = this.Normal.Magnitude() * line.Direction.Magnitude();
         if (mags < 1e-9) return 0;
-        return Math.Asin(dot / mags) * (180.0 / Math.PI); // Dùng Asin thay vì Acos
+        return Math.Asin(dot / mags) * (180.0 / Math.PI); // Use Asin instead of Acos
     }
 
-    // Tạo mặt phẳng trung trực của đoạn thẳng
+    // Perpendicular bisector plane of a segment
     public static Plane3D CreatePerpendicularBisector(Point3D p1, Point3D p2)
     {
         var midpoint = p1.GetMidpoint(p2);
@@ -174,12 +174,12 @@ public class Plane3D
         return new Plane3D(midpoint, normal);
     }
 
-    // Hiện phương trình mặt phẳng
+    // String representation of the plane equation
     public override string ToString()
     {
         var parts = new System.Collections.Generic.List<string>();
         
-        // Format hệ số cho đẹp (Bỏ qua nếu = 0, ẩn số 1, xử lý dấu âm dương)
+        // Pretty-print coefficients: omit zeros, hide ±1, handle signs
         if (Math.Abs(A) > 1e-6) parts.Add(A == 1 ? "x" : A == -1 ? "-x" : $"{Math.Round(A, 2)}x");
         if (Math.Abs(B) > 1e-6) parts.Add(B == 1 ? "y" : B == -1 ? "-y" : $"{Math.Round(B, 2)}y");
         if (Math.Abs(C) > 1e-6) parts.Add(C == 1 ? "z" : C == -1 ? "-z" : $"{Math.Round(C, 2)}z");

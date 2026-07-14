@@ -146,7 +146,7 @@ public class GeometryExtractionService : IGeometryExtractionService
     }
 
     /// <summary>
-    /// SymPy đôi khi trả thêm khóa phụ (vd _perimeter_P) trong points — lọc trước khi deserialize Point3D.
+    /// SymPy sometimes returns extra auxiliary keys (e.g. _perimeter_P) in points — filter before deserializing Point3D.
     /// </summary>
     private static Dictionary<string, Point3D>? ParseSolverPoints(JsonElement dataElement)
     {
@@ -185,7 +185,7 @@ public class GeometryExtractionService : IGeometryExtractionService
             }
             catch
             {
-                // Bỏ qua khóa không phải Point3D
+                // Skip keys that are not Point3D
             }
         }
 

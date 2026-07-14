@@ -24,13 +24,13 @@ public class InscribedHandler : IFactHandler
         var points = context.GetPointsFromPlane(solidChars);
         if (points.Count < 3) return;
 
-        // Tính tâm nội tiếp nếu điểm chưa tồn tại
+        // Compute the incenter if the point does not yet exist
         double registeredRadius = -1;
         bool isTriangle = solidChars.Length == 3;
 
         if (!context.Points.ContainsKey(inPoint))
         {
-            // Case A: Tam giác (Incenter)
+            // Case A: Triangle (incenter)
             if (isTriangle)
             {
                 var result = Point3D.GetIncenter(points.ToArray());
@@ -38,7 +38,7 @@ public class InscribedHandler : IFactHandler
                 registeredRadius = result.Radius;
                 Console.WriteLine($"[HANDLER] Đã dựng tâm nội tiếp {inPoint} của đa giác {outer} (R={result.Radius:F2})");
             }
-            // Case B1: Khối Hộp / Lập phương
+            // Case B1: Box / cube
             else if (solidChars.Length == 8 && points.Count == 8)
             {
                 var center = Point3D.GetCentroid(points.ToArray());
@@ -47,7 +47,7 @@ public class InscribedHandler : IFactHandler
                 registeredRadius = center.DistanceToPoint(baseCentroid);
                 Console.WriteLine($"[HANDLER] Đã dựng tâm nội tiếp {inPoint} của khối hộp {outer} (R={registeredRadius:F2})");
             }
-            // Case B2: Khối chóp hoặc Tứ diện
+            // Case B2: Pyramid or tetrahedron
             else if (solidChars.Length >= 4 && points.Count == solidChars.Length)
             {
                 var apex = points[0];
@@ -73,7 +73,7 @@ public class InscribedHandler : IFactHandler
             }
         }
 
-        // Luôn đăng ký sphere/circle dù điểm đã tồn tại từ trước (vd: được nạp từ SymPy)
+        // Always register sphere/circle even if the point already existed (e.g. loaded from SymPy)
         if (!context.Points.ContainsKey(inPoint)) return;
 
         if (isTriangle)

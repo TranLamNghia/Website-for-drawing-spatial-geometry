@@ -13,19 +13,19 @@ public class Sphere3D
         Radius = radius;
     }
 
-    // Kiểm tra điểm nằm trong, trên, hay ngoài mặt cầu
+    // Whether the point is inside, on, or outside the sphere
     public bool Contains(Point3D point)
     {
         return Center.DistanceToPoint(point) <= Radius + 1e-9;
     }
 
-    // Thể tích mặt cầu
+    // Sphere volume
     public double GetVolume() => (4.0 / 3.0) * Math.PI * Math.Pow(Radius, 3);
     
-    // Diện tích mặt cầu
+    // Sphere surface area
     public double GetSurfaceArea() => 4.0 * Math.PI * Math.Pow(Radius, 2);
 
-    // Tìm mặt cầu ngoại tiếp tứ diện
+    // Circumsphere of a tetrahedron
     public static Sphere3D GetCircumsphere(Point3D p1, Point3D p2, Point3D p3, Point3D p4)
     {
         var center = Point3D.GetCircumcenter(p1, p2, p3, p4);
@@ -34,7 +34,7 @@ public class Sphere3D
         return new Sphere3D(center, radius);
     }
 
-    // Hiện phương trình mặt cầu
+    // String representation of the sphere equation
     public override string ToString()
     {
         return $"(x - {Center.X:F2})^2 + (y - {Center.Y:F2})^2 + (z - {Center.Z:F2})^2 = {Radius:F2}^2";

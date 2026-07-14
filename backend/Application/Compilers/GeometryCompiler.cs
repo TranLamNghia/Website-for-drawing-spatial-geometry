@@ -31,13 +31,13 @@ public class GeometryCompiler : IGeometryCompiler
 
     public CompilationContext Compile(GeometryProblemDto problem)
     {
-        // Khởi tạo cuốn sổ tay trắng
+        // Initialize a blank compilation context
         var context = new CompilationContext();
         context.IdentityPoints = new HashSet<string>(problem.Entities.Points.Select(p => p.ToUpper()));
         context.Sections = new List<SectionDataDto>(problem.Entities.Sections);
         context.SourceFacts = problem.Facts.ToList();
 
-        // NẠP TỌA ĐỘ CÓ SẴN (Nếu có, vd: từ api/process1 hoặc AI Fallback)
+        // LOAD PRE-EXISTING COORDINATES (if any, e.g. from api/process1 or AI fallback)
         if (problem.Points != null)
         {
             foreach (var kvp in problem.Points)
@@ -46,40 +46,40 @@ public class GeometryCompiler : IGeometryCompiler
             }
         }
 
-        // Giai đoạn 1: Dựng móng nhà (Mặt đáy nằm trên mp z = 0)
+        // Phase 1: Build the foundation (base lies on plane z = 0)
         BuildBase(problem, context);
 
-        // Giai đoạn 1.25: Dựng scaffold tối thiểu từ entities (đoạn thẳng, giao điểm, mặt phẳng...)
+        // Phase 1.25: Build minimal scaffold from entities (segments, intersections, planes...)
         EntityScaffoldBuilder.Build(problem, context);
 
-        // Giai đoạn 1.5: Dựng trước các điểm ở đáy (như trung điểm, trọng tâm...) để dùng làm hình chiếu
+        // Phase 1.5: Pre-build base points (midpoints, centroids...) to use as projections
         BuildDependentEntities(problem, context);
 
-        // Giai đoạn 2: Tìm hình chiếu và dựng chiều cao Z cho đỉnh chóp
+        // Phase 2: Find projection and build Z height for pyramid apex
         BuildApex(problem, context);
-        // Dựng đáy trên cho khối lăng trụ (nếu có)
+        // Build top base for prism solids (if any)
         BuildPrismTopBase(problem, context);
-        // Dựng thêm các khối 3D khai báo sau fact shape đầu (vd hai chóp đồng dạng S.ABCD và S'.A'B'C'D')
+        // Build additional 3D solids declared after the first shape fact (e.g. two similar pyramids S.ABCD and S'.A'B'C'D')
         BuildAdditionalSolids(problem, context);
 
-        // Giai đoạn 2.5: Dựng vùng không gian (Volume) cho các khối đặc đã nhận diện
+        // Phase 2.5: Build volume regions for recognized solid shapes
         BuildVolumePlanes(problem, context);
 
-        // Giai đoạn 3: Tính toán trung điểm, trọng tâm, giao điểm... (cho các cạnh bên, v.v...)
+        // Phase 3: Compute midpoints, centroids, intersections... (for lateral edges, etc.)
         BuildDependentEntities(problem, context);
 
-        // Giai đoạn 3.5: Hợp nhất các điểm trùng tọa độ (VD: O trùng G trong tam giác đều)
+        // Phase 3.5: Merge coincident points (e.g. O coincides with G in an equilateral triangle)
         MergePoints(problem, context);
 
-        // Giai đoạn 3.7: Xử lý Cross-Section từ Queries (VD: "cross_section_S.ABCD_MNP")
+        // Phase 3.7: Process cross-section from queries (e.g. "cross_section_S.ABCD_MNP")
         ProcessCrossSectionQueries(problem, context);
 
-        // Giai đoạn 3.8: Chỉ nâng theo trục Z nếu hình bị chui xuống dưới mặt phẳng z=0
+        // Phase 3.8: Only shift along Z if the scene dips below plane z=0
         NormalizeSceneToPositiveQuadrant(context);
 
-        // Bỏ đoạn tự sửa tên điểm descriptiveKeys theo ý kiến người dùng để giữ nguyên điểm AI trả về
+        // Removed auto-renaming of descriptiveKeys per user request to preserve AI-returned point names
 
-        // Xóa bỏ phần thập phân nhỏ hơn 1e-10
+        // Zero out fractional parts smaller than 1e-10
         foreach (var key in context.Points.Keys.ToList())
         {
             var p = context.Points[key];
@@ -90,14 +90,14 @@ public class GeometryCompiler : IGeometryCompiler
 
         PlacePerpendicularFootPoints(problem, context, overwrite: true);
 
-        // Giai đoạn 4: KIỂM ĐỊNH NGƯỢC (Validation)
-        // Dùng tọa độ vừa dựng để kiểm tra ngược lại từng Fact (Diện tích, Độ dài, Góc...)
+        // Phase 4: REVERSE VALIDATION
+        // Use built coordinates to validate each fact in reverse (area, length, angle...)
         context.ValidationReport = _validationEngine.Validate(problem, context);
 
-        // Giai đoạn 4.5: Xử lý và kiểm định các query nâng cao (đợt 5)
+        // Phase 4.5: Process and validate advanced queries (batch 5)
         context.QueryValidationReport = _queryEngine.Process(problem, context);
 
-        // Giai đoạn 5: Tính Side cho từng điểm so với mặt phẳng cắt (Cross-section)
+        // Phase 5: Compute Side for each point relative to the cutting plane (cross-section)
         ComputePointSides(context);
 
         return context;
@@ -114,15 +114,15 @@ public class GeometryCompiler : IGeometryCompiler
                 StringComparer.OrdinalIgnoreCase
             );
 
-            // Điểm hợp lệ để vẽ = điểm đã khai báo trong entities.points.
-            // SymPy đôi khi trả thêm điểm phụ (vd gốc O từ "(Oxy)") không khai báo;
-            // không nạp các điểm này để tránh "điểm thừa" làm sai pointIntegrity.
+            // Valid drawable points = points declared in entities.points.
+            // SymPy sometimes returns extra auxiliary points (e.g. origin O from "(Oxy)") not declared;
+            // do not load these to avoid extra points breaking pointIntegrity.
             var declaredNames = new HashSet<string>(
                 problem.Entities.Points.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()),
                 StringComparer.OrdinalIgnoreCase
             );
 
-            // Ghi đè tọa độ
+            // Overwrite coordinates
             foreach (var kvp in response.Points)
             {
                 if (fixedPointNames.Contains(kvp.Key))
@@ -152,21 +152,21 @@ public class GeometryCompiler : IGeometryCompiler
             context.Sections.AddRange(response.Sections);
         }
 
-        // Chạy lại hàm dựng điểm phụ (trung điểm, trọng tâm...) để các đỉnh AI sinh ra tạo ra trung điểm / giao điểm chuẩn
+        // Re-run dependent point builder (midpoints, centroids...) so AI-generated vertices produce correct midpoints/intersections
         BuildDependentEntities(problem, context);
 
-        // Chạy lại kiểm định vòng 2
+        // Re-run validation round 2
         context.ValidationReport = _validationEngine.Validate(problem, context);
         context.QueryValidationReport = _queryEngine.Process(problem, context);
 
-        // Tính lại Side cho cross-section
+        // Recompute Side for cross-section
         ComputePointSides(context);
         
         Console.WriteLine($"[COMPILER] Fallback hoàn tất. Kết quả Re-Validation: AllPassed = {context.ValidationReport.AllPassed}");
     }
 
     /// <summary>
-    /// Giai đoạn 1: Đọc Fact "shape" và dựng tọa độ mặt đáy (z = 0)
+    /// Phase 1: Read "shape" fact and build base coordinates (z = 0)
     /// </summary>
     private void BuildBase(GeometryProblemDto problem, CompilationContext context)
     {
@@ -189,7 +189,7 @@ public class GeometryCompiler : IGeometryCompiler
             return;
         }
 
-        // Hình nón/trụ: Không có mặt đáy đa giác, thoát sớm (ShapeHandler đã xử lý)
+        // Cone/cylinder: no polygonal base, exit early (ShapeHandler already handled)
         if (solidFact != null && validRoundShapes.Contains(solidFact.Shape))
         {
             Console.WriteLine($"[COMPILER] Phát hiện khối tròn xoay ({solidFact.Shape}). Bỏ qua BuildBase đa giác.");
@@ -209,10 +209,10 @@ public class GeometryCompiler : IGeometryCompiler
             rawTarget = solidFact.Target;
         }
 
-        // Tách danh sách đỉnh (Hỗ trợ A, B, C, A', B1...)
+        // Parse vertex list (supports A, B, C, A', B1...)
         List<string> allVertices = ParseVertices(rawTarget);
         
-        // 2. TÁCH ĐỈNH - ĐÁY VÀ GHI ĐÈ TÍNH CHẤT (OVERRIDE PROPERTIES)
+        // 2. SPLIT APEX/BASE AND OVERRIDE PROPERTIES
         List<string> baseVertices = new List<string>(allVertices);
         
         if (solidFact != null && rawTarget == solidFact.Target)
@@ -220,7 +220,7 @@ public class GeometryCompiler : IGeometryCompiler
             if (solidFact.Shape == ShapeType.Pyramid || solidFact.Shape == ShapeType.Regular_pyramid
                 || solidFact.Shape == ShapeType.Pentagonal_pyramid || solidFact.Shape == ShapeType.Hexagonal_pyramid)
             {
-                // Giả định: Hình chóp S.ABC... có đỉnh S đứng trước hoặc dùng dấu "."
+                // Assumption: pyramid S.ABC... has apex S first or uses "." separator
                 if (rawTarget.Contains(".")) {
                     baseVertices = ParseVertices(rawTarget.Split('.')[1]);
                 } else if (baseVertices.Count > 3) {
@@ -229,7 +229,7 @@ public class GeometryCompiler : IGeometryCompiler
             }
             else if (solidFact.Shape == ShapeType.Tetrahedron || solidFact.Shape == ShapeType.Regular_tetrahedron)
             {
-                // Giả định: Tứ diện ABCD có đáy là BCD
+                // Assumption: tetrahedron ABCD has base BCD
                 if (baseVertices.Count >= 4 && baseFact == null) baseVertices.RemoveAt(0); 
             }
             else if (solidFact.Shape == ShapeType.Prism || solidFact.Shape == ShapeType.Regular_prism
@@ -238,7 +238,7 @@ public class GeometryCompiler : IGeometryCompiler
                 || solidFact.Shape == ShapeType.Parallelepiped || solidFact.Shape == ShapeType.Regular_parallelepiped
                 || solidFact.Shape == ShapeType.Pentagonal_prism || solidFact.Shape == ShapeType.Hexagonal_prism)
             {
-                // Hình lăng trụ ABC.A'B'C' -> Đáy là ABC
+                // Prism ABC.A'B'C' -> base is ABC
                 if (rawTarget.Contains(".")) {
                     baseVertices = ParseVertices(rawTarget.Split('.')[0]);
                 } else if (baseVertices.Count >= 6) {
@@ -264,7 +264,7 @@ public class GeometryCompiler : IGeometryCompiler
                             ? new List<string> { "A", "B", "C", "D" } : new List<string> { "A", "B", "C" };
         }
 
-        // 3. TÍNH TOÁN KÍCH THƯỚC ĐỘNG
+        // 3. COMPUTE DYNAMIC DIMENSIONS
         double aValue = context.UnitLength;
 
         double width = GetDynamicEdgeLength(problem, baseVertices, 0, 1, -1, aValue);
@@ -290,7 +290,7 @@ public class GeometryCompiler : IGeometryCompiler
             var edgeLengths = new System.Collections.Generic.List<double>();
             int n = baseVertices.Count;
 
-            // Quét vòng quanh đa giác (VD ABCD: AB, BC, CD, DA)
+            // Scan around the polygon (e.g. ABCD: AB, BC, CD, DA)
             for (int i = 0; i < n; i++)
             {
                 int nextIndex = (i + 1) % n;
@@ -298,7 +298,7 @@ public class GeometryCompiler : IGeometryCompiler
                 if (l != -1) edgeLengths.Add(l);
             }
 
-            // Chỉ nâng lên đa giác đều khi đề khai báo rõ — không suy diễn từ cạnh bằng nhau mặc định.
+            // Only upgrade to regular polygon when explicitly stated — do not infer from equal edges by default.
             if (edgeLengths.Count == n && edgeLengths.All(l => Math.Abs(l - edgeLengths[0]) < 1e-6))
             {
                 if (n == 4)
@@ -321,7 +321,7 @@ public class GeometryCompiler : IGeometryCompiler
         }
         else
         {
-        // 4. DỰNG TỌA ĐỘ PHẲNG (Z = 0)
+        // 4. BUILD FLAT COORDINATES (Z = 0)
         switch (effectiveShape)
         {
             case ShapeType.Square:
@@ -334,18 +334,18 @@ public class GeometryCompiler : IGeometryCompiler
                 }
                 break;
 
-            case ShapeType.Rhombus: // Hình thoi 
-            case ShapeType.Parallelogram: // Hình bình hành
+            case ShapeType.Rhombus: // Rhombus 
+            case ShapeType.Parallelogram: // Parallelogram
                 if (baseVertices.Count >= 4) {
-                    double b = height; // AD (hoặc BC)
+                    double b = height; // AD (or BC)
                     double c = width;  // AB
-                    if (effectiveShape == ShapeType.Rhombus) b = c; // Hình thoi b = c
+                    if (effectiveShape == ShapeType.Rhombus) b = c; // Rhombus: b = c
                     
                     double diagBD = GetDynamicEdgeLength(problem, baseVertices, 1, 3, -1, aValue); // BD
                     double diagAC = GetDynamicEdgeLength(problem, baseVertices, 0, 2, -1, aValue); // AC
-                    double explicitAngleA = GetDynamicAngle(problem, baseVertices, 0, 1, 3); // Cố gắng đọc góc đỉnh Mốc (A)
+                    double explicitAngleA = GetDynamicAngle(problem, baseVertices, 0, 1, 3); // Try to read angle at anchor vertex (A)
 
-                    double cosA = 0.5; // Mặc định góc A = 60 độ
+                    double cosA = 0.5; // Default angle A = 60 degrees
                     if (explicitAngleA > 0) {
                         cosA = Math.Cos(explicitAngleA * Math.PI / 180.0);
                     } else if (diagBD > 0) {
@@ -409,7 +409,7 @@ public class GeometryCompiler : IGeometryCompiler
         }
         }
 
-        // 5. ĐĂNG KÝ CẠNH ĐÁY VÀ MẶT ĐÁY VÀO CONTEXT
+        // 5. REGISTER BASE EDGES AND BASE FACE IN CONTEXT
         for (int i = 0; i < baseVertices.Count; i++)
         {
             context.AddGeneratedSegment(baseVertices[i], baseVertices[(i + 1) % baseVertices.Count]);
@@ -419,7 +419,7 @@ public class GeometryCompiler : IGeometryCompiler
         Console.WriteLine($"[COMPILER] --- GĐ1: Đã dựng {context.Points.Count} điểm mặt đáy ---");
         foreach(var kvp in context.Points) Console.WriteLine($"   -> {kvp.Key}: {kvp.Value}");
 
-        // 6. TỊNH TIẾN TRỌNG TÂM VỀ GỐC TỌA ĐỘ
+        // 6. TRANSLATE CENTROID TO ORIGIN
         if (baseVertices.Count > 0)
         {
             var basePointsList = new System.Collections.Generic.List<Point3D>();
@@ -551,7 +551,7 @@ public class GeometryCompiler : IGeometryCompiler
 
 
     /// <summary>
-    /// Hàm trợ giúp: Lấy độ dài cạnh linh hoạt dựa trên vị trí của đỉnh trong danh sách vertices.
+    /// Helper: get flexible edge length based on vertex positions in the vertex list.
     /// </summary>
     private double GetDynamicEdgeLength(GeometryProblemDto problem, List<string> vertices, int idx1, int idx2, double defaultVal, double aValue)
     {
@@ -614,15 +614,15 @@ public class GeometryCompiler : IGeometryCompiler
     private double EvaluateExpression(string expr, double a)
     {
         try {
-            // 1. Chuẩn hóa biểu thức (về chữ thường, xóa cách)
+            // 1. Normalize expression (lowercase, remove spaces)
             string sanitized = expr.ToLower().Replace(" ", "");
             
-            // 2. Tự động thêm dấu nhân '*' vào các cụm như '2a', '3a' (Regex thông minh)
-            // Tìm các trường hợp [Số][Chữ a] và thay bằng [Số]*[Chữ a]
+            // 2. Auto-insert '*' into clusters like '2a', '3a' (smart regex)
+            // Find [Digit][letter a] and replace with [Digit]*[letter a]
             sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, @"(\d)a", "$1*a");
             sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, @"(\d)h", "$1*h");
 
-            // 3. Xử lý sqrt(...) thủ công trước khi đưa vào DataTable
+            // 3. Handle sqrt(...) manually before passing to DataTable
             while (sanitized.Contains("sqrt("))
             {
                 int start = sanitized.IndexOf("sqrt(");
@@ -634,16 +634,16 @@ public class GeometryCompiler : IGeometryCompiler
                 sanitized = sanitized.Substring(0, start) + Math.Sqrt(insideVal).ToString(System.Globalization.CultureInfo.InvariantCulture) + sanitized.Substring(end + 1);
             }
 
-            // 4. Thay tham số a/h bằng giá trị cạnh đơn vị
+            // 4. Substitute parameters a/h with unit edge value
             var unitStr = a.ToString(System.Globalization.CultureInfo.InvariantCulture);
             sanitized = sanitized.Replace("h", unitStr);
             sanitized = sanitized.Replace("a", unitStr);
             
-            // 5. Tính toán bằng DataTable
+            // 5. Evaluate with DataTable
             var dt = new System.Data.DataTable();
             return Convert.ToDouble(dt.Compute(sanitized, ""));
         } catch {
-            return a; // Fallback mặc định trả về a nếu lỗi
+            return a; // Default fallback returns a on error
         }
     }
 
@@ -669,7 +669,7 @@ public class GeometryCompiler : IGeometryCompiler
         
         string rawTarget = solidData.Target ?? "";
 
-        // Hình nón: Tính tọa độ đỉnh S dựa trên tâm O và chiều cao
+        // Cone: compute apex S from center O and height
         if (solidData.Shape == ShapeType.Cone || solidData.Shape == ShapeType.Regular_cone)
         {
             string centerName = string.IsNullOrEmpty(solidData.Center) ? "O" : solidData.Center;
@@ -689,7 +689,7 @@ public class GeometryCompiler : IGeometryCompiler
         List<string> allVertices = ParseVertices(rawTarget);
         if (allVertices.Count < 4) 
         {
-            // Fallback nếu trích xuất lỗi
+            // Fallback if extraction fails
             allVertices = new List<string> { "S", "A", "B", "C" };
         }
 
@@ -719,8 +719,8 @@ public class GeometryCompiler : IGeometryCompiler
 
         Point3D? projectionPoint = null;
 
-        // BƯỚC A: Tìm hình chiếu H
-        // Ưu tiên 1: Fact "Hình chiếu" trực tiếp (Projection)
+        // STEP A: Find projection H
+        // Priority 1: direct projection fact
         var projFact = problem.Facts.FirstOrDefault(f => f.Type == FactType.Projection);
         if (projFact != null && projFact.GetDataAs<ProjectionData>() is ProjectionData pd && pd.From == apexName)
         {
@@ -749,7 +749,7 @@ public class GeometryCompiler : IGeometryCompiler
                 }
             }
             
-            // Xử lý Fallback: Nếu AI trả về chuỗi thay vì đỉnh ("trọng tâm BCD", hoặc đỉnh bị lỗi point: "S")
+            // Fallback handling: if AI returns a string instead of a vertex ("centroid BCD", or broken point: "S")
             if (projectionPoint == null)
             {
                 string textToParse = projFact.RawText.ToLower();
@@ -849,12 +849,12 @@ public class GeometryCompiler : IGeometryCompiler
             }
         }
 
-        // BƯỚC B: Bắn tia và chốt cao độ (Z) cho đỉnh chóp
+        // STEP B: Project upward and set altitude (Z) for pyramid apex
         if (projectionPoint != null)
         {
-            double height = -1; // Cờ hiệu kiểm tra chiều cao
+            double height = -1; // Flag indicating whether height has been resolved
 
-            // 1. Tìm TÊN của điểm hình chiếu (Nếu trùng đỉnh đáy, VD: "A")
+            // 1. Find NAME of projection point (if coincides with base vertex, e.g. "A")
             string projName = "";
             foreach (var kvp in context.Points)
             {
@@ -867,7 +867,7 @@ public class GeometryCompiler : IGeometryCompiler
                 }
             }
 
-            // 2. TÌM CHIỀU CAO TRỰC TIẾP (Fact "AH", "Chiều cao")
+            // 2. FIND HEIGHT DIRECTLY (fact "AH", "height")
             string expectedEdge1 = $"{apexName}{projName}";
             string expectedEdge2 = $"{projName}{apexName}";
 
@@ -886,7 +886,7 @@ public class GeometryCompiler : IGeometryCompiler
             }
 
             // ====================================================================
-            // 3. SUY LUẬN PYTAGO (Tính chiều cao thông qua Cạnh bên)
+            // 3. PYTHAGOREAN INFERENCE (compute height via lateral edge)
             // ====================================================================
             if (height == -1 && baseVertices.Count > 0)
             {
@@ -909,21 +909,21 @@ public class GeometryCompiler : IGeometryCompiler
                 }
             }
 
-            // 4. Fallback mặc định (Nếu đề không cho bất kỳ độ dài nào)
+            // 4. Default fallback (if problem gives no lengths)
             if (height == -1) height = context.UnitLength * Math.Sqrt(2);
 
-            // 5. Bắn tia lên trời (Tịnh tiến trục Z)
+            // 5. Project upward (translate along Z)
             context.Points[apexName] = new Point3D(
                 projectionPoint.X, 
                 projectionPoint.Y, 
                 projectionPoint.Z + height 
             );
 
-            // 6. ĐĂNG KÝ CẠNH BÊN
-            // 6. ĐĂNG KÝ CẠNH BÊN
+            // 6. REGISTER LATERAL EDGES
+            // 6. REGISTER LATERAL EDGES
             for (int i = 0; i < baseVertices.Count; i++)
             {
-                // Cạnh bên
+                // Lateral edge
                 context.AddGeneratedSegment(apexName, baseVertices[i]);
             }
 
@@ -932,7 +932,7 @@ public class GeometryCompiler : IGeometryCompiler
     }
 
     /// <summary>
-    /// Dựng các khối pyramid bổ sung khi đề khai báo nhiều fact shape 3D (vd hai chóp đồng dạng).
+    /// Build additional pyramid solids when the problem declares multiple 3D shape facts (e.g. two similar pyramids).
     /// </summary>
     private void BuildAdditionalSolids(GeometryProblemDto problem, CompilationContext context)
     {
@@ -1115,7 +1115,7 @@ public class GeometryCompiler : IGeometryCompiler
         
         string rawTarget = solidData.Target ?? "";
 
-        // Hình trụ: Tính tọa độ tâm trên O' dựa trên tâm dưới O và chiều cao
+        // Cylinder: compute top center O' from bottom center O and height
         if (solidData.Shape == ShapeType.Cylinder || solidData.Shape == ShapeType.Regular_cylinder)
         {
             string centerBottomName = string.IsNullOrEmpty(solidData.Center) ? "O" : solidData.Center;
@@ -1132,7 +1132,7 @@ public class GeometryCompiler : IGeometryCompiler
             return;
         }
 
-        if (!rawTarget.Contains(".")) return; // Không rõ vế đáy/đỉnh
+        if (!rawTarget.Contains(".")) return; // Unclear base/apex parts
 
         string[] parts = rawTarget.Split('.');
         List<string> bottomBase = ParseVertices(parts[0]);
@@ -1140,10 +1140,10 @@ public class GeometryCompiler : IGeometryCompiler
 
         if (bottomBase.Count == 0 || topBase.Count == 0 || bottomBase.Count != topBase.Count) return;
 
-        // Ước tính chiều cao
+        // Estimate height
         double height = -1;
         
-        // Dò độ dài cạnh bên trực tiếp (VD: AA')
+        // Probe direct lateral edge length (e.g. AA')
         string testLateralEdge = $"{topBase[0]}{bottomBase[0]}";
         string testLateralEdge2 = $"{bottomBase[0]}{topBase[0]}";
         
@@ -1161,13 +1161,13 @@ public class GeometryCompiler : IGeometryCompiler
             height = EvaluateExpression(hd.Value, context.UnitLength);
         }
 
-        // Bổ sung: Tìm hình chiếu của Đỉnh mặt trên (VD: A' chiếu lên O)
+        // Supplement: find projection of top-face vertex (e.g. A' projects onto O)
         Point3D? slantTranslation = null;
         var slantFact = problem.Facts.FirstOrDefault(f => f.Type == FactType.Projection);
         
         if (slantFact != null && slantFact.GetDataAs<ProjectionData>() is ProjectionData pd)
         {
-            // 1. Dò chiều cao từ ProjectFact nếu chưa có (VD: A'O = 6)
+            // 1. Probe height from projection fact if missing (e.g. A'O = 6)
             if (height == -1)
             {
                 string hEdge1 = $"{pd.From}{pd.Point}";
@@ -1180,11 +1180,11 @@ public class GeometryCompiler : IGeometryCompiler
                 }
             }
 
-            // 2. Tính toán Vector tịnh tiến cho lăng trụ xiên
+            // 2. Compute translation vector for oblique prism
             int topIdx = topBase.IndexOf(pd.From);
             if (topIdx != -1)
             {
-                // Tìm tọa độ điểm H (điểm mà From chiếu lên)
+                // Find coordinates of H (point that From projects onto)
                 Point3D? hPoint = null;
                 if (!string.IsNullOrEmpty(pd.Point) && context.Points.TryGetValue(pd.Point, out var hFound))
                 {
@@ -1193,8 +1193,8 @@ public class GeometryCompiler : IGeometryCompiler
                 
                 if (hPoint != null)
                 {
-                    // Tọa độ đỉnh mặt trên (pd.From) sẽ là (hPoint.x, hPoint.y, height)
-                    // Vậy vector tịnh tiến cho điểm tương ứng ở đáy (bottomBase[topIdx]) là:
+                    // Top-face vertex (pd.From) coordinates will be (hPoint.x, hPoint.y, height)
+                    // So translation vector for the corresponding bottom point (bottomBase[topIdx]) is:
                     // Translation = (hPoint.x - bPoint.x, hPoint.y - bPoint.y, height)
                     if (context.Points.TryGetValue(bottomBase[topIdx], out var bPoint))
                     {
@@ -1211,7 +1211,7 @@ public class GeometryCompiler : IGeometryCompiler
 
         if (height == -1) 
         {
-            // Mặc định lăng trụ vuông/lập phương theo đáy, ngược lại thì cao = 1.2 cạnh đáy
+            // Default right prism/cube height from base; otherwise height = 1.2 * base edge
             height = solidData.Shape == ShapeType.Cube || solidData.Shape == ShapeType.Regular_cube ? context.UnitLength : context.UnitLength * 1.2;
         }
 
@@ -1245,15 +1245,15 @@ public class GeometryCompiler : IGeometryCompiler
 
                 context.Points[tVertex] = new Point3D(scaledX + translation.X, scaledY + translation.Y, p.Z + translation.Z);
                 
-                // Cạnh bên
+                // Lateral edge
                 context.AddGeneratedSegment(bVertex, tVertex);
             }
         }
         
-        // Đăng ký các cạnh ở đáy trên
+        // Register top-base edges
         for (int i = 0; i < topBase.Count; i++)
         {
-            // Cạnh đáy trên
+            // Top-base edge
             context.AddGeneratedSegment(topBase[i], topBase[(i + 1) % topBase.Count]);
         }
 
@@ -1323,7 +1323,7 @@ public class GeometryCompiler : IGeometryCompiler
     {
         var lengths = new List<double>();
         
-        // Quét độ dài nối từ Đỉnh đến từng điểm dưới Đáy
+        // Scan lengths from apex to each base vertex
         foreach (string v in baseVertices)
         {
             string edge = $"{apex}{v}"; 
@@ -1331,7 +1331,7 @@ public class GeometryCompiler : IGeometryCompiler
             if (len > 0) lengths.Add(len);
         }
 
-        // Nếu có ít nhất 2 cạnh bên được định nghĩa và chúng bằng nhau (sai số nhỏ hơn 1e-6)
+        // If at least 2 lateral edges are defined and equal (tolerance < 1e-6)
         if (lengths.Count >= 2)
         {
             double firstLen = lengths[0];
@@ -1359,7 +1359,7 @@ public class GeometryCompiler : IGeometryCompiler
             return EvaluateExpression(data.Value, context.UnitLength);
         }
 
-        // 2. Suy luận từ mặt đều (Equilateral)
+        // 2. Infer from equilateral face
         var eqFact = problem.Facts.FirstOrDefault(f => f.Type == FactType.Shape && 
                      f.GetDataAs<ShapeData>()?.Shape == ShapeType.Equilateral_triangle &&
                      ParseVertices(f.GetDataAs<ShapeData>()?.Target ?? "").Contains(v1) &&
@@ -1405,8 +1405,8 @@ public class GeometryCompiler : IGeometryCompiler
 
     private void MergePoints(GeometryProblemDto problem, CompilationContext context)
     {
-        // 1. Chỉ hợp nhất các điểm KHÔNG nằm trong danh sách thực thể chính (identity points)
-        // Hoặc chỉ hợp nhất nếu chúng thực sự trùng tọa độ 100%
+        // 1. Only merge points NOT in the main entity list (identity points)
+        // Or merge only if coordinates truly coincide 100%
         var identityPoints = new HashSet<string>(problem.Entities.Points.Select(p => p.ToUpper()));
         
         var priorityList = problem.Entities.Points.ToList();
@@ -1428,7 +1428,7 @@ public class GeometryCompiler : IGeometryCompiler
                 string pSecondary = keys[j];
                 if (merged.Contains(pSecondary)) continue;
                 
-                // NGUYÊN TẮC VÀNG: Không bao giờ hợp nhất 2 điểm định danh (A, B, C, G...)
+                // GOLDEN RULE: never merge two identity points (A, B, C, G...)
                 if (identityPoints.Contains(pSecondary.ToUpper()) && identityPoints.Contains(pPrimary.ToUpper()))
                     continue;
 
@@ -1446,7 +1446,7 @@ public class GeometryCompiler : IGeometryCompiler
     }
 
     /// <summary>
-    /// Phát hiện các query chứa "cross_section" và tự động tính thiết diện.
+    /// Detect queries containing "cross_section" and automatically compute the cross-section.
     /// Format target: "cross_section_S.ABCD_MNP" → solid=S.ABCD, plane=MNP
     /// </summary>
     private void ProcessCrossSectionQueries(GeometryProblemDto problem, CompilationContext context)
@@ -1454,22 +1454,22 @@ public class GeometryCompiler : IGeometryCompiler
         var targetsToProcess = new List<(string solid, string plane)>();
         string defaultSolid = problem.Entities.Solids.FirstOrDefault() ?? "";
 
-        // Nếu không có khối đa diện nhưng có mặt cầu, dùng "sphere" làm khối mặc định
+        // If no polyhedron but a sphere exists, use "sphere" as default solid
         if (string.IsNullOrEmpty(defaultSolid) && context.Spheres.Count > 0)
         {
             defaultSolid = "sphere";
         }
 
-        // Tự động thêm các mặt phẳng cắt (nếu có)
+        // Automatically add cutting planes (if any)
         if (!string.IsNullOrEmpty(defaultSolid) && problem.Entities.Planes.Count > 0)
         {
             foreach (var pStr in problem.Entities.Planes)
             {
-                // Mặt phẳng tiếp xúc (vd (P) tiếp xúc mặt cầu tại K) — vẽ mp tiếp tuyến, không cắt khối.
+                // Tangent plane (e.g. (P) tangent to sphere at K) — draw tangent plane, do not cut solid.
                 if (IsTangentPlaneEntity(pStr, problem))
                     continue;
 
-                // Chỉ thêm nếu không phải là một mặt của khối đa diện (vùng biên)
+                // Only add if not already a face of the polyhedron (boundary face)
                 if (!IsFaceOfSolid(pStr, context))
                 {
                     targetsToProcess.Add((defaultSolid, pStr));
@@ -1560,7 +1560,7 @@ public class GeometryCompiler : IGeometryCompiler
         {
             Console.WriteLine($"[COMPILER] Cross-Section: Khối={solidStr}, Mp cắt={planeStr}");
 
-            // Lấy 3 điểm đầu tiên của mặt phẳng cắt
+            // Take first 3 vertices of the cutting plane
             var planeVertices = ParseVertices(planeStr);
 
             Domains.MathCore.Plane3D plane;
@@ -1580,15 +1580,15 @@ public class GeometryCompiler : IGeometryCompiler
             }
             else if (context.Spheres.Count > 0)
             {
-                // Mặt phẳng được đặt tên (P), (Q), (R)... đi qua tâm mặt cầu và đôi một vuông góc
-                // Tự động sinh 3 mặt phẳng tọa độ chuẩn (OXY, OXZ, OYZ) qua tâm cầu
+                // Named planes (P), (Q), (R)... through sphere center, pairwise perpendicular
+                // Auto-generate 3 standard coordinate planes (OXY, OXZ, OYZ) through sphere center
                 var sphere = context.Spheres.First();
                 var center = context.GetPoint(sphere.Center);
                 if (center == null) { Console.WriteLine($"[COMPILER] Không tìm thấy tâm mặt cầu"); continue; }
 
-                // Xác định thứ tự mặt phẳng này trong danh sách targetsToProcess
+                // Determine this plane's order in targetsToProcess
                 int planeIndex = targetsToProcess.IndexOf((solidStr, planeStr));
-                // Lấy thứ tự duy nhất dựa trên tên mặt phẳng
+                // Get unique order based on plane name
                 int uniqueIdx = 0;
                 var allPlaneNames = targetsToProcess.Select(t => t.plane).Distinct().ToList();
                 uniqueIdx = allPlaneNames.IndexOf(planeStr);
@@ -1596,7 +1596,7 @@ public class GeometryCompiler : IGeometryCompiler
                 double[][] normals = { new[] { 1.0, 0, 0 }, new[] { 0, 1.0, 0 }, new[] { 0, 0, 1.0 } };
                 var n = normals[uniqueIdx % 3];
 
-                // Ax + By + Cz + D = 0, với (x0,y0,z0) là tâm cầu
+                // Ax + By + Cz + D = 0, where (x0,y0,z0) is sphere center
                 double D = -(n[0] * center.X + n[1] * center.Y + n[2] * center.Z);
                 plane = new Domains.MathCore.Plane3D(n[0], n[1], n[2], D);
 
@@ -1608,7 +1608,7 @@ public class GeometryCompiler : IGeometryCompiler
                 continue;
             }
 
-            // === GIẢI TÍCH MẶT CẦU: Kiểm tra nếu đang cắt mặt cầu ===
+            // === SPHERE ANALYSIS: check if cutting a sphere ===
             var matchedSphere = context.Spheres.FirstOrDefault();
             bool isSphereSection = matchedSphere != null && context.Spheres.Count > 0;
 
@@ -1622,7 +1622,7 @@ public class GeometryCompiler : IGeometryCompiler
                 }
                 double R = matchedSphere.Radius;
 
-                // Khoảng cách từ tâm mặt cầu đến mặt phẳng cắt
+                // Distance from sphere center to cutting plane
                 double nLen = Math.Sqrt(plane.A * plane.A + plane.B * plane.B + plane.C * plane.C);
                 double d = Math.Abs(plane.A * sphereCenter.X + plane.B * sphereCenter.Y + plane.C * sphereCenter.Z + plane.D) / nLen;
 
@@ -1632,10 +1632,10 @@ public class GeometryCompiler : IGeometryCompiler
                     continue;
                 }
 
-                // Bán kính đường tròn thiết diện
+                // Radius of cross-section circle
                 double r = Math.Sqrt(R * R - d * d);
 
-                // Tâm đường tròn thiết diện H = hình chiếu của I lên (P)
+                // Cross-section circle center H = projection of sphere center onto (P)
                 double nx = plane.A / nLen, ny = plane.B / nLen, nz = plane.C / nLen;
                 double signedDist = (plane.A * sphereCenter.X + plane.B * sphereCenter.Y + plane.C * sphereCenter.Z + plane.D) / nLen;
                 double hx = sphereCenter.X - signedDist * nx;
@@ -1657,7 +1657,7 @@ public class GeometryCompiler : IGeometryCompiler
                 continue;
             }
 
-            // === GIẢI TÍCH ĐA DIỆN: Dò giao cạnh thẳng (logic cũ) ===
+            // === POLYHEDRON ANALYSIS: probe edge intersections (legacy logic) ===
             var solidEdges = GetSolidEdges(solidStr, context);
             if (solidEdges.Count == 0)
             {
@@ -1743,7 +1743,7 @@ public class GeometryCompiler : IGeometryCompiler
                 };
                 context.CrossSectionPoints = orderedPoints;
 
-                // Đồng bộ thiết diện với định dạng chuẩn của sections
+                // Sync cross-section with standard sections format
                 context.Sections.Add(new Application.DTOs.SectionDataDto
                 {
                     Id = $"SEC_{System.Guid.NewGuid().ToString().Substring(0,4)}",
@@ -1762,7 +1762,7 @@ public class GeometryCompiler : IGeometryCompiler
     }
 
     /// <summary>
-    /// Lấy tất cả cạnh của khối đa diện.
+    /// Get all edges of a polyhedron.
     /// </summary>
     private List<(string, string)> GetSolidEdges(string solidStr, CompilationContext context)
     {
@@ -1824,7 +1824,7 @@ public class GeometryCompiler : IGeometryCompiler
     }
 
     /// <summary>
-    /// Sắp xếp các điểm thiết diện theo thứ tự vòng quanh trọng tâm.
+    /// Order cross-section points around the centroid.
     /// </summary>
     private List<string> OrderCrossSectionPoints(List<string> pointNames, CompilationContext context, Domains.MathCore.Plane3D plane)
     {
@@ -1863,8 +1863,8 @@ public class GeometryCompiler : IGeometryCompiler
     }
 
     /// <summary>
-    /// Tính Side (Above/Below/OnPlane) cho mỗi điểm so với mặt phẳng cắt.
-    /// Sử dụng phương trình mặt phẳng Ax + By + Cz + D để phân loại.
+    /// Compute Side (Above/Below/OnPlane) for each point relative to the cutting plane.
+    /// Use plane equation Ax + By + Cz + D for classification.
     /// </summary>
     private void ComputePointSides(CompilationContext context)
     {
@@ -1899,7 +1899,7 @@ public class GeometryCompiler : IGeometryCompiler
         foreach (var face in context.GeneratedPlanes)
         {
             var facePoints = face.Points.Select(p => p.ToUpper()).ToList();
-            // Nếu tất cả các điểm của mặt phẳng này nằm trong cùng một mặt diện tích đã dựng của khối
+            // If all points of this plane lie on the same built face of the solid
             if (vertices.All(v => facePoints.Contains(v)))
             {
                 return true;
@@ -1928,7 +1928,7 @@ public class GeometryCompiler : IGeometryCompiler
     private List<string> ParseVertices(string input)
     {
         if (string.IsNullOrEmpty(input)) return new List<string>();
-        // Bắt chính xác tên đỉnh (A, B, C, A', A1, A'1)
+        // Match vertex names exactly (A, B, C, A', A1, A'1)
         var matches = System.Text.RegularExpressions.Regex.Matches(input, @"[A-Z][0-9]*'*");
         return matches.Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
     }

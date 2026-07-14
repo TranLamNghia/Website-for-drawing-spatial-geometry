@@ -5,9 +5,9 @@ namespace Application.Compilers.FactHandlers;
 
 public interface IFactHandler
 {
-    // Xác định xem class này chuyên xử lý loại Fact nào
+    // Identifies which Fact type this handler processes
     FactType TargetFactType { get; }
 
-    // Hàm thực thi logic
+    // Executes the handler logic
     void Handle(FactDto fact, CompilationContext context);
 }

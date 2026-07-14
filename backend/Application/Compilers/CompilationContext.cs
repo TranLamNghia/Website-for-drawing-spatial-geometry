@@ -19,12 +19,12 @@ public class CompilationContext
     public List<SectionDataDto> Sections { get; set; } = new();
     public List<FactDto> SourceFacts { get; set; } = new();
 
-    // Cross-section (Lát cắt)
+    // Cross-section
     public ClippingPlaneEquation? ClippingPlane { get; set; }
     public List<string> CrossSectionPoints { get; set; } = new();
     public Dictionary<string, PointSide> PointSides { get; set; } = new();
 
-    /// <summary>Mặt phẳng đặt tên (P, Q, α...) không mô tả bằng 3 đỉnh.</summary>
+    /// <summary>Named planes (P, Q, α...) not described by 3 vertices.</summary>
     public Dictionary<string, Plane3D> NamedPlanes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public Point3D? GetPoint(string name)

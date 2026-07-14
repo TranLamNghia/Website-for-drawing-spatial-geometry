@@ -23,8 +23,8 @@ public readonly struct TrianglePlacement
 }
 
 /// <summary>
-/// Ưu tiên dựng tam giác: thường → vuông → cân → vuông cân → đều.
-/// Chỉ nâng cấp lên dạng đặc biệt hơn khi đề/fact nói rõ hoặc có điều kiện bổ sung.
+/// Triangle build priority: general → right → isosceles → isosceles right → equilateral.
+/// Only upgrade to a more specific type when the problem/facts state it explicitly or extra conditions apply.
 /// </summary>
 public static class TriangleBuildHelper
 {

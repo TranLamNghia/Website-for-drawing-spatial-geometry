@@ -12,6 +12,7 @@ namespace Domains.Entities
         [BsonElement("username")]
         public string? Username { get; set; }
 
+        /// <summary>BCrypt password hash; null for Google-only accounts.</summary>
         [BsonElement("password")]
         public string? Password { get; set; }
 
@@ -21,10 +22,14 @@ namespace Domains.Entities
         [BsonElement("email")]
         public string Email { get; set; } = string.Empty;
 
+        [BsonElement("email_verified")]
+        public bool EmailVerified { get; set; }
+
         [BsonElement("avatar")]
         public string? Avatar { get; set; }
 
         [BsonElement("google_id")]
+        [BsonIgnoreIfNull]
         public string? GoogleId { get; set; }
 
         [BsonElement("role")]

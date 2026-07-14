@@ -24,7 +24,7 @@ public class ShapeValidator : IFactValidator
             .Select(m => m.Value)
             .ToList();
         
-        // Loại bỏ dấu chấm nếu có trong tên đỉnh (đối với lăng trụ xiên)
+        // Strip dots from vertex names when present (for oblique prisms)
         var vertexKeys = targetVertices.SelectMany(v => v.Split('.')).Where(v => !string.IsNullOrEmpty(v)).ToList();
 
         var points = new List<Domains.MathCore.Point3D>();
@@ -38,14 +38,14 @@ public class ShapeValidator : IFactValidator
 
         var normalizedShape = NormalizeShape(data.Shape);
 
-        // Kiểm tra Tam giác cân
+        // Check isosceles triangle
         if (normalizedShape == ShapeType.Isosceles_triangle && vertexKeys.Count == 3)
         {
             double d1 = points[0].DistanceToPoint(points[1]);
             double d2 = points[1].DistanceToPoint(points[2]);
             double d3 = points[2].DistanceToPoint(points[0]);
 
-            // Tam giác cân chỉ cần 2 cạnh bằng nhau, nên ta tìm độ lệch nhỏ nhất giữa các cặp cạnh
+            // An isosceles triangle needs only 2 equal sides, so find the smallest deviation among side pairs
             double minDiff = Math.Min(Math.Min(Math.Abs(d1 - d2), Math.Abs(d2 - d3)), Math.Abs(d3 - d1));
             
             if (minDiff < 1e-3)
@@ -54,7 +54,7 @@ public class ShapeValidator : IFactValidator
                 return ValidationResult.Fail(fact.Id, "Shape.Isosceles", 0, minDiff);
         }
 
-        // Kiểm tra Tam giác đều
+        // Check equilateral triangle
         if (normalizedShape == ShapeType.Equilateral_triangle && vertexKeys.Count == 3)
         {
             double d1 = points[0].DistanceToPoint(points[1]);
@@ -69,7 +69,7 @@ public class ShapeValidator : IFactValidator
                 return ValidationResult.Fail(fact.Id, "Shape.Equilateral", 0, maxDiff);
         }
         
-        // Kiểm tra Tam giác vuông (kiểm tra định lý Pytago hoặc Tích vô hướng)
+        // Check right triangle (Pythagorean theorem or dot product)
         if (normalizedShape == ShapeType.Right_triangle && vertexKeys.Count == 3)
         {
             double diff = RightAngleDeviation(points);
@@ -140,7 +140,7 @@ public class ShapeValidator : IFactValidator
             return ValidationResult.Pass(fact.Id, $"Shape.{normalizedShape}", 0, 0);
         }
 
-        // Tạm thời Skip các hình dạng khác chưa định nghĩa logic đo đạc
+        // Temporarily skip other shapes without detailed measurement logic
         return ValidationResult.Skip(fact.Id, fact.Type.ToString(), $"Chưa cài logic chi tiết để check đo đạc cho {data.Shape}");
     }
 

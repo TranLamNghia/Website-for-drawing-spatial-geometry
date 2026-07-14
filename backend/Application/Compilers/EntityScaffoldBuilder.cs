@@ -10,7 +10,7 @@ using Domains.MathCore;
 namespace Application.Compilers;
 
 /// <summary>
-/// Dựng tọa độ tối thiểu từ entities khi chưa có fact shape (đoạn thẳng, giao điểm, mặt phẳng...).
+/// Build minimal coordinates from entities when no shape fact exists (segments, intersections, planes...).
 /// </summary>
 public static class EntityScaffoldBuilder
 {
@@ -31,11 +31,11 @@ public static class EntityScaffoldBuilder
 
         if (HasSolidOrPyramid(problem)) return;
 
-        // Đã dựng tam giác từ fact shape — không scaffold AB/BC chồng lên tọa độ đáy.
+        // Triangle already built from shape fact — do not scaffold AB/BC on top of base coordinates.
         if (HasTriangleShapeFact(problem)) return;
 
-        // Đa giác khép kín (vd tứ giác ABCD + cạnh AB,BC,CD,DA) phải ưu tiên trước
-        // hai đoạn liên tiếp bị hiểu nhầm thành hai đường cắt nhau.
+        // Closed polygons (e.g. quadrilateral ABCD with edges AB, BC, CD, DA) take priority over
+        // two consecutive segments being mistaken for two intersecting lines.
         if (TryBuildPolygonFromDeclaredPoints(problem, context, declared)) return;
         if (TryBuildIntersectingLines(problem, context)) return;
         if (TryBuildTwoPlanes(problem, context)) return;
@@ -178,8 +178,8 @@ public static class EntityScaffoldBuilder
         });
         if (!hasParallelFact) return false;
 
-        // Đường tham chiếu phải là đường có nhiều đầu mút đã biết tọa độ nhất
-        // (vd AB cho sẵn A,B) để suy hướng song song chuẩn, không phụ thuộc thứ tự segment.
+        // Reference line must be the one with the most endpoints already having coordinates
+        // (e.g. AB with A,B given) to infer the correct parallel direction, independent of segment order.
         int known1 = (context.Points.ContainsKey(line1[0]) ? 1 : 0) + (context.Points.ContainsKey(line1[1]) ? 1 : 0);
         int known2 = (context.Points.ContainsKey(line2[0]) ? 1 : 0) + (context.Points.ContainsKey(line2[1]) ? 1 : 0);
         if (known2 > known1)
@@ -247,7 +247,7 @@ public static class EntityScaffoldBuilder
         context.Points[c] = new Point3D(0, edge, 0);
         context.Points[d] = new Point3D(0, 0, edge);
 
-        // Chỉ cạnh biên của từng mặt phẳng — không nối CD (không thuộc mp ABC/ABD)
+        // Only boundary edges of each plane — do not connect CD (not part of planes ABC/ABD)
         AddUniqueSegment(context, a, b);
         AddUniqueSegment(context, b, c);
         AddUniqueSegment(context, c, a);
@@ -281,8 +281,8 @@ public static class EntityScaffoldBuilder
         if (problem.Entities.Solids.Any(s => !string.IsNullOrWhiteSpace(s)))
             return false;
 
-        // Chỉ tránh scaffold đa giác khi fact ratio/midpoint/belongs_to cần một đoạn làm trục
-        // (vd M trên AB). Đừng chặn tứ giác ABCD chỉ vì có entities.segments.
+        // Only skip polygon scaffold when ratio/midpoint/belongs_to facts need a segment as axis
+        // (e.g. M on AB). Do not block quadrilateral ABCD solely because entities.segments exists.
         bool needsHostSegment = problem.Facts.Any(f => f.Type is FactType.Ratio or FactType.Midpoint or FactType.belongs_to);
         if (needsHostSegment && ResolveHostSegment(problem, declared) != null)
             return false;

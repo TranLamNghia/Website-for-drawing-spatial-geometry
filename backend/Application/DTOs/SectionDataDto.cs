@@ -20,7 +20,7 @@ public class SectionDataDto
     [JsonPropertyName("generatedPoints")]
     public Dictionary<string, GeneratedPointDto>? GeneratedPoints { get; set; }
 
-    // Thiết diện tròn (cho mặt cầu, mặt nón, mặt trụ)
+    // Circular cross-section (for sphere, cone, cylinder)
     [JsonPropertyName("isCircle")]
     public bool IsCircle { get; set; } = false;
 

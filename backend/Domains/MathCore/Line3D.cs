@@ -26,7 +26,7 @@ public class Line3D
         Direction = dir;
     }
 
-    // Tính khoảng cách từ đường thẳng đến điểm
+    // Distance from the line to a point
     public double DistanceToPoint(Point3D point)
     {
         var v = new Vector3D(Point, point);
@@ -34,7 +34,7 @@ public class Line3D
         return cross.Magnitude() / Direction.Magnitude();
     }
  
-    // Tìm hình chiếu của 1 điểm lên đường thẳng (Fact: projection)
+    // Projection of a point onto the line
     public Point3D GetProjection(Point3D point)
     {
         var ap = new Vector3D(Point, point);
@@ -47,15 +47,15 @@ public class Line3D
         );
     }
 
-    // Tính khoảng cách từ đường thẳng đến đường thẳng
+    // Distance between two lines
     public double DistanceToLine(Line3D other)
     {        
         var cross = Direction.CrossProduct(other.Direction);
         
-        // Nếu tích có hướng = 0 => 2 đường thẳng song song (hoặc trùng nhau)
+        // Cross product ≈ 0: lines are parallel (or coincident)
         if (cross.Magnitude() < 1e-9)
         {
-            // Trở về bài toán đo khoảng cách từ điểm gốc của đường kia tới đường này
+            // Reduce to point-to-line distance from the other line's anchor point
             return DistanceToPoint(other.Point); 
         }
                 
@@ -63,7 +63,7 @@ public class Line3D
         return Math.Abs(v.DotProduct(cross)) / cross.Magnitude();
     }
 
-    // Tính giao điểm của đường thẳng và mặt phẳng
+    // Intersection of two lines
     public Point3D? IntersectWith(Line3D other, bool isSegment = false)
     {
         var p1 = this.Point;
@@ -71,10 +71,10 @@ public class Line3D
         var d1 = this.Direction;
         var d2 = other.Direction;
 
-        // Vector nối 2 điểm gốc
+        // Vector between the two anchor points
         var w = new Vector3D(p2, p1); 
 
-        // Các hệ số giải hệ phương trình (Tham số t1, t2)
+        // Coefficients for solving the system (parameters t1, t2)
         double a = d1.DotProduct(d1);
         double b = d1.DotProduct(d2);
         double c = d2.DotProduct(d2);
@@ -83,42 +83,42 @@ public class Line3D
 
         double denominator = a * c - b * b;
 
-        // Nếu mẫu số = 0 => 2 đường thẳng song song
+        // Denominator ≈ 0: lines are parallel
         if (Math.Abs(denominator) < 1e-9)
             return null; 
 
         double t1 = (b * e - c * d) / denominator;
         double t2 = (a * e - b * d) / denominator;
 
-        // Tính tọa độ rơi trên đường thẳng 1
+        // Intersection point on line 1
         var p1_intersect = new Point3D(
             p1.X + d1.X * t1,
             p1.Y + d1.Y * t1,
             p1.Z + d1.Z * t1
         );
 
-        // Tính tọa độ rơi trên đường thẳng 2
+        // Intersection point on line 2
         var p2_intersect = new Point3D(
             p2.X + d2.X * t2,
             p2.Y + d2.Y * t2,
             p2.Z + d2.Z * t2
         );
 
-        // Trong 3D, phải check xem 2 điểm có thực sự chạm nhau không (sai số e-6)
+        // In 3D, verify both points coincide (tolerance 1e-6)
         if (p1_intersect.DistanceToPoint(p2_intersect) > 1e-6)
-            return null; // Chéo nhau lướt qua chứ không cắt
+            return null; // Skew lines — closest points do not coincide
 
-        // Nếu là đoạn thẳng (Segment), t1 và t2 phải nằm trong [0, 1]
+        // For segments, t1 and t2 must lie in [0, 1]
         if (isSegment)
         {
             if (t1 < -1e-6 || t1 > 1 + 1e-6 || t2 < -1e-6 || t2 > 1 + 1e-6)
-                return null; // Cắt ở phần kéo dài, không nằm trên đoạn
+                return null; // Intersection lies on extensions, not on the segments
         }
 
         return p1_intersect;
     }
 
-    // Góc giữa 2 đường thẳng (Luôn <= 90 độ)
+    // Angle between two lines (always ≤ 90°)
     public double AngleWith(Line3D other)
     {
         double dot = Math.Abs(this.Direction.DotProduct(other.Direction));
@@ -127,7 +127,7 @@ public class Line3D
         return Math.Acos(dot / mags) * (180.0 / Math.PI);
     }
 
-    // Hiện phương trình đường thẳng
+    // String representation of the parametric line
     public override string ToString()
     {
         string FormatParam(double p, double d)

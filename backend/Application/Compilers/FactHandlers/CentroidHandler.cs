@@ -17,7 +17,7 @@ public class CentroidHandler : IFactHandler
         if (data == null || string.IsNullOrEmpty(data.Point) || data.Objects == null || data.Objects.Count == 0) return;
 
         string g = data.Point;
-        string polygon = data.Objects[0]; // Thường là "ABC", "ABCD"
+        string polygon = data.Objects[0]; // Usually "ABC", "ABCD"
 
         if (!context.Points.ContainsKey(g))
         {
@@ -27,7 +27,7 @@ public class CentroidHandler : IFactHandler
             {
                 var centroid = Point3D.GetCentroid(points.ToArray());
                 
-                // Kiểm tra xem tại tọa độ này đã có điểm nào tồn tại chưa
+                // Check whether any existing point already occupies this coordinate
                 string existingPoint = context.Points.FirstOrDefault(kvp => kvp.Value.DistanceToPoint(centroid) < 1e-4).Key;
 
                 if (!string.IsNullOrEmpty(existingPoint))

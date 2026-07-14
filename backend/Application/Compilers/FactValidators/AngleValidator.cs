@@ -7,8 +7,8 @@ using Domains.MathCore;
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Kiểm định Ràng buộc: Góc (đường-đường, đường-mp, mp-mp)
-/// VD: "Góc giữa SA và (ABCD) bằng 60 độ"
+/// Validates constraint: angle (line-line, line-plane, plane-plane).
+/// e.g. "Angle between SA and (ABCD) equals 60 degrees"
 /// </summary>
 public class AngleValidator : IFactValidator
 {
@@ -85,7 +85,7 @@ public class AngleValidator : IFactValidator
         if (expectedAngle < 0)
             return ValidationResult.Skip(fact.Id, "Angle", $"Không parse được value '{data.Value}'");
 
-        double tolerance = 0.5; // Sai số 0.5 độ
+        double tolerance = 0.5; // 0.5-degree tolerance
         if (Math.Abs(expectedAngle - actualAngle) <= tolerance)
         {
             return ValidationResult.Pass(fact.Id, "Angle", expectedAngle, actualAngle);

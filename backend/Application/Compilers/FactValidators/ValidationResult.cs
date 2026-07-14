@@ -1,7 +1,7 @@
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Kết quả kiểm định của từng Fact riêng lẻ
+/// Validation result for a single Fact.
 /// </summary>
 public class ValidationResult
 {
@@ -10,7 +10,7 @@ public class ValidationResult
     public bool IsValid { get; set; }
     public double ExpectedValue { get; set; }
     public double ActualValue { get; set; }
-    public double Deviation { get; set; } // Độ lệch tuyệt đối
+    public double Deviation { get; set; } // Absolute deviation
     public string Message { get; set; } = string.Empty;
 
     public static ValidationResult Pass(string factId, string factType, double expected, double actual)
@@ -47,14 +47,14 @@ public class ValidationResult
         {
             FactId = factId,
             FactType = factType,
-            IsValid = true, // Skip coi như pass (không đủ dữ liệu để check)
+            IsValid = true, // Skip is treated as pass (insufficient data to validate)
             Message = $"⏭️ {factType} [{factId}]: Bỏ qua - {reason}"
         };
     }
 }
 
 /// <summary>
-/// Kết quả tổng hợp của toàn bộ quá trình kiểm định
+/// Aggregated result of the full validation process.
 /// </summary>
 public class FullValidationReport
 {

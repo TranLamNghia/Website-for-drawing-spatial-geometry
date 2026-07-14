@@ -92,7 +92,7 @@ public class EqualityHandler : IFactHandler
     }
 
     /// <summary>
-    /// Tìm t in [0,1] sao cho |fixedA - (segStart + t*(segEnd-segStart))| = |fixedB - (...)|.
+    /// Find t in [0,1] such that |fixedA - (segStart + t*(segEnd-segStart))| = |fixedB - (...)|.
     /// </summary>
     private static bool TrySolveEqualDistanceOnSegment(
         Point3D fixedA,

@@ -7,8 +7,8 @@ using Application.DTOs.Facts;
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Kiểm định Ràng buộc: Độ dài đoạn thẳng
-/// VD: Fact "AB = 2a" → Kiểm tra khoảng cách thực tế giữa A và B
+/// Validates constraint: segment length.
+/// e.g. Fact "AB = 2a" → Check actual distance between A and B
 /// </summary>
 public class LengthValidator : IFactValidator
 {
@@ -35,7 +35,7 @@ public class LengthValidator : IFactValidator
         double expectedLength = EvaluateExpression(data.Value, unitLength);
         double actualLength = p1.DistanceToPoint(p2);
 
-        double tolerance = expectedLength * 0.01; // Sai số 1%
+        double tolerance = expectedLength * 0.01; // 1% tolerance
         if (Math.Abs(expectedLength - actualLength) <= Math.Max(tolerance, 0.05))
             return ValidationResult.Pass(fact.Id, "Length", expectedLength, actualLength);
 

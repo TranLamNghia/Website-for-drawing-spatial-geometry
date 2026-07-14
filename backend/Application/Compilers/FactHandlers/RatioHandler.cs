@@ -16,16 +16,16 @@ public class RatioHandler : IFactHandler
         var data = fact.GetDataAs<RatioData>();
         if (data == null || string.IsNullOrEmpty(data.Segment1) || string.IsNullOrEmpty(data.Segment2)) return;
 
-        // Phân tích VD: "AM / AB = 0.5" => S1="AM", S2="AB", Value="0.5" 
-        // Ta cần tìm điểm CHƯA có trong context
+        // Parse e.g. "AM / AB = 0.5" => S1="AM", S2="AB", Value="0.5" 
+        // Find the point that is NOT yet in context
         string s1 = data.Segment1;
         string s2 = data.Segment2;
 
-        // Trường hợp 1: AX = k * AB (X là điểm mới)
+        // Case 1: AX = k * AB (X is a new point)
         var v1 = System.Text.RegularExpressions.Regex.Matches(s1, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
         var v2 = System.Text.RegularExpressions.Regex.Matches(s2, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
 
-        // Trường hợp 1: AX = k * AB (X là điểm mới)
+        // Case 1: AX = k * AB (X is a new point)
         if (v1.Count >= 2 && v2.Count >= 2 && v1[0] == v2[0]) 
         {
             string start = v1[0];
@@ -40,7 +40,7 @@ public class RatioHandler : IFactHandler
                 Console.WriteLine($"[HANDLER] Đã dựng điểm {target} theo tỉ lệ {k} trên {start}{end}");
             }
         }
-        // Trường hợp 2: AP / PB = k (P chia AB)
+        // Case 2: AP / PB = k (P divides AB)
         else if (v1.Count == 2 && v2.Count == 2 && v1[1] == v2[0] && TryParseRatioValue(data.Value, out double apOverPb))
         {
             string start = v1[0];

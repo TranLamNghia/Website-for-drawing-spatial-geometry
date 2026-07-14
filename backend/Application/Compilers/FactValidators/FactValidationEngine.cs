@@ -7,8 +7,8 @@ using Application.DTOs.Enums;
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Bộ điều phối chính: Quét toàn bộ Facts và gọi từng Validator tương ứng.
-/// Trả về FullValidationReport cho GeometryCompiler quyết định có cần gọi SymPy hay không.
+/// Main coordinator: scans all Facts and invokes the matching validator.
+/// Returns FullValidationReport so GeometryCompiler can decide whether to call SymPy.
 /// </summary>
 public class FactValidationEngine
 {
@@ -20,13 +20,13 @@ public class FactValidationEngine
     }
 
     /// <summary>
-    /// Chạy toàn bộ kiểm định ngược trên tọa độ đã dựng
+    /// Runs full reverse validation on the built coordinates.
     /// </summary>
     public FullValidationReport Validate(GeometryProblemDto problem, CompilationContext context)
     {
         var report = new FullValidationReport();
 
-        // Chỉ check các Fact có Validator tương ứng (bỏ qua Shape, Parallel, Perpendicular...)
+        // Only validate Facts that have a matching validator (skip Shape, Parallel, Perpendicular...)
         foreach (var fact in problem.Facts)
         {
             var validator = _validators.FirstOrDefault(v => v.TargetFactType == fact.Type);

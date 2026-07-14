@@ -85,10 +85,10 @@ public class ShapeHandler : IFactHandler
                 if (double.TryParse(data.Radius, out double val)) r = val;
             }
 
-            // Đường tròn đáy
+            // Base circle
             context.Circles.Add(new CircleData { Center = centerName, Radius = r, Normal = new double[] { 0, 0, 1 } });
 
-            // Hình nón
+            // Cone
             context.Cones.Add(new ConeData { Center = centerName, Apex = apexName, Radius = r });
             Console.WriteLine($"[HANDLER] Đã thêm hình nón tâm đáy {centerName}, đỉnh {apexName}, bán kính {r}");
         }
@@ -96,7 +96,7 @@ public class ShapeHandler : IFactHandler
         else if (data.Shape == ShapeType.Cylinder || data.Shape == ShapeType.Regular_cylinder)
         {
             string centerBottomName = string.IsNullOrEmpty(data.Center) ? "O" : data.Center;
-            // Tâm đáy trên thường là O' hoặc tên theo convention
+            // Top base center is usually O' or a name following convention
             string centerTopName = centerBottomName + "'";
 
             if (context.GetPoint(centerBottomName) == null)
@@ -111,11 +111,11 @@ public class ShapeHandler : IFactHandler
                 if (double.TryParse(data.Radius, out double val)) r = val;
             }
 
-            // Hai đường tròn đáy
+            // Two base circles
             context.Circles.Add(new CircleData { Center = centerBottomName, Radius = r, Normal = new double[] { 0, 0, 1 } });
             context.Circles.Add(new CircleData { Center = centerTopName, Radius = r, Normal = new double[] { 0, 0, 1 } });
 
-            // Hình trụ
+            // Cylinder
             context.Cylinders.Add(new CylinderData { CenterBottom = centerBottomName, CenterTop = centerTopName, Radius = r });
             Console.WriteLine($"[HANDLER] Đã thêm hình trụ đáy dưới {centerBottomName}, đáy trên {centerTopName}, bán kính {r}");
         }

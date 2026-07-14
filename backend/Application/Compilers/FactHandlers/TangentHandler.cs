@@ -103,7 +103,7 @@ public class TangentHandler : IFactHandler
                 return sphere;
         }
 
-        // Một mặt cầu duy nhất + một tham chiếu mặt phẳng (P ~ S hoặc P ~ O)
+        // A single sphere plus one plane reference (P ~ S or P ~ O)
         if (context.Spheres.Count == 1 &&
             (IsPlaneLikeLabel(context, obj1) || IsPlaneLikeLabel(context, obj2)))
         {

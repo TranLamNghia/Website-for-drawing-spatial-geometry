@@ -5,17 +5,17 @@ namespace Application.Compilers.Helpers;
 public static class TopologyHelper
 {
     /// <summary>
-    /// Tìm đoạn thẳng giao tuyến của 2 mặt phẳng dựa trên chữ cái chung.
+    /// Finds the intersection line of two planes based on shared vertex letters.
     /// </summary>
     public static string? GetCommonLine(string plane1, string plane2)
     {
         plane1 = plane1.Replace("(", "").Replace(")", "");
         plane2 = plane2.Replace("(", "").Replace(")", "");
 
-        // Tìm các ký tự xuất hiện ở cả 2 mặt phẳng
+        // Find characters that appear in both planes
         var commonChars = plane1.Intersect(plane2).ToArray();
 
-        // Giao tuyến của 2 mặt phẳng cần ít nhất 2 điểm (2 chữ cái) chung
+        // The intersection of two planes needs at least 2 shared vertices (2 letters)
         if (commonChars.Length >= 2)
         {
             return new string(commonChars.Take(2).ToArray());
@@ -25,14 +25,14 @@ public static class TopologyHelper
     }
     
     /// <summary>
-    /// Nhận diện Đỉnh của chóp khi biết tên mặt phẳng bên và mặt đáy.
+    /// Identifies the pyramid apex from the lateral face and base plane names.
     /// </summary>
     public static string? GetApex(string sidePlane, string basePlane)
     {
         sidePlane = sidePlane.Replace("(", "").Replace(")", "");
         basePlane = basePlane.Replace("(", "").Replace(")", "");
 
-        // Ký tự nào thuộc mặt bên mà KHÔNG thuộc mặt đáy thì chính là Đỉnh chóp
+        // The letter in the lateral face but not in the base is the pyramid apex
         var apexChars = sidePlane.Except(basePlane).ToArray();
         
         if (apexChars.Length == 1)

@@ -9,8 +9,8 @@ using Domains.MathCore;
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Kiểm định Thực thể: Tâm (Ngoại tiếp tam giác hoặc Giao điểm đường chéo tứ giác)
-/// VD: Fact "O là tâm hình thoi ABCD" -> Check O == Midpoint(A, C)
+/// Validates entity: center (triangle circumcenter or quadrilateral diagonal intersection).
+/// e.g. Fact "O is the center of rhombus ABCD" -> Check O == Midpoint(A, C)
 /// </summary>
 public class CircumcenterValidator : IFactValidator
 {
@@ -38,7 +38,7 @@ public class CircumcenterValidator : IFactValidator
             return ValidationResult.Skip(fact.Id, "Circumcenter", "Lỗi tính tâm ngoại tiếp");
 
         double distance = actualPoint.DistanceToPoint(expectedCenter);
-        double tolerance = 0.05; // Ngưỡng sai số 0.05 đơn vị
+        double tolerance = 0.05; // Tolerance threshold of 0.05 units
 
         if (distance <= tolerance)
             return ValidationResult.Pass(fact.Id, "Circumcenter", 0, distance);

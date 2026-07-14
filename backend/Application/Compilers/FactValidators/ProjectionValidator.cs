@@ -7,10 +7,10 @@ using Domains.MathCore;
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Kiểm định Thực thể: Hình chiếu vuông góc
-/// VD: Fact "H là hình chiếu của S lên (ABCD)" → Check:
-///   1. H có nằm trên mặt phẳng ABCD không?
-///   2. SH có vuông góc với (ABCD) không?
+/// Validates entity: orthogonal projection.
+/// e.g. Fact "H is the projection of S onto (ABCD)" → Check:
+///   1. Does H lie on plane ABCD?
+///   2. Is SH perpendicular to (ABCD)?
 /// </summary>
 public class ProjectionValidator : IFactValidator
 {
@@ -34,7 +34,7 @@ public class ProjectionValidator : IFactValidator
 
         var ontoVertices = System.Text.RegularExpressions.Regex.Matches(ontoName, @"[A-Z][0-9]*'*").Cast<System.Text.RegularExpressions.Match>().Select(m => m.Value).ToList();
 
-        // Chiếu lên mặt phẳng
+        // Project onto plane
         if (ontoVertices.Count >= 3)
         {
             var plane = context.GetPlane(ontoName);
@@ -49,7 +49,7 @@ public class ProjectionValidator : IFactValidator
 
             return ValidationResult.Fail(fact.Id, "Projection", 0, distance);
         }
-        // Chiếu lên đường thẳng
+        // Project onto line
         else if (ontoVertices.Count == 2)
         {
             var line = context.GetLine(ontoName);

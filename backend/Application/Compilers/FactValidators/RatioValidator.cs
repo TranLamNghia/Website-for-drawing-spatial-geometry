@@ -9,8 +9,8 @@ using Domains.MathCore;
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Kiểm định tỉ lệ chia đoạn.
-/// Dùng cho các fact kiểu "AM / AB = 0.5" hoặc biến thể tương đương.
+/// Validates segment division ratios.
+/// Used for facts like "AM / AB = 0.5" or equivalent variants.
 /// </summary>
 public class RatioValidator : IFactValidator
 {

@@ -21,12 +21,12 @@ public class IntersectionHandler : IFactHandler
         string obj1 = data.Objects[0];
         string obj2 = data.Objects[1];
 
-        // Phân loại đối tượng dựa trên số ký tự đỉnh
+        // Classify objects by vertex count
         var obj1Vertices = ParseVertices(obj1);
         var obj2Vertices = ParseVertices(obj2);
 
-        // ===== CASE: Plane - Solid (Lát cắt) =====
-        // Nếu một trong hai đối tượng là mặt phẳng (>=3 đỉnh) và đối tượng kia là khối đặc (chứa '.' hoặc >= 4 đỉnh)
+        // ===== CASE: Plane - Solid (cross-section) =====
+        // If one object is a plane (>=3 vertices) and the other is a solid (contains '.' or >= 4 vertices)
         bool obj1IsPlane = obj1Vertices.Count >= 3 && !obj1.Contains(".");
         bool obj2IsPlane = obj2Vertices.Count >= 3 && !obj2.Contains(".");
         bool obj1IsSolid = obj1.Contains(".") || obj1Vertices.Count >= 4;
@@ -46,7 +46,7 @@ public class IntersectionHandler : IFactHandler
             return;
         }
 
-        // ===== Các case thông thường (Line-Line, Line-Plane) =====
+        // ===== Common cases (Line-Line, Line-Plane) =====
         if (string.IsNullOrEmpty(target)) return;
         if (context.Points.ContainsKey(target)) return;
 
@@ -82,15 +82,15 @@ public class IntersectionHandler : IFactHandler
     }
 
     /// <summary>
-    /// Xử lý giao giữa một mặt phẳng cắt và một khối đa diện.
-    /// Tìm giao điểm của mặt phẳng với TẤT CẢ các cạnh của khối.
+    /// Handles intersection between a cutting plane and a polyhedron.
+    /// Finds intersection points of the plane with ALL edges of the solid.
     /// </summary>
     private void HandlePlaneSolidIntersection(string planeStr, string solidStr, string resultTarget, CompilationContext context)
     {
         var plane = context.GetPlane(planeStr);
         if (plane == null) return;
 
-        // Lấy tất cả cạnh của khối đa diện
+        // Get all edges of the polyhedron
         List<(string, string)> solidEdges = GetSolidEdges(solidStr, context);
         if (solidEdges.Count == 0) return;
 
@@ -105,28 +105,28 @@ public class IntersectionHandler : IFactHandler
             var p2 = context.GetPoint(v2);
             if (p1 == null || p2 == null) continue;
 
-            // Kiểm tra xem cạnh có cắt mặt phẳng không
+            // Check whether the edge intersects the plane
             double side1 = plane.A * p1.X + plane.B * p1.Y + plane.C * p1.Z + plane.D;
             double side2 = plane.A * p2.X + plane.B * p2.Y + plane.C * p2.Z + plane.D;
 
-            // Nếu 2 điểm nằm khác phía (side1 * side2 < 0), cạnh cắt mặt phẳng
+            // If the two endpoints lie on opposite sides (side1 * side2 < 0), the edge crosses the plane
             if (side1 * side2 < -1e-9)
             {
                 var line = new Line3D(p1, p2);
                 var intersection = plane.IntersectWith(line);
                 if (intersection != null)
                 {
-                    // Kiểm tra giao điểm có nằm trong đoạn thẳng không (0 <= t <= 1)
+                    // Check whether the intersection lies on the segment (0 <= t <= 1)
                     double segLen = p1.DistanceToPoint(p2);
                     double d1 = p1.DistanceToPoint(intersection);
                     double d2 = p2.DistanceToPoint(intersection);
 
                     if (d1 <= segLen + 1e-6 && d2 <= segLen + 1e-6)
                     {
-                        // Tìm tên điểm giao: Dùng tên mặc định hoặc auto-generate
+                        // Choose intersection name: use default name or auto-generate
                         string ptName = $"X{autoIndex++}";
                         
-                        // Nếu giao điểm trùng với đỉnh đã có
+                        // If the intersection coincides with an existing vertex
                         bool merged = false;
                         foreach (var kvp in context.Points)
                         {
@@ -147,7 +147,7 @@ public class IntersectionHandler : IFactHandler
                     }
                 }
             }
-            // Nếu đỉnh nằm trên mặt phẳng (side ≈ 0)
+            // If a vertex lies on the plane (side ≈ 0)
             else
             {
                 if (Math.Abs(side1) < 1e-6 && !crossSectionPoints.Contains(v1))
@@ -159,16 +159,16 @@ public class IntersectionHandler : IFactHandler
 
         if (crossSectionPoints.Count >= 3)
         {
-            // Sắp xếp các điểm thiết diện theo thứ tự vòng (convex hull trên mặt phẳng)
+            // Order cross-section points in cyclic order (convex hull on the plane)
             var orderedPoints = OrderCrossSectionPoints(crossSectionPoints, context, plane);
 
-            // Đăng ký cạnh thiết diện
+            // Register cross-section edges
             for (int i = 0; i < orderedPoints.Count; i++)
             {
                 context.AddGeneratedSegment(orderedPoints[i], orderedPoints[(i + 1) % orderedPoints.Count]);
             }
 
-            // Đăng ký mặt phẳng thiết diện (để vẽ tô màu)
+            // Register cross-section plane (for filled rendering)
             context.GeneratedPlanes.Add(new PlaneData
             {
                 Points = orderedPoints.ToArray(),
@@ -176,7 +176,7 @@ public class IntersectionHandler : IFactHandler
                 Opacity = 0.25
             });
 
-            // Lưu ClippingPlane vào context
+            // Store ClippingPlane in context
             context.ClippingPlane = new ClippingPlaneEquation
             {
                 A = plane.A,
@@ -196,7 +196,7 @@ public class IntersectionHandler : IFactHandler
     }
 
     /// <summary>
-    /// Lấy tất cả cạnh của khối đa diện từ chuỗi target (VD: "S.ABCD", "ABCD", "ABC.A'B'C'")
+    /// Gets all edges of a polyhedron from the target string (e.g. "S.ABCD", "ABCD", "ABC.A'B'C'")
     /// </summary>
     private List<(string, string)> GetSolidEdges(string solidStr, CompilationContext context)
     {
@@ -224,11 +224,11 @@ public class IntersectionHandler : IFactHandler
                 // Prism: ABC.A'B'C'
                 for (int i = 0; i < topVertices.Count; i++)
                 {
-                    // Cạnh đáy dưới
+                    // Bottom base edges
                     AddEdge(edges, result, topVertices[i], topVertices[(i + 1) % topVertices.Count]);
-                    // Cạnh đáy trên
+                    // Top base edges
                     AddEdge(edges, result, bottomVertices[i], bottomVertices[(i + 1) % bottomVertices.Count]);
-                    // Cạnh bên
+                    // Lateral edges
                     AddEdge(edges, result, topVertices[i], bottomVertices[i]);
                 }
             }
@@ -238,14 +238,14 @@ public class IntersectionHandler : IFactHandler
             var vertices = ParseVertices(solidStr);
             if (vertices.Count == 4)
             {
-                // Tetrahedron ABCD: 6 cạnh
+                // Tetrahedron ABCD: 6 edges
                 for (int i = 0; i < 4; i++)
                     for (int j = i + 1; j < 4; j++)
                         AddEdge(edges, result, vertices[i], vertices[j]);
             }
         }
 
-        // Fallback: Dùng segments đã sinh trong context
+        // Fallback: use segments already generated in context
         if (result.Count == 0)
         {
             foreach (var seg in context.GeneratedSegments)
@@ -267,13 +267,9 @@ public class IntersectionHandler : IFactHandler
     }
 
     /// <summary>
-    /// Sắp xếp các điểm thiết diện theo thứ tự vòng quanh trọng tâm trên mặt phẳng cắt.
-    /// </summary>
-
-    /// <summary>
-    /// X? l? giao tuy?n c?a 2 m?t ph?ng.
-    /// N?u 2 m?t ph?ng c? s?n 2 ?i?m chung th? d?ng lu?n c?c ?i?m ??.
-    /// N?u kh?ng, sinh 2 ?i?m ph? tr? tr?n ch?nh giao tuy?n ?? render ???c.
+    /// Handles intersection of two planes.
+    /// If the two planes already share 2 points, reuse those existing points.
+    /// Otherwise, generate 2 auxiliary points on the intersection line for rendering.
     /// </summary>
     private void HandlePlanePlaneIntersection(string plane1Str, string plane2Str, string resultTarget, CompilationContext context)
     {
@@ -338,20 +334,23 @@ public class IntersectionHandler : IFactHandler
         return candidate;
     }
 
+    /// <summary>
+    /// Orders cross-section points cyclically around the centroid on the cutting plane.
+    /// </summary>
     private List<string> OrderCrossSectionPoints(List<string> pointNames, CompilationContext context, Plane3D plane)
     {
         if (pointNames.Count <= 3) return pointNames;
 
-        // Tính trọng tâm
+        // Compute centroid
         var points = pointNames.Select(n => context.Points[n]).ToList();
         var centroid = Point3D.GetCentroid(points.ToArray());
 
-        // Tạo hệ trục cục bộ trên mặt phẳng
+        // Build a local coordinate system on the plane
         var normal = plane.Normal;
         double nLen = normal.Magnitude();
         var nNorm = new Vector3D(normal.X / nLen, normal.Y / nLen, normal.Z / nLen);
 
-        // Tìm vector u vuông góc với normal
+        // Find vector u perpendicular to the normal
         Vector3D u;
         if (Math.Abs(nNorm.X) < 0.9)
             u = new Vector3D(1, 0, 0).CrossProduct(nNorm);
@@ -362,7 +361,7 @@ public class IntersectionHandler : IFactHandler
         u = new Vector3D(u.X / uLen, u.Y / uLen, u.Z / uLen);
         var v = nNorm.CrossProduct(u);
 
-        // Tính góc của mỗi điểm so với trọng tâm
+        // Compute each point's angle relative to the centroid
         var angles = new List<(string name, double angle)>();
         foreach (var name in pointNames)
         {

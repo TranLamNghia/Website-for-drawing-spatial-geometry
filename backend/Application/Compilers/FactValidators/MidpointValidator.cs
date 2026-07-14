@@ -6,8 +6,8 @@ using Application.DTOs.Facts;
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Kiểm định Thực thể: Trung điểm
-/// VD: Fact "M là trung điểm AB" → Check M == (A+B)/2
+/// Validates entity: midpoint.
+/// e.g. Fact "M is the midpoint of AB" → Check M == (A+B)/2
 /// </summary>
 public class MidpointValidator : IFactValidator
 {

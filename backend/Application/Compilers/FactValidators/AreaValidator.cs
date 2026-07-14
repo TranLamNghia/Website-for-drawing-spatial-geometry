@@ -7,8 +7,8 @@ using Domains.MathCore;
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Kiểm định Ràng buộc: Diện tích
-/// VD: Fact "Diện tích SBD = 6" → Tính diện tích tam giác SBD từ tọa độ 3D
+/// Validates constraint: area.
+/// e.g. Fact "Area of SBD = 6" → Compute triangle SBD area from 3D coordinates
 /// </summary>
 public class AreaValidator : IFactValidator
 {
@@ -16,7 +16,7 @@ public class AreaValidator : IFactValidator
 
     public ValidationResult Validate(FactDto fact, CompilationContext context, double unitLength)
     {
-        var data = fact.GetDataAs<LengthData>(); // Area dùng cùng format {target, value}
+        var data = fact.GetDataAs<LengthData>(); // Area uses the same {target, value} format
         if (data == null || string.IsNullOrEmpty(data.Target) || string.IsNullOrEmpty(data.Value))
             return ValidationResult.Skip(fact.Id, "Area", "Thiếu dữ liệu target/value");
 
@@ -26,7 +26,7 @@ public class AreaValidator : IFactValidator
         if (vertices.Count < 3)
             return ValidationResult.Skip(fact.Id, "Area", $"Target '{target}' không đủ 3 đỉnh để tính diện tích");
 
-        // Lấy tọa độ các điểm 
+        // Get point coordinates
         var points = new System.Collections.Generic.List<Point3D>();
         foreach (string v in vertices)
         {
@@ -36,7 +36,7 @@ public class AreaValidator : IFactValidator
             points.Add(p);
         }
 
-        // Tính diện tích thực tế (Chia đa giác thanh tam giác quạt)
+        // Compute actual area (split polygon into fan triangles)
         double actualArea = 0;
         for (int i = 1; i < points.Count - 1; i++)
         {

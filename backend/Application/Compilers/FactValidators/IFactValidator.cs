@@ -6,12 +6,12 @@ namespace Application.Compilers.FactValidators;
 public interface IFactValidator
 {
     /// <summary>
-    /// Xác định loại Fact mà Validator này chuyên check
+    /// Identifies which Fact type this validator checks.
     /// </summary>
     FactType TargetFactType { get; }
 
     /// <summary>
-    /// Kiểm tra ngược lại: Tọa độ đã dựng có thỏa mãn Fact này không?
+    /// Reverse validation: do the built coordinates satisfy this Fact?
     /// </summary>
     ValidationResult Validate(FactDto fact, CompilationContext context, double unitLength);
 }

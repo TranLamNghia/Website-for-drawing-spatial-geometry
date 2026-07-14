@@ -7,8 +7,8 @@ using Domains.MathCore;
 namespace Application.Compilers.FactValidators;
 
 /// <summary>
-/// Kiểm định Ràng buộc: Khoảng cách (điểm-điểm, điểm-đường, điểm-mp, đường-đường)
-/// VD: "Khoảng cách giữa AC và SB bằng a"
+/// Validates distance constraints (point-point, point-line, point-plane, line-line).
+/// e.g. "Distance between AC and SB equals a"
 /// </summary>
 public class DistanceValidator : IFactValidator
 {
@@ -28,7 +28,7 @@ public class DistanceValidator : IFactValidator
 
         double actualDistance = -1;
 
-        // Case 1: Khoảng cách giữa 2 điểm (from="A", to="B")
+        // Case 1: Distance between 2 points (from="A", to="B")
         if (fromVertices.Count == 1 && toVertices.Count == 1)
         {
             var p1 = context.GetPoint(fromVertices[0]);
@@ -37,7 +37,7 @@ public class DistanceValidator : IFactValidator
                 return ValidationResult.Skip(fact.Id, "Distance", $"Chưa có tọa độ {from} hoặc {to}");
             actualDistance = p1.DistanceToPoint(p2);
         }
-        // Case 2: Khoảng cách giữa 2 đường thẳng (from="AC", to="SB")
+        // Case 2: Distance between 2 lines (from="AC", to="SB")
         else if (fromVertices.Count == 2 && toVertices.Count == 2)
         {
             var line1 = context.GetLine(from);
@@ -46,7 +46,7 @@ public class DistanceValidator : IFactValidator
                 return ValidationResult.Skip(fact.Id, "Distance", $"Chưa có đủ tọa độ cho {from} hoặc {to}");
             actualDistance = line1.DistanceToLine(line2);
         }
-        // Case 3: Khoảng cách từ điểm đến đường thẳng (from="A", to="BC")
+        // Case 3: Distance from point to line (from="A", to="BC")
         else if (fromVertices.Count == 1 && toVertices.Count == 2)
         {
             var p = context.GetPoint(fromVertices[0]);
@@ -55,7 +55,7 @@ public class DistanceValidator : IFactValidator
                 return ValidationResult.Skip(fact.Id, "Distance", $"Chưa có tọa độ cho {from} hoặc {to}");
             actualDistance = line.DistanceToPoint(p);
         }
-        // Case 4: Khoảng cách từ điểm đến mặt phẳng (from="S", to="ABCD")
+        // Case 4: Distance from point to plane (from="S", to="ABCD")
         else if (fromVertices.Count == 1 && toVertices.Count >= 3)
         {
             var p = context.GetPoint(fromVertices[0]);
@@ -64,7 +64,7 @@ public class DistanceValidator : IFactValidator
                 return ValidationResult.Skip(fact.Id, "Distance", $"Chưa có tọa độ cho {from} hoặc {to}");
             actualDistance = plane.DistanceToPoint(p);
         }
-        // Case 5: Khoảng cách giữa hai mặt phẳng
+        // Case 5: Distance between two planes
         else if (fromVertices.Count >= 3 && toVertices.Count >= 3)
         {
             var plane1 = context.GetPlane(from);
@@ -101,8 +101,8 @@ public class DistanceValidator : IFactValidator
         string sanitized = (value ?? string.Empty).ToLower().Replace(" ", "");
         if (string.IsNullOrWhiteSpace(sanitized)) return true;
 
-        // 'a' là tham số đơn vị mặc định của hệ thống. Các ký hiệu khác như d/h/k
-        // thường là đại lượng cần tính, không phải ràng buộc số để ép tọa độ.
+        // 'a' is the system's default unit parameter. Other symbols like d/h/k
+        // are usually quantities to solve for, not numeric constraints for coordinate fixing.
         sanitized = sanitized.Replace("sqrt", "");
         return System.Text.RegularExpressions.Regex.IsMatch(sanitized, @"[b-z]");
     }

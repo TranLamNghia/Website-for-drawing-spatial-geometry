@@ -25,12 +25,12 @@ public class ProjectionHandler : IFactHandler
 
         Point3D? result = null;
 
-        if (onto.Length == 2) // Chiếu lên đường thẳng
+        if (onto.Length == 2) // Project onto a line
         {
             var line = context.GetLine(onto);
             if (line != null) result = line.GetProjection(pFrom);
         }
-        else if (onto.Length >= 3) // Chiếu lên mặt phẳng
+        else if (onto.Length >= 3) // Project onto a plane
         {
             var plane = context.GetPlane(onto);
             if (plane != null) result = plane.GetProjection(pFrom);

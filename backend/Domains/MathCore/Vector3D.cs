@@ -22,19 +22,19 @@ public class Vector3D
         Z = to.Z - from.Z;
     }
 
-    // Độ dài của Vector
+    // Length of the vector
     public double Magnitude()
     {
         return Math.Sqrt(X * X + Y * Y + Z * Z);
     }
 
-    // Tích vô hướng (Dot Product) - Dùng để tính góc
+    // Dot product — used to compute angles
     public double DotProduct(Vector3D other)
     {
         return (X * other.X) + (Y * other.Y) + (Z * other.Z);
     }
 
-    // Tích có hướng (Cross Product) - Dùng để tìm Vector pháp tuyến vuông góc với 2 Vector
+    // Cross product — yields a vector perpendicular to both operands
     public Vector3D CrossProduct(Vector3D other)
     {
         return new Vector3D(
@@ -44,7 +44,7 @@ public class Vector3D
         );
     }
 
-    // Tính góc giữa 2 Vector (Trả về độ)
+    // Angle between two vectors (returns degrees)
     public double AngleWith(Vector3D other)
     {
         double dot = this.DotProduct(other);
@@ -54,27 +54,27 @@ public class Vector3D
         return Math.Acos(dot / mags) * (180.0 / Math.PI);
     }
 
-    // Nạp chồng toán tử Toán học để code C# nhìn gọn hơn
+    // Operator overloads for more concise C# code
     public static Vector3D operator +(Vector3D v1, Vector3D v2) => new(v1.X + v2.X, v1.Y + v2.Y, v1.Z + v2.Z);
     public static Vector3D operator -(Vector3D v1, Vector3D v2) => new(v1.X - v2.X, v1.Y - v2.Y, v1.Z - v2.Z);
     public static Vector3D operator *(Vector3D v, double scalar) => new(v.X * scalar, v.Y * scalar, v.Z * scalar);
 
-    // Tích hỗn tạp (Để tính Thể tích tứ diện hoặc kiểm tra Fact: coplanar)
+    // Scalar triple product (for tetrahedron volume or coplanarity checks)
     public double MixedProduct(Vector3D v2, Vector3D v3)
     {
         return this.CrossProduct(v2).DotProduct(v3);
     }
 
-    // Tìm Vector phân giác trong của góc tạo bởi 2 vector (xuất phát từ cùng 1 đỉnh)
+    // Interior angle bisector direction from two vectors sharing a common vertex
     public Vector3D GetBisectorVector(Vector3D other)
     {
         var v1_norm = this.Normalize();
         var v2_norm = other.Normalize();
-        // Tổng 2 vector đơn vị sẽ tạo ra đường chéo hình thoi -> chính là phân giác!
+        // Sum of unit vectors gives the rhombus diagonal — the angle bisector
         return v1_norm + v2_norm; 
     }
 
-    // Hàm phụ: Chuẩn hóa vector (Trả về vector cùng hướng, độ dài = 1)
+    // Returns a unit vector in the same direction (length = 1)
     public Vector3D Normalize()
     {
         double mag = Magnitude();

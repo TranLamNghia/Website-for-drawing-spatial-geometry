@@ -59,7 +59,7 @@ public class BelongsToHandler : IFactHandler
     }
 
     /// <summary>
-    /// Khi MN // mp(SAB) với M ∈ SD, N ∈ SC: đặt cùng tỉ lệ trên các cạnh bên để MN // đáy.
+    /// When MN // mp(SAB) with M ∈ SD, N ∈ SC: use the same ratio on lateral edges so MN // base.
     /// </summary>
     private static double? TryGetCoupledLateralRatio(
         CompilationContext context,

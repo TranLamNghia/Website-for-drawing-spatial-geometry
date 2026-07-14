@@ -22,9 +22,9 @@ public class CircumscribedHandler : IFactHandler
         var points = context.GetPointsFromPlane(solidChars);
         if (points.Count < 3) return;
 
-        // Nếu fact đang nói về một khối 3D (vd ABCD/S.ABCD) nhưng compiler mới dựng
-        // được 3 điểm đáy, đừng tạo nhầm O thành tâm đường tròn đáy. Đợi đủ đỉnh rồi
-        // mới dựng mặt cầu ngoại tiếp.
+        // If the fact refers to a 3D solid (e.g. ABCD/S.ABCD) but the compiler has only
+        // built 3 base points, do not mistakenly create O as the base-circle center. Wait
+        // until all vertices exist, then build the circumscribed sphere.
         bool isSolidCircumsphere = solidChars.Length >= 4;
         if (isSolidCircumsphere && points.Count < solidChars.Length) return;
 
@@ -50,8 +50,8 @@ public class CircumscribedHandler : IFactHandler
             }
         }
 
-        // Luôn đăng ký hoặc cập nhật sphere/circle dù điểm đã tồn tại từ trước
-        // (vd: được nạp từ SymPy hoặc từng được dựng tạm ở pass trước).
+        // Always register or update sphere/circle even if the point already existed
+        // (e.g. loaded from SymPy or temporarily built in a prior pass).
         var centerPt = context.Points[spherePoint];
         double radius = centerPt.DistanceToPoint(points[0]);
 

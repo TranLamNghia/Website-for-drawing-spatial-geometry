@@ -15,11 +15,11 @@ public class LengthHandler : IFactHandler
         var data = fact.GetDataAs<LengthData>();
         if (data == null || string.IsNullOrEmpty(data.Target) || string.IsNullOrEmpty(data.Value)) return;
 
-        string edge = data.Target; // VD: "AB"
+        string edge = data.Target; // e.g. "AB"
         if (edge.Length < 2) return;
 
         // Log the raw value (e.g., "a" or "5")
         Console.WriteLine($"[HANDLER] Ghi nhận độ dài: {edge} = {data.Value}");
-        // Các Case "M trên AB sao cho AM = 3" được tách thành BelongsTo + Length.
+        // Cases like "M on AB such that AM = 3" are split into BelongsTo + Length.
     }
 }

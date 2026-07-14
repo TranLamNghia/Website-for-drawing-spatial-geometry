@@ -15,19 +15,19 @@ public class Point3D
         Z = z;
     }
 
-    // Tính khoảng cách tới một điểm khác
+    // Distance to another point
     public double DistanceToPoint(Point3D other)
     {
         return Math.Sqrt(Math.Pow(X - other.X, 2) + Math.Pow(Y - other.Y, 2) + Math.Pow(Z - other.Z, 2));
     }
 
-    // Tìm trung điểm của đoạn thẳng tạo bởi 2 điểm
+    // Midpoint of the segment between two points
     public Point3D GetMidpoint(Point3D other)
     {
         return new Point3D((X + other.X) / 2, (Y + other.Y) / 2, (Z + other.Z) / 2);
     }
 
-    // Tìm điểm chia đoạn thẳng theo tỉ lệ
+    // Point that divides the segment at the given ratio
     public Point3D GetPointAtRatio(Point3D other, double ratio)
     {
         return new Point3D(
@@ -37,7 +37,7 @@ public class Point3D
         );
     }
 
-    // Tìm trọng tâm
+    // Centroid of the given points
     public static Point3D GetCentroid(params Point3D[] points)
     {
         if (points == null || points.Length == 0)
@@ -48,7 +48,7 @@ public class Point3D
         return new Point3D(sumX / points.Length, sumY / points.Length, sumZ / points.Length);
     }
  
-    // Tìm tâm đường tròn nội tiếp của tam giác
+    // Incenter of a triangle
     public static Point3D GetIncenter3(Point3D p1, Point3D p2, Point3D p3)
     {
         double a = p2.DistanceToPoint(p3);
@@ -63,7 +63,7 @@ public class Point3D
         );
     }
 
-    // SIÊU HÀM TÂM NỘI TIẾP: Tìm Incenter cho tam giác hoặc đa giác bất kỳ
+    // Incenter for a triangle or arbitrary polygon
     public static (Point3D Center, double Radius, bool IsConsistent) GetIncenter(params Point3D[] points)
     {
         if (points == null || points.Length < 3) return (new Point3D(0, 0, 0), 0, false);
@@ -77,10 +77,10 @@ public class Point3D
             double p = (a + b + c) / 2;
             double area = GetTriangleArea(points[0], points[1], points[2]);
             double r = area / p;
-            return (incenter, r, true); // Tam giác luôn nội tiếp được vòng tròn
+            return (incenter, r, true); // A triangle always has an inscribed circle
         }
 
-        // Đa giác (>= 4 điểm)
+        // Polygon (4 or more vertices)
         var edges = new System.Collections.Generic.List<Line3D>();
         for (int i = 0; i < points.Length; i++)
         {
@@ -90,15 +90,15 @@ public class Point3D
         }
 
         var plane = new Plane3D(points[0], points[1], points[2]);
-        var interiorPoint = GetCentroid(points); // Lấy trọng tâm làm điểm tham chiếu bên trong
+        var interiorPoint = GetCentroid(points); // Use the centroid as an interior reference point
 
         return GetIncenterPolygon(edges, plane, interiorPoint);
     }
  
-    // Tìm trực tâm
+    // Orthocenter of a triangle
     public static Point3D GetOrthocenter(Point3D p1, Point3D p2, Point3D p3)
     {
-        // H = 3G - 2O (H: Trực tâm, G: Trọng tâm, O: Tâm ngoại tiếp)
+        // H = 3G - 2O (H: orthocenter, G: centroid, O: circumcenter)
         var g = GetCentroid(p1, p2, p3);
         var o = GetCircumcenter(p1, p2, p3);
  
@@ -111,16 +111,16 @@ public class Point3D
         );
     }
 
-    // Hàm phụ trợ: Tính diện tích tam giác trong không gian 3D bằng Tích có hướng
+    // Triangle area in 3D via the cross product
     public static double GetTriangleArea(Point3D p1, Point3D p2, Point3D p3)
     {
         var v1 = new Vector3D(p1, p2);
         var v2 = new Vector3D(p1, p3);
-        // Diện tích = 1/2 độ dài của Vector tích có hướng
+        // Area equals half the magnitude of the cross product
         return v1.CrossProduct(v2).Magnitude() / 2.0;
     }
 
-    // Hàm giải hệ phương trình 3 ẩn bằng quy tắc Cramer
+    // Solve a 3x3 linear system using Cramer's rule
     private static Point3D? SolveLinearSystem3x3(double[,] A, double[] B)
     {
         double det = A[0,0] * (A[1,1] * A[2,2] - A[1,2] * A[2,1]) -
@@ -144,7 +144,7 @@ public class Point3D
         return new Point3D(detX / det, detY / det, detZ / det);
     }
 
-    // Tâm mặt cầu / đường tròn ngoại tiếp đa diện
+    // Circumsphere or circumcircle center
     public static Point3D? GetCircumcenter(params Point3D[] pts)
     {
         if (pts.Length < 3) return null;
@@ -153,7 +153,7 @@ public class Point3D
         double[,] A = new double[3, 3];
         double[] B = new double[3];
 
-        // Lập 2 phương trình đầu tiên từ P2 và P3 theo công thức 2(Pi - P1).I = ||Pi||^2 - ||P1||^2
+        // Build the first two equations from P2 and P3: 2(Pi - P1)·I = ||Pi||² - ||P1||²
         for (int i = 0; i < 2; i++)
         {
             Point3D pi = pts[i + 1];
@@ -165,18 +165,18 @@ public class Point3D
 
         if (pts.Length == 3)
         {
-            // TRƯỜNG HỢP ĐƯỜNG TRÒN NGOẠI TIẾP (2D trong 3D)
-            // Thêm phương trình 3: I nằm trên mặt phẳng (P1P2P3) => (I - P1).Normal = 0
+            // Circumcircle case (2D in 3D)
+            // Third equation: I lies in the plane (P1P2P3), i.e. (I - P1)·Normal = 0
             var plane = new Plane3D(pts[0], pts[1], pts[2]); //
             A[2, 0] = plane.A;
             A[2, 1] = plane.B;
             A[2, 2] = plane.C;
-            B[2] = -plane.D; // Vì Ax + By + Cz + D = 0 => Ax + By + Cz = -D
+            B[2] = -plane.D; // Because Ax + By + Cz + D = 0 implies Ax + By + Cz = -D
         }
         else
         {
-            // TRƯỜNG HỢP MẶT CẦU NGOẠI TIẾP (3D)
-            // Lấy phương trình 3 từ điểm P4
+            // Circumsphere case (3D)
+            // Third equation from point P4
             Point3D p4 = pts[3];
             A[2, 0] = 2 * (p4.X - p1.X);
             A[2, 1] = 2 * (p4.Y - p1.Y);
@@ -184,35 +184,35 @@ public class Point3D
             B[2] = (p4.X * p4.X + p4.Y * p4.Y + p4.Z * p4.Z) - (p1.X * p1.X + p1.Y * p1.Y + p1.Z * p1.Z);
         }
 
-        return SolveLinearSystem3x3(A, B); // Trả về null nếu không giải được (suy biến), không fallback về trọng tâm
+        return SolveLinearSystem3x3(A, B); // Returns null if unsolvable (degenerate); no fallback to centroid
     }
 
-    // Tìm tâm đường tròn nội tiếp đa giác
+    // Incenter of a polygon inscribed circle
     public static (Point3D Center, double Radius, bool IsConsistent) GetIncenterPolygon(List<Line3D> edges, Plane3D plane, Point3D interiorPoint)
     {
-        // Step 0-4: Chuẩn hóa các cạnh (biến thành vector pháp tuyến trong mặt phẳng)
-        // Lưu ý: Đây là phần khó nhất vì phải tìm vector vuông góc với cạnh VÀ nằm trên mặt phẳng
+        // Steps 0-4: Normalize edges into in-plane normal vectors
+        // Note: Must find vectors perpendicular to each edge that also lie in the plane
         var normalizedLines = new List<(Vector3D Normal, double D)>();
         foreach (var edge in edges)
         {
-            // Vector pháp tuyến của cạnh = Tích có hướng của (Chỉ phương cạnh) và (Pháp tuyến mặt phẳng)
+            // Edge normal = cross product of edge direction and plane normal
             var lineNormal = edge.Direction.CrossProduct(plane.Normal).Normalize();
             double d = -(lineNormal.X * edge.Point.X + lineNormal.Y * edge.Point.Y + lineNormal.Z * edge.Point.Z);
 
-            // Step 3: Định hướng vào trong đa giác
+            // Step 3: Orient normals inward toward the polygon interior
             if (lineNormal.X * interiorPoint.X + lineNormal.Y * interiorPoint.Y + lineNormal.Z * interiorPoint.Z + d < 0)
             {
-                lineNormal = lineNormal * -1; // Sửa lỗi gọi hàm Multiply() bằng toán tử * đã nạp chồng
+                lineNormal = lineNormal * -1; // Use overloaded * operator instead of a Multiply() call
                 d = -d;
             }
             normalizedLines.Add((lineNormal, d));
         }
 
-        // Step 5-7: Thiết lập hệ 3x3 (2 phương trình cạnh + 1 phương trình mặt phẳng)
+        // Steps 5-7: Build 3x3 system (two edge equations + plane equation)
         double[,] A = new double[3, 3];
         double[] B = new double[3];
 
-        // Lấy 2 cạnh đầu tiên để khử r: (n2 - n1).I = d1 - d2
+        // Use the first two edges to eliminate r: (n2 - n1)·I = d1 - d2
         var l1 = normalizedLines[0];
         for (int i = 0; i < 2; i++)
         {
@@ -223,17 +223,17 @@ public class Point3D
             B[i] = l1.D - li.D;
         }
 
-        // Phương trình 3: Tâm I phải nằm trên mặt phẳng chứa đa giác
+        // Third equation: incenter I must lie in the polygon's plane
         A[2, 0] = plane.A; A[2, 1] = plane.B; A[2, 2] = plane.C;
         B[2] = -plane.D;
 
-        // Step 8-10: Giải và Kiểm tra
+        // Steps 8-10: Solve and verify
         Point3D? incenter = SolveLinearSystem3x3(A, B);
         if (incenter == null) return (new Point3D(0,0,0), 0, false);
 
         double r = l1.Normal.X * incenter.X + l1.Normal.Y * incenter.Y + l1.Normal.Z * incenter.Z + l1.D;
 
-        // GẮN CỜ: Kiểm tra tất cả các cạnh còn lại
+        // Flag: verify consistency against all remaining edges
         bool isConsistent = true;
         foreach (var l in normalizedLines)
         {
@@ -244,10 +244,10 @@ public class Point3D
         return (incenter, r, isConsistent);
     }
 
-    // Tâm mặt cầu nội tiếp đa diện
+    // Insphere center of a polyhedron
     public static (Point3D Center, double Radius, bool IsConsistent) GetInsphere(List<Plane3D> faces, Point3D interiorPoint)
     {
-        // Step 0-4: Chuẩn hóa và Định hướng tất cả các mặt phẳng hướng vào trong
+        // Steps 0-4: Normalize and orient all face planes inward
         var normalizedPlanes = new List<(Vector3D Normal, double D)>();
         foreach (var face in faces)
         {
@@ -257,7 +257,7 @@ public class Point3D
             double c = face.C / mag;
             double d = face.D / mag;
 
-            // Step 3: Đảm bảo f(P) > 0 để pháp tuyến hướng vào trong khối
+            // Step 3: Ensure f(P) > 0 so normals point into the solid
             if (a * interiorPoint.X + b * interiorPoint.Y + c * interiorPoint.Z + d < 0)
             {
                 a = -a; b = -b; c = -c; d = -d;
@@ -265,14 +265,14 @@ public class Point3D
             normalizedPlanes.Add((new Vector3D(a, b, c), d));
         }
 
-        // Step 5-7: Thiết lập hệ phương trình khử r
-        // Lấy mặt phẳng đầu tiên làm mốc (n1.I + d1 = r)
+        // Steps 5-7: Build the system eliminating r
+        // Use the first face as reference: n1·I + d1 = r
         var p1 = normalizedPlanes[0];
         double[,] A = new double[3, 3];
         double[] B = new double[3];
 
-        // Tạo 3 phương trình từ 3 mặt phẳng tiếp theo (i = 1, 2, 3)
-        // Công thức Step 6: (ni - n1).I = d1 - di
+        // Build three equations from the next three faces (i = 1, 2, 3)
+        // Step 6 formula: (ni - n1)·I = d1 - di
         for (int i = 0; i < 3; i++)
         {
             var pi = normalizedPlanes[i + 1];
@@ -282,19 +282,19 @@ public class Point3D
             B[i] = p1.D - pi.D;
         }
 
-        // Step 8: Giải hệ tìm I(x, y, z)
+        // Step 8: Solve for center I(x, y, z)
         Point3D? incenter = SolveLinearSystem3x3(A, B);
         if (incenter == null) return (new Point3D(0,0,0), 0, false);
 
-        // Step 9: Tính bán kính r từ mặt mốc
+        // Step 9: Compute radius r from the reference face
         double r = p1.Normal.X * incenter.X + p1.Normal.Y * incenter.Y + p1.Normal.Z * incenter.Z + p1.D;
 
-        // Step 10: Kiểm tra tính đồng nhất (BƯỚC GẮN CỜ)
+        // Step 10: Verify consistency (flagging step)
         bool isConsistent = true;
         foreach (var p in normalizedPlanes)
         {
             double dist = Math.Abs(p.Normal.X * incenter.X + p.Normal.Y * incenter.Y + p.Normal.Z * incenter.Z + p.D);
-            if (Math.Abs(dist - r) > 1e-3) // Sai số cho phép
+            if (Math.Abs(dist - r) > 1e-3) // Allowed tolerance
             {
                 isConsistent = false;
                 break;
@@ -304,9 +304,9 @@ public class Point3D
         return (incenter, r, isConsistent);
     }
 
-    // Hiện tọa độ điểm
+    // String representation of point coordinates
     public override string ToString()
     {
-        return $"({X:F2}, {Y:F2}, {Z:F2})"; // In ra format (0.00, 0.00, 0.00)
+        return $"({X:F2}, {Y:F2}, {Z:F2})"; // Format: (0.00, 0.00, 0.00)
     }
 }

@@ -42,7 +42,7 @@ public static class ShapeBuildHelper
     }
 
     /// <summary>
-    /// Dịch chân đường cao (hình chiếu đỉnh) lệch khỏi trọng tâm đáy theo tỉ lệ offsetRatio (mặc định 30%).
+    /// Offset the altitude foot (apex projection) away from the base centroid by offsetRatio (default 30%).
     /// </summary>
     public static Point3D OffsetProjectionFoot(Point3D centroid, IReadOnlyList<Point3D> basePts, double offsetRatio = 0.3)
     {

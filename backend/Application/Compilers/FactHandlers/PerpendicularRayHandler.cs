@@ -44,7 +44,7 @@ public class PerpendicularRayHandler : IFactHandler
         }
         else if (perfTo.Length == 2)
         {
-            // Vuông góc với đường thẳng - mặc định lấy 1 vector vuông góc trong mặt phẳng (Oxy) hoặc (Oyz)
+            // Perpendicular to a line - default to one perpendicular vector in the (Oxy) or (Oyz) plane
             var line = context.GetLine(perfTo);
             if (line != null)
             {
