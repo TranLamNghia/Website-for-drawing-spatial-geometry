@@ -135,8 +135,8 @@ export default function ProfilePage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">linkedin</p>
-                  <a href="https://www.linkedin.com/in/nghĩa-trần-lâm-b21a88383" target="_blank" rel="noopener noreferrer" className="text-[13px] text-foreground/90 font-semibold hover:text-primary transition-colors truncate block">
-                    linkedin.com/in/nghĩa-trần-lâm-b21a88383
+                  <a href="https://www.linkedin.com/in/tlnghia" target="_blank" rel="noopener noreferrer" className="text-[13px] text-foreground/90 font-semibold hover:text-primary transition-colors truncate block">
+                    linkedin.com/in/tlnghia
                   </a>
                 </div>
               </div>

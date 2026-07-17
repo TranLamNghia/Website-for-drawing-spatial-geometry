@@ -23,6 +23,12 @@ sympyBin/
 **/jsonBin/
 backend/_smoketest_out/
 
+# Debug session helpers (Google OAuth Back-button investigation)
+frontend/scripts/debug-google-*.mjs
+frontend/app/api/debug-log/
+debug-66918d.log
+**/debug-66918d.log
+
 # ==============================
 # 02. CODE EDITORS (VSCode, PyCharm)
 # ==============================

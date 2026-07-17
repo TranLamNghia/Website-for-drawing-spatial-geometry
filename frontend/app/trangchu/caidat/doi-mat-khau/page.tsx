@@ -1,11 +1,9 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
-import { ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,6 +17,7 @@ function PasswordField({
   onChange,
   placeholder,
   required,
+  hint,
 }: {
   id: string
   label: string
@@ -26,20 +25,21 @@ function PasswordField({
   onChange: (value: string) => void
   placeholder: string
   required?: boolean
+  hint?: string
 }) {
   const [visible, setVisible] = useState(false)
 
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <div className="relative">
+      <div className="relative max-w-xl">
         <Input
           id={id}
           type={visible ? 'text' : 'password'}
           value={value}
           required={required}
           onChange={e => onChange(e.target.value)}
-          className="h-11 rounded-xl pr-11"
+          className="h-10 pr-11"
           placeholder={placeholder}
           autoComplete="new-password"
         />
@@ -52,6 +52,7 @@ function PasswordField({
           {visible ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
       </div>
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   )
 }
@@ -115,87 +116,69 @@ export default function ChangePasswordPage() {
   }
 
   if (status === 'loading') {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Đang tải...
-      </div>
-    )
+    return <p className="text-sm text-muted-foreground">Đang tải...</p>
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-xl mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-        <Link
-          href="/trangchu/caidat"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft size={16} />
-          Về cài đặt
-        </Link>
-
-        <h1 className="mt-6 text-xl font-bold tracking-tight sm:text-2xl">Đổi mật khẩu</h1>
+    <div>
+      <div className="mb-6 border-b border-border pb-4">
+        <h2 className="text-xl font-semibold tracking-tight">Mật khẩu và xác thực</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Cập nhật mật khẩu dùng để đăng nhập bằng email.
         </p>
-
-        <Card className="mt-6">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Mật khẩu đăng nhập</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <PasswordField
-                id="currentPassword"
-                label="Mật khẩu hiện tại"
-                value={currentPassword}
-                onChange={setCurrentPassword}
-                placeholder={hasPassword === false ? 'Để trống nếu chưa có mật khẩu' : 'Nhập mật khẩu hiện tại'}
-                required={hasPassword === true}
-              />
-              {hasPassword === false ? (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  Tài khoản đăng nhập Google chưa có mật khẩu. Hãy để trống ô mật khẩu hiện tại và đặt mật khẩu mới.
-                </p>
-              ) : null}
-
-              <PasswordField
-                id="newPassword"
-                label="Mật khẩu mới"
-                value={newPassword}
-                onChange={setNewPassword}
-                placeholder="Tối thiểu 8 ký tự"
-                required
-              />
-              <PasswordField
-                id="confirmPassword"
-                label="Nhập lại mật khẩu mới"
-                value={confirmPassword}
-                onChange={setConfirmPassword}
-                placeholder="Nhập lại mật khẩu mới"
-                required
-              />
-
-              {error ? <p className="text-sm text-destructive">{error}</p> : null}
-              {info ? <p className="text-sm text-muted-foreground">{info}</p> : null}
-
-              <div className="flex flex-col gap-3 pt-2 sm:flex-row">
-                <Button type="submit" disabled={loading} className="rounded-xl sm:min-w-[160px]">
-                  {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-                  Lưu mật khẩu
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-xl"
-                  onClick={() => router.push('/trangchu/caidat')}
-                >
-                  Hủy
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
       </div>
+
+      <form onSubmit={handleSubmit} className="max-w-xl space-y-5">
+        <PasswordField
+          id="currentPassword"
+          label="Mật khẩu hiện tại"
+          value={currentPassword}
+          onChange={setCurrentPassword}
+          placeholder={hasPassword === false ? 'Để trống nếu chưa có mật khẩu' : 'Nhập mật khẩu hiện tại'}
+          required={hasPassword === true}
+          hint={
+            hasPassword === false
+              ? 'Tài khoản đăng nhập Google chưa có mật khẩu. Để trống ô này và đặt mật khẩu mới.'
+              : undefined
+          }
+        />
+
+        <PasswordField
+          id="newPassword"
+          label="Mật khẩu mới"
+          value={newPassword}
+          onChange={setNewPassword}
+          placeholder="Tối thiểu 8 ký tự"
+          required
+          hint="Nên dùng ít nhất 8 ký tự, kết hợp chữ và số."
+        />
+        <PasswordField
+          id="confirmPassword"
+          label="Nhập lại mật khẩu mới"
+          value={confirmPassword}
+          onChange={setConfirmPassword}
+          placeholder="Nhập lại mật khẩu mới"
+          required
+        />
+
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {info ? <p className="text-sm text-muted-foreground">{info}</p> : null}
+
+        <div className="flex flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10"
+            onClick={() => router.push('/trangchu/caidat')}
+          >
+            Hủy
+          </Button>
+          <Button type="submit" disabled={loading} className="h-10 sm:min-w-[140px]">
+            {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+            Cập nhật mật khẩu
+          </Button>
+        </div>
+      </form>
     </div>
   )
 }

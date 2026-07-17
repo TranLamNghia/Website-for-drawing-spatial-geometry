@@ -142,7 +142,7 @@ export default function FeedbackPage() {
                 <CheckCircle2 className="w-8 h-8 text-emerald-500 animate-bounce" />
               </div>
               <h2 className="text-xl font-bold text-foreground">Gửi góp ý thành công!</h2>
-              <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
+              <p className="text-sm text-muted-foreground min-w-md leading-relaxed">
                 Phản hồi của bạn đã được ghi nhận. Cảm ơn bạn đã dành thời gian đóng góp.
               </p>
               {emailSent && email ? (

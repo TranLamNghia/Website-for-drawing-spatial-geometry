@@ -6,9 +6,34 @@ import { signIn } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { Boxes, ArrowLeft, Loader2 } from 'lucide-react'
 import { cleanAuthSearchParams, resolveAuthCallbackUrl } from '@/lib/auth-callback'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
+
+// #region agent log
+function dbgLog(hypothesisId: string, location: string, message: string, data: Record<string, unknown> = {}) {
+  const payload = {
+    sessionId: '66918d',
+    runId: 'post-fix-9',
+    hypothesisId,
+    location,
+    message,
+    data,
+    timestamp: Date.now(),
+  }
+  fetch('http://127.0.0.1:7363/ingest/91e218d2-2acc-4172-b006-a0069f330ca6', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '66918d' },
+    body: JSON.stringify(payload),
+  }).catch(() => {})
+  fetch('/api/debug-log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => {})
+}
+// #endregion
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -84,17 +109,36 @@ function LoginContent() {
 
   useEffect(() => {
     setCallbackUrl(resolveAuthCallbackUrl())
+    // #region agent log
+    dbgLog('A', 'dangnhap/page.tsx:mount', 'LoginContent mounted', {
+      navType: performance.getEntriesByType?.('navigation')?.[0]
+        ? (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming).type
+        : 'unknown',
+      href: window.location.href,
+    })
+    // #endregion
   }, [])
 
+  // Capture-phase native listener: bypasses a frozen React tree / Next soft-nav after Back.
   useEffect(() => {
-    // bfcache restore breaks React click handlers; CSS :hover still works.
-    const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) window.location.reload()
+    const el = document.getElementById('sg-google-oauth')
+    if (!el) return
+    const onClick = (event: Event) => {
+      const mouse = event as MouseEvent
+      if (mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.altKey || mouse.button !== 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      const href = (el as HTMLAnchorElement).href
+      // #region agent log
+      dbgLog('K', 'dangnhap/page.tsx:google-capture-click', 'Hard navigate via location.assign', {
+        href,
+      })
+      // #endregion
+      window.location.assign(href)
     }
-
-    window.addEventListener('pageshow', onPageShow)
-    return () => window.removeEventListener('pageshow', onPageShow)
-  }, [])
+    el.addEventListener('click', onClick, true)
+    return () => el.removeEventListener('click', onClick, true)
+  }, [callbackUrl])
 
   useEffect(() => {
     if (!authError) return
@@ -132,12 +176,7 @@ function LoginContent() {
     }
   }
 
-  const handleGoogleSignIn = () => {
-    setError(null)
-    void signIn('google', { callbackUrl }).catch(() => {
-      setError('Không thể bắt đầu đăng nhập Google. Thử lại sau.')
-    })
-  }
+  const googleHref = `/auth/google?callbackUrl=${encodeURIComponent(callbackUrl)}`
 
   return (
     <div className="flex min-h-svh flex-col bg-background lg:flex-row">
@@ -165,7 +204,7 @@ function LoginContent() {
 
           <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Chào mừng trở lại</h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            Đăng nhập bằng email hoặc Google để mở khóa nhiều chức năng hơn.
+            Đăng nhập để sử dụng nhiều chức năng hơn.
           </p>
 
           <form onSubmit={handleEmailLogin} className="mt-8 space-y-4">
@@ -212,22 +251,30 @@ function LoginContent() {
             <div className="h-px flex-1 bg-border" />
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            className="h-12 w-full rounded-xl border-border/80 bg-background text-base font-semibold text-foreground shadow-sm hover:bg-muted hover:text-foreground"
-            onClick={handleGoogleSignIn}
+          {/* Plain <a>: no preventDefault — works even if React handlers are dead after Back. */}
+          <a
+            id="sg-google-oauth"
+            href={googleHref}
+            className={cn(
+              buttonVariants({ variant: 'outline' }),
+              'relative z-50 h-12 w-full rounded-xl border-border/80 bg-background text-base font-semibold text-foreground shadow-sm hover:bg-muted hover:text-foreground',
+            )}
+            onClick={() => {
+              // #region agent log
+              dbgLog('I', 'dangnhap/page.tsx:google-anchor-click', 'Google OAuth native navigate', {
+                googleHref,
+                callbackUrl,
+              })
+              // #endregion
+            }}
           >
             <GoogleIcon className="mr-3 size-5" />
             Đăng nhập bằng Google
-          </Button>
+          </a>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
             Chưa có tài khoản?{' '}
-            <Link
-              href="/dangky"
-              className="font-semibold text-primary hover:underline"
-            >
+            <Link href="/dangky" className="font-semibold text-primary hover:underline">
               Đăng ký
             </Link>
           </p>
